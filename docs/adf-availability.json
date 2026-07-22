@@ -1,0 +1,665 @@
+{
+  "$comment": "Machine-usable per-product ADF availability dataset for adfast. Source of truth for building jira/confluence 'supported kinds' profiles. Kind names are ADF `type` strings. See docs/adf-coverage.md for the human-readable cited matrix and evidence discussion.",
+  "meta": {
+    "generated": "2026-07-22",
+    "schemaMirror": {
+      "repo": "pioug/atlassian-frontend-mirror",
+      "note": "Public daily mirror of Atlassian's atlassian-frontend (upstream @atlaskit/adf-schema).",
+      "commitSha": "f5ca0f120c6ea5d79873805d081a72c82917e1f8",
+      "commitDate": "2026-07-21",
+      "schemaBasePath": "editor/adf-schema/src/schema",
+      "blobBase": "https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema"
+    },
+    "evidenceModel": {
+      "jira": "Primary: Atlassian's Jira Cloud ADF reference (developer.atlassian.com/cloud/jira/platform/apis/document/). A dedicated node/mark page (HTTP 200) is positive 'documented available' evidence; a 404 is evidence-by-omission. The reference itself states it is non-exhaustive ('Marks and nodes included in the JSON schema may not be valid in this implementation'). Secondary corroboration: jira-schema.ts (deprecated ED-15676; a minimal, config-gated editor schema, not used to downgrade markers).",
+      "confluence": "Primary machine-readable per-product source: confluence-schema.ts allowlist in the mirror (SHA-pinned). It is marked @deprecated [ED-15676] 'We have stopped supporting product specific schemas' and is a stale, non-exhaustive snapshot. Presence in its nodes/marks arrays is positive evidence; absence is evidence-by-omission only (NOT proof of non-support). No current per-node Confluence ADF reference page exists (developer.atlassian.com/cloud/confluence/apis/document/* returns 404).",
+      "shared": "Existence of the kind in the shared default schema is evidenced by its definition file under editor/adf-schema/src/schema/{nodes,marks}/."
+    },
+    "values": {
+      "yes": "Documented/allowlisted as available for this product by the cited evidence.",
+      "no": "adfast marks the product column '—' (not available) AND the kind has no page in that product's evidence; corroborated by omission. Not a positive upstream exclusion statement.",
+      "unknown": "In the shared schema but this product's evidence neither confirms nor denies availability (evidence-by-omission from a non-exhaustive/deprecated source)."
+    },
+    "readmeMarkerLegend": {
+      "checkmark": "adfast README '✓' — product-available (adfast's own assessment).",
+      "ring": "adfast README '∘' — present in the shared schema, no documented product availability.",
+      "dash": "adfast README '—' — documented/known not-available in that product."
+    },
+    "support": "adfast's own handling of the kind, independent of product availability. Most tabled kinds are 'converted' (round-trip through a markdown mapping). 'dropped' means adfast retires the kind: it never produces it, and any legacy instance decodes to plain text (with a fontsize-dropped diagnostic) — text preserved, styling lost. fontSize is the only 'dropped' kind (no Atlassian product supports the mark).",
+    "empiricalValidation": {
+      "date": "2026-07-22",
+      "coverage": "Full: all 45 nodes + 17 marks probed against BOTH live products on ixolit.atlassian.net.",
+      "method": "Built ADF documents containing every node/mark kind (each preceded by an L-<kind> label paragraph) in valid host contexts. Wrote them to a live Jira issue description (ARCH-506) and a live Confluence page (1729232906) via the Atlassian MCP (contentFormat=adf), then (1) inspected the product-rendered DOM in a logged-in browser (chrome-devtools) and (2) for Confluence read the stored ADF back to see which kinds survived save.",
+      "jira": "RENDER is the product-support oracle. The Jira issue view renders description ADF with the shared @atlaskit/renderer. Classification: first-class widget or degraded-but-present = available (yes); dropped (no DOM) or an unsupported-content block = not available (no); a REST INVALID_INPUT rejection = not in Jira's ADF schema = not available (no). File-media (mediaGroup, mediaInline) is attachment-gated and not injection-testable (synthetic ids raise ATTACHMENT_VALIDATION_ERROR, not a schema error).",
+      "jiraResults": "Rendered (available): every node/mark EXCEPT — placeholder (DROPPED, empty span), fontSize (REST INVALID_INPUT), multiBodiedExtension + extensionFrame (REST INVALID_INPUT). Newly render-confirmed available despite documentation-by-omission: taskList/taskItem/blockTaskItem, decisionList/decisionItem, blockCard/embedCard, caption, layoutSection/layoutColumn, extension/bodiedExtension/inlineExtension, syncBlock/bodiedSyncBlock, and the marks border/alignment/indentation/breakout/annotation/fragment/dataConsumer. mediaInline left inconclusive (attachment-gated).",
+      "confluence": "RELIABLE oracle: Confluence silently strips/downgrades unsupported kinds on save; round-trip survival (readback via contentFormat=adf) confirms support, and the browser render confirmed no unsupported-content blocks. File-media is attachment-gated (not injection-testable).",
+      "confluenceResults": "Survived (available): every node/mark EXCEPT — fontSize (mark STRIPPED on save) and blockTaskItem (downgraded to taskItem; kind not preserved). Previously-inconclusive dataConsumer and fragment marks both SURVIVED (available). multiBodiedExtension/extensionFrame/syncBlock/bodiedSyncBlock all survived.",
+      "artifacts": "Jira issue ARCH-506 and Confluence page 1729232906 (ENGINEERING space) — scratch targets, safe to delete."
+    }
+  },
+  "nodes": {
+    "doc": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/doc.ts#L15",
+      "jiraEvidence": "nodes/doc/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "paragraph": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/paragraph.ts#L15",
+      "jiraEvidence": "nodes/paragraph/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "text": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/text.ts#L5",
+      "jiraEvidence": "nodes/text/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "heading": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/heading.ts#L8",
+      "jiraEvidence": "nodes/heading/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "blockquote": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/blockquote.ts#L20",
+      "jiraEvidence": "nodes/blockquote/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "rule": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/rule.ts#L8",
+      "jiraEvidence": "nodes/rule/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "codeBlock": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/code-block.ts#L30",
+      "jiraEvidence": "nodes/codeBlock/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "bulletList": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/bullet-list.ts#L7",
+      "jiraEvidence": "nodes/bulletList/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "orderedList": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/ordered-list.ts#L7",
+      "jiraEvidence": "nodes/orderedList/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "listItem": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/list-item.ts#L6",
+      "jiraEvidence": "nodes/listItem/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "taskList": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/task-list.ts#L14",
+      "jiraEvidence": "No nodes/taskList/ page in Jira ADF reference (HTTP 404); evidence-by-omission. | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "taskItem": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/task-item.ts#L12",
+      "jiraEvidence": "No nodes/taskItem/ page in Jira ADF reference (HTTP 404); evidence-by-omission. | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "blockTaskItem": {
+      "jira": "yes",
+      "confluence": "no",
+      "readmeJira": "✓",
+      "readmeConfluence": "—",
+      "support": "converted",
+      "schemaRef": "nodes/task-item.ts#L28",
+      "jiraEvidence": "No nodes/blockTaskItem/ page (HTTP 404); shared-schema only. | Jira live render 2026-07-22: renders first-class as a task item with block body.",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot); shared-schema only. | Confluence round-trip 2026-07-22: downgraded to taskItem (block body flattened to inline); blockTaskItem kind not preserved."
+    },
+    "decisionList": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/decision-list.ts#L7",
+      "jiraEvidence": "No nodes/decisionList/ page (HTTP 404); shared-schema only. | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "decisionItem": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/decision-item.ts#L7",
+      "jiraEvidence": "No nodes/decisionItem/ page (HTTP 404); shared-schema only. | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "table": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/tableNodes.ts#L369",
+      "jiraEvidence": "nodes/table/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "tableRow": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/tableNodes.ts#L383",
+      "jiraEvidence": "nodes/table_row/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "tableCell": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/tableNodes.ts#L419",
+      "jiraEvidence": "nodes/table_cell/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "tableHeader": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/tableNodes.ts#L428",
+      "jiraEvidence": "nodes/table_header/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "panel": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/panel.ts#L45",
+      "jiraEvidence": "nodes/panel/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "expand": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/expand.ts#L12",
+      "jiraEvidence": "nodes/expand/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "nestedExpand": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/nested-expand.ts#L23",
+      "jiraEvidence": "nodes/nestedExpand/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "mediaSingle": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/media-single.ts#L20",
+      "jiraEvidence": "nodes/mediaSingle/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "mediaGroup": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/media-group.ts#L6",
+      "jiraEvidence": "nodes/mediaGroup/ (HTTP 200) | Jira: attachment-gated (file media); documented available. Not injection-testable — synthetic attachment ids raise ATTACHMENT_VALIDATION_ERROR, not a schema error.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence: attachment-gated (file media); documented available. Not injection-testable with synthetic ids."
+    },
+    "media": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/media.ts#L28",
+      "jiraEvidence": "nodes/media/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "mediaInline": {
+      "jira": "unknown",
+      "confluence": "yes",
+      "readmeJira": "∘",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/media-inline.ts#L18",
+      "jiraEvidence": "No nodes/mediaInline/ page in Jira ADF reference (HTTP 404); jira-schema.ts (deprecated) does list mediaInline under allowMedia. | Jira: attachment-gated (file media); genuinely untestable via description injection — synthetic id raises ATTACHMENT_VALIDATION_ERROR (schema accepts the node). Left inconclusive.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence: attachment-gated (file media); documented available. Not injection-testable with synthetic ids."
+    },
+    "caption": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/caption.ts#L14",
+      "jiraEvidence": "No nodes/caption/ page (HTTP 404); shared-schema only. | Jira live render 2026-07-22: rendered first-class as mediaSingle caption (content preserved).",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "inlineCard": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/inline-card.ts#L8",
+      "jiraEvidence": "nodes/inlineCard/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "blockCard": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/block-card.ts#L47",
+      "jiraEvidence": "No nodes/blockCard/ page in Jira ADF reference (HTTP 404; only inlineCard is documented). | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot). | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "embedCard": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/embed-card.ts#L14",
+      "jiraEvidence": "No nodes/embedCard/ page in Jira ADF reference (HTTP 404). | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot). | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "mention": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/mention.ts#L23",
+      "jiraEvidence": "nodes/mention/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "emoji": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/emoji.ts#L8",
+      "jiraEvidence": "nodes/emoji/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "status": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/status.ts#L10",
+      "jiraEvidence": "nodes/status/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot). | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "date": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/date.ts#L7",
+      "jiraEvidence": "nodes/date/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "hardBreak": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/hard-break.ts#L5",
+      "jiraEvidence": "nodes/hardBreak/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "placeholder": {
+      "jira": "no",
+      "confluence": "yes",
+      "readmeJira": "—",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/placeholder.ts#L6",
+      "jiraEvidence": "No nodes/placeholder/ page (HTTP 404); a Confluence node. Evidence-by-omission. | Jira live render 2026-07-22: DROPPED — renders as empty <span></span>, placeholder text not shown.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "layoutSection": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/layout-section.ts#L12",
+      "jiraEvidence": "No nodes/layoutSection/ page (HTTP 404); a Confluence node. Evidence-by-omission. | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "layoutColumn": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/layout-column.ts#L56",
+      "jiraEvidence": "No nodes/layoutColumn/ page (HTTP 404); a Confluence node. Evidence-by-omission. | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "extension": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/extension.ts#L10",
+      "jiraEvidence": "No nodes/extension/ page (HTTP 404); a Confluence node. Evidence-by-omission. | Jira live render 2026-07-22: rendered in ak-renderer-extension container (Confluence-macro fallback), not dropped, not an unsupported-content block.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "bodiedExtension": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/bodied-extension.ts#L11",
+      "jiraEvidence": "No nodes/bodiedExtension/ page (HTTP 404); a Confluence node. Evidence-by-omission. | Jira live render 2026-07-22: rendered in ak-renderer-extension container; body content renders.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived; 'info' macro resolved to a native panel)."
+    },
+    "inlineExtension": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/inline-extension.ts#L10",
+      "jiraEvidence": "No nodes/inlineExtension/ page (HTTP 404); a Confluence node. Evidence-by-omission. | Jira live render 2026-07-22: rendered inline (fallback span), not dropped.",
+      "confluenceEvidence": "confluence-schema.ts nodes array (L4-L49) | Confluence round-trip 2026-07-22 (survived; 'status' macro resolved to a native status node)."
+    },
+    "multiBodiedExtension": {
+      "jira": "no",
+      "confluence": "yes",
+      "readmeJira": "—",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/multi-bodied-extension.ts#L96",
+      "jiraEvidence": "No nodes/multiBodiedExtension/ page (HTTP 404); stage-0 shared schema only. | Jira live render 2026-07-22: REST rejected the doc (INVALID_INPUT) — not in Jira's ADF schema.",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot); stage-0 schema. | Confluence round-trip 2026-07-22 (survived with its extensionFrame child)."
+    },
+    "extensionFrame": {
+      "jira": "no",
+      "confluence": "yes",
+      "readmeJira": "—",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/multi-bodied-extension.ts#L32",
+      "jiraEvidence": "No nodes/extensionFrame/ page (HTTP 404); stage-0 shared schema only. | Jira live render 2026-07-22: rejected together with its multiBodiedExtension parent (INVALID_INPUT).",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot); stage-0 schema. | Confluence round-trip 2026-07-22 (survived inside multiBodiedExtension)."
+    },
+    "syncBlock": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/sync-block.ts#L21",
+      "jiraEvidence": "No nodes/syncBlock/ page (HTTP 404). Evidence-by-omission. | Jira live render 2026-07-22: renders a sync-block widget (ak-editor-sync-block error state from the synthetic resourceId); node recognized, not dropped.",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot; predates sync blocks). | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "bodiedSyncBlock": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "nodes/bodied-sync-block.ts#L46",
+      "jiraEvidence": "No nodes/bodiedSyncBlock/ page (HTTP 404). Evidence-by-omission. | Jira live render 2026-07-22: body renders first-class (ak-editor-bodied-sync-block renderer).",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot; predates sync blocks). | Confluence round-trip 2026-07-22 (survived)."
+    }
+  },
+  "marks": {
+    "strong": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/strong.ts#L5",
+      "jiraEvidence": "marks/strong/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts marks array (L50-L70) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "em": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/em.ts#L5",
+      "jiraEvidence": "marks/em/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts marks array (L50-L70) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "strike": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/strike.ts#L5",
+      "jiraEvidence": "marks/strike/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts marks array (L50-L70) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "code": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/code.ts#L5",
+      "jiraEvidence": "marks/code/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts marks array (L50-L70) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "underline": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/underline.ts#L5",
+      "jiraEvidence": "marks/underline/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts marks array (L50-L70) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "link": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/link.ts#L32",
+      "jiraEvidence": "marks/link/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts marks array (L50-L70) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "subsup": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/subsup.ts#L9",
+      "jiraEvidence": "marks/subsup/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts marks array (L50-L70) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "textColor": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/text-color.ts#L53",
+      "jiraEvidence": "marks/textColor/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts marks array (L50-L70) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "backgroundColor": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/background-color.ts#L25",
+      "jiraEvidence": "marks/backgroundColor/ (HTTP 200) | Jira live render 2026-07-22: rendered first-class.",
+      "confluenceEvidence": "confluence-schema.ts marks array (L50-L70) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "border": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/border.ts#L22",
+      "jiraEvidence": "No marks/border/ page in Jira ADF reference (HTTP 404). | Jira live render 2026-07-22: border mark rendered on media (mediaSingle).",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot). | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "alignment": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/alignment.ts#L16",
+      "jiraEvidence": "No marks/alignment/ page (HTTP 404). Evidence-by-omission. | Jira live render 2026-07-22: first-class (fabric-editor-alignment, data-align).",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot). | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "indentation": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/indentation.ts#L13",
+      "jiraEvidence": "No marks/indentation/ page (HTTP 404). Evidence-by-omission. | Jira live render 2026-07-22: first-class (fabric-editor-indentation-mark, data-level).",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot). | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "breakout": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/breakout.ts#L12",
+      "jiraEvidence": "No marks/breakout/ page (HTTP 404). Evidence-by-omission. | Jira live render 2026-07-22: first-class (fabric-editor breakout, data-mode=wide).",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot). | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "annotation": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/annotation.ts#L5",
+      "jiraEvidence": "No marks/annotation/ page (HTTP 404); a Confluence mark. Evidence-by-omission. | Jira live render 2026-07-22: first-class (data-mark-type=annotation).",
+      "confluenceEvidence": "confluence-schema.ts marks array (L50-L70) | Confluence round-trip 2026-07-22 (survived)."
+    },
+    "dataConsumer": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/data-consumer.ts#L27",
+      "jiraEvidence": "No marks/dataConsumer/ page (HTTP 404). Evidence-by-omission. | Jira live render 2026-07-22: mark rendered (data-mark-type=dataConsumer wrapper), not dropped.",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot). | Confluence round-trip 2026-07-22 (mark survived on bodiedExtension)."
+    },
+    "fragment": {
+      "jira": "yes",
+      "confluence": "yes",
+      "readmeJira": "✓",
+      "readmeConfluence": "✓",
+      "support": "converted",
+      "schemaRef": "marks/fragment.ts#L17",
+      "jiraEvidence": "No marks/fragment/ page (HTTP 404). Evidence-by-omission. | Jira live render 2026-07-22: mark rendered (data-mark-type=fragment wrapper), not dropped.",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot). | Confluence round-trip 2026-07-22 (mark survived on extension)."
+    },
+    "fontSize": {
+      "jira": "no",
+      "confluence": "no",
+      "readmeJira": "—",
+      "readmeConfluence": "—",
+      "support": "dropped",
+      "schemaRef": "marks/font-size.ts#L11",
+      "jiraEvidence": "No marks/fontSize/ page (HTTP 404); shared-schema only. | Jira live render 2026-07-22: REST rejected the doc (INVALID_INPUT) — mark not in Jira's ADF schema.",
+      "confluenceEvidence": "Absent from confluence-schema.ts (deprecated snapshot); shared-schema only. | Confluence round-trip 2026-07-22: mark STRIPPED on save (text preserved, fontSize removed).",
+      "adfastNote": "RETIRED: no Atlassian product supports the mark, so adfast never produces it. The :fontSize directive still parses but unwraps to plain text on encode, and a legacy fontSize ADF mark decodes to bare text — both with a fontsize-dropped diagnostic. Text preserved, size lost."
+    }
+  }
+}

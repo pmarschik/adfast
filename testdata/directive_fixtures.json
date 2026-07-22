@@ -1,0 +1,7929 @@
+{
+  "markdown": [
+    {
+      "md": "::media[shot.png]{#abc collection height=\"551\" layout=\"align-start\" layoutWidth=\"686\" type=\"file\" width=\"2308\" widthType=\"pixel\"}\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "align-start",
+              "width": 686,
+              "widthType": "pixel"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "abc",
+                  "alt": "shot.png",
+                  "collection": "",
+                  "height": 551,
+                  "width": 2308
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "::media[shot.png]{#abc collection height=\"551\" layout=\"align-start\" layoutWidth=\"686\" type=\"file\" width=\"2308\" widthType=\"pixel\"}\n"
+    },
+    {
+      "md": "::media{#g1 collection group=\"true\" type=\"file\"}\n::media[b.pdf]{#g2 collection group=\"true\" type=\"file\"}\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaGroup",
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "g1",
+                  "collection": ""
+                }
+              },
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "g2",
+                  "alt": "b.pdf",
+                  "collection": ""
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "::media{#g1 collection group=\"true\" type=\"file\"}\n\n::media[b.pdf]{#g2 collection group=\"true\" type=\"file\"}\n"
+    },
+    {
+      "md": "inline :media{#c8387bc1 collection type=\"file\"} here\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "inline "
+              },
+              {
+                "type": "mediaInline",
+                "attrs": {
+                  "type": "file",
+                  "id": "c8387bc1",
+                  "collection": ""
+                }
+              },
+              {
+                "type": "text",
+                "text": " here"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "inline :media{#c8387bc1 collection type=\"file\"} here\n"
+    },
+    {
+      "md": "::colwidths[79,320]\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "table",
+            "content": [
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableHeader",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "A"
+                          }
+                        ]
+                      }
+                    ],
+                    "attrs": {
+                      "colwidth": [
+                        79
+                      ]
+                    }
+                  },
+                  {
+                    "type": "tableHeader",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "B"
+                          }
+                        ]
+                      }
+                    ],
+                    "attrs": {
+                      "colwidth": [
+                        320
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableCell",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "1"
+                          }
+                        ]
+                      }
+                    ],
+                    "attrs": {
+                      "colwidth": [
+                        79
+                      ]
+                    }
+                  },
+                  {
+                    "type": "tableCell",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "2"
+                          }
+                        ]
+                      }
+                    ],
+                    "attrs": {
+                      "colwidth": [
+                        320
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "::colwidths[79,320]\n\n| A | B |\n| - | - |\n| 1 | 2 |\n"
+    },
+    {
+      "md": "::colwidths[10,20]\n\nno table follows\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "no table follows"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "no table follows\n"
+    },
+    {
+      "md": "::decisions\n\n- use jj for vcs\n- ship **v2**\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "decisionList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "decisionItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DECIDED"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "use jj for vcs"
+                  }
+                ]
+              },
+              {
+                "type": "decisionItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DECIDED"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "ship "
+                  },
+                  {
+                    "type": "text",
+                    "text": "v2",
+                    "marks": [
+                      {
+                        "type": "strong"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "::decisions\n\n- use jj for vcs\n- ship **v2**\n"
+    },
+    {
+      "md": "- [~] decision one\n- plain bullet\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "[~] decision one"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "plain bullet"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- \\[\\~] decision one\n- plain bullet\n"
+    },
+    {
+      "md": "- [~]no space stays literal\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "[~]no space stays literal"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- \\[\\~]no space stays literal\n"
+    },
+    {
+      "md": "![shot](https://example.com/i.png)\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "center"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "external",
+                  "url": "https://example.com/i.png",
+                  "alt": "shot"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "![shot](https://example.com/i.png)\n"
+    },
+    {
+      "md": "![rel](./assets/a.png)\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": "text (![x](https://example.com/i.png)) more\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "text ("
+              },
+              {
+                "type": "text",
+                "text": ") more"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "text () more\n"
+    },
+    {
+      "md": "![shot.png](assets/shot.png)\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "align-start"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "b5773183-5f9a-481f-b1b8-8fe286bba8e9",
+                  "alt": "shot.png",
+                  "collection": "",
+                  "width": 2308,
+                  "height": 551
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "![shot.png](assets/shot.png)\n"
+    },
+    {
+      "md": "![unknown asset](assets/diagram.png)\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": "* + *\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "bulletList",
+                    "content": [
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "bulletList",
+                            "content": [
+                              {
+                                "type": "listItem",
+                                "content": []
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- - *\n"
+    },
+    {
+      "md": "* ___\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "rule"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "* ---\n"
+    },
+    {
+      "md": "* 0)  \n  0\n",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "orderedList",
+                    "attrs": {
+                      "order": 0
+                    },
+                    "content": [
+                      {
+                        "type": "listItem",
+                        "content": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "0"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- 0.\n  0\n"
+    },
+    {
+      "md": ":::info\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\ncontent\n:::\n"
+    },
+    {
+      "md": ":::note[Label]\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "note"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Label"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::note\nLabel\n\ncontent\n:::\n"
+    },
+    {
+      "md": ":::info[Important Note]\nContent here\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Important Note"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Content here"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\nImportant Note\n\nContent here\n:::\n"
+    },
+    {
+      "md": ":::info[label with **bold** and `code`]\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "label with "
+                  },
+                  {
+                    "type": "text",
+                    "text": "bold",
+                    "marks": [
+                      {
+                        "type": "strong"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "text",
+                    "text": " and "
+                  },
+                  {
+                    "type": "text",
+                    "text": "code",
+                    "marks": [
+                      {
+                        "type": "code"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\nlabel with **bold** and `code`\n\ncontent\n:::\n"
+    },
+    {
+      "md": ":::warning{#w .cls key=val}\ntext\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "warning"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "text"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::warning\ntext\n:::\n"
+    },
+    {
+      "md": ":::info{key=\"quoted value\"}\ntext\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "text"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\ntext\n:::\n"
+    },
+    {
+      "md": "::::spoiler\n:::note\ninner\n:::\n::::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "note"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "inner"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::note\ninner\n:::\n"
+    },
+    {
+      "md": ":::info\n- a\n- b\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "a"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "b"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\n- a\n- b\n:::\n"
+    },
+    {
+      "md": ":::info\npara one\n\npara two\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "para one"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "para two"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\npara one\n\npara two\n:::\n"
+    },
+    {
+      "md": ":::info\n## heading\n\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "heading",
+                "attrs": {
+                  "level": 2
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "heading"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\n## heading\n\ncontent\n:::\n"
+    },
+    {
+      "md": ":::custom\nUnknown directive\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Unknown directive"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "Unknown directive\n"
+    },
+    {
+      "md": ":::info\nunclosed",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "unclosed"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\nunclosed\n:::\n"
+    },
+    {
+      "md": ":::info\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": ":::info\n:::\n"
+    },
+    {
+      "md": ":::note[Be careful]\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "note"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Be careful"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::note\nBe careful\n:::\n"
+    },
+    {
+      "md": ":::info  \ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\ncontent\n:::\n"
+    },
+    {
+      "md": ":::info\ncontent\n:::   ",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\ncontent\n:::\n"
+    },
+    {
+      "md": ":::info\ncontent\n  :::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\ncontent\n:::\n"
+    },
+    {
+      "md": "::: info\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "::: info content :::"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\::: info content :::\n"
+    },
+    {
+      "md": ":::123\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "content"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "content\n"
+    },
+    {
+      "md": ":::my-name\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "content"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "content\n"
+    },
+    {
+      "md": ":::info junk\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":::info junk content :::"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:::info junk content :::\n"
+    },
+    {
+      "md": ":::info[label] junk\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":::info[label] junk content :::"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:::info\\[label] junk content :::\n"
+    },
+    {
+      "md": "para before\n:::info\ncontent\n:::\npara after",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "para before"
+              }
+            ]
+          },
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "para after"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "para before\n\n:::info\ncontent\n:::\n\npara after\n"
+    },
+    {
+      "md": ":::info\ncontent\n::::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\ncontent\n:::\n"
+    },
+    {
+      "md": "::::info\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content :::"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\ncontent :::\n:::\n"
+    },
+    {
+      "md": ":::info\n```go\nx := 1\n```\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "codeBlock",
+                "attrs": {
+                  "language": "go"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "x := 1"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\n```go\nx := 1\n```\n:::\n"
+    },
+    {
+      "md": ":::info\n> quote\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "blockquote",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "quote"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\n> quote\n:::\n"
+    },
+    {
+      "md": ":::info\n  indented content\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "indented content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\nindented content\n:::\n"
+    },
+    {
+      "md": ":::info\n:::note\ndouble nest same colons\n:::\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "panel",
+                "attrs": {
+                  "panelType": "note"
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "double nest same colons"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":::"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "::::info\n:::note\ndouble nest same colons\n:::\n::::\n\n\\:::\n"
+    },
+    {
+      "md": "::card[https://example.com]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": "::card[PROJ-42]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": "::name",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": "::name{key=val}",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": "::name[label]{key=val}",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": "::br",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": "before\n\n::card[x]\n\nafter",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "before"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "after"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "before\n\nafter\n"
+    },
+    {
+      "md": "before\n::card[x]\nafter",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "before"
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "after"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "before\n\nafter\n"
+    },
+    {
+      "md": ":: name",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":: name"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:: name\n"
+    },
+    {
+      "md": "::name junk",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "::name junk"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\::name junk\n"
+    },
+    {
+      "md": "::name[label] junk",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "::name[label] junk"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\::name\\[label] junk\n"
+    },
+    {
+      "md": "::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "::"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\::\n"
+    },
+    {
+      "md": "::name[l1][l2]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "::name[l1][l2]"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\::name\\[l1]\\[l2]\n"
+    },
+    {
+      "md": "pre :name post",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "pre "
+              },
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": " post"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "pre \\:name post\n"
+    },
+    {
+      "md": "pre :name[label] post",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "pre "
+              },
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": "label"
+              },
+              {
+                "type": "text",
+                "text": " post"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "pre \\:namelabel post\n"
+    },
+    {
+      "md": "pre :name[label]{key=val} post",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "pre "
+              },
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": "label"
+              },
+              {
+                "type": "text",
+                "text": " post"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "pre \\:namelabel post\n"
+    },
+    {
+      "md": ":name at start",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": " at start"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name at start\n"
+    },
+    {
+      "md": "end :name",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "end "
+              },
+              {
+                "type": "text",
+                "text": ":name"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "end \\:name\n"
+    },
+    {
+      "md": "word:name",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "word"
+              },
+              {
+                "type": "text",
+                "text": ":name"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "word\\:name\n"
+    },
+    {
+      "md": "`code:name`",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "code:name",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "`code:name`\n"
+    },
+    {
+      "md": "\\`bisearch:partner-sync-opt-out\\`",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "`bisearch"
+              },
+              {
+                "type": "text",
+                "text": ":partner-sync-opt-out"
+              },
+              {
+                "type": "text",
+                "text": "`"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\`bisearch\\:partner-sync-opt-out\\`\n"
+    },
+    {
+      "md": "a ::inline in text",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a ::inline in text"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "a ::inline in text\n"
+    },
+    {
+      "md": ": lone colon",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ": lone colon"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ": lone colon\n"
+    },
+    {
+      "md": "time 12:30 pm",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "time 12"
+              },
+              {
+                "type": "text",
+                "text": ":30"
+              },
+              {
+                "type": "text",
+                "text": " pm"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "time 12:30 pm\n"
+    },
+    {
+      "md": "link:https://example.com/x",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "link:"
+              },
+              {
+                "type": "text",
+                "text": "https://example.com/x",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://example.com/x"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "link:<https://example.com/x>\n"
+    },
+    {
+      "md": ":name{#id .class}",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name\n"
+    },
+    {
+      "md": ":name[]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name\n"
+    },
+    {
+      "md": "text ::: text",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "text ::: text"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "text ::: text\n"
+    },
+    {
+      "md": ":smile:",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":smile:"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:smile:\n"
+    },
+    {
+      "md": "see :smile: for details",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "see :smile: for details"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "see \\:smile: for details\n"
+    },
+    {
+      "md": ":Name",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":Name"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:Name\n"
+    },
+    {
+      "md": ":name-x_y",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name-x_y"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name-x\\_y\n"
+    },
+    {
+      "md": ":name:other",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": ":other"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name\\:other\n"
+    },
+    {
+      "md": ":name[label with _em_] rest",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": "label with "
+              },
+              {
+                "type": "text",
+                "text": "em",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " rest"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:namelabel with _em_ rest\n"
+    },
+    {
+      "md": "Use `storymd config:list` and jira:search here.",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Use "
+              },
+              {
+                "type": "text",
+                "text": "storymd config:list",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " and jira"
+              },
+              {
+                "type": "text",
+                "text": ":search"
+              },
+              {
+                "type": "text",
+                "text": " here."
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "Use `storymd config:list` and jira\\:search here.\n"
+    },
+    {
+      "md": ":name- rest",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name- rest"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name- rest\n"
+    },
+    {
+      "md": ":a- b",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":a- b"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:a- b\n"
+    },
+    {
+      "md": ":name_ b",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name_ b"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name\\_ b\n"
+    },
+    {
+      "md": ":30name x",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":30name"
+              },
+              {
+                "type": "text",
+                "text": " x"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":30name x\n"
+    },
+    {
+      "md": "12:30:45 chain",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "12:30"
+              },
+              {
+                "type": "text",
+                "text": ":45"
+              },
+              {
+                "type": "text",
+                "text": " chain"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "12:30:45 chain\n"
+    },
+    {
+      "md": "(:name) paren",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "("
+              },
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": ") paren"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "(\\:name) paren\n"
+    },
+    {
+      "md": "*:name* emph",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " emph"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "_:name_ emph\n"
+    },
+    {
+      "md": "\\:name escaped",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name escaped"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name escaped\n"
+    },
+    {
+      "md": "a \\:name escaped mid",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a :name escaped mid"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "a \\:name escaped mid\n"
+    },
+    {
+      "md": ":::info {key=val}\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":::info {key=val} content :::"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:::info {key=val} content :::\n"
+    },
+    {
+      "md": ":::info{}\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\ncontent\n:::\n"
+    },
+    {
+      "md": "::card [x]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "::card [x]"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\::card \\[x]\n"
+    },
+    {
+      "md": ":name [label] detached",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": " [label] detached"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name \\[label] detached\n"
+    },
+    {
+      "md": ":::\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "::: content :::"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\::: content :::\n"
+    },
+    {
+      "md": "::name  ",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": ":::info[a]{#i}\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "a"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::info\na\n\ncontent\n:::\n"
+    },
+    {
+      "md": ":name{key=val}x tail",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": "x tail"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:namex tail\n"
+    },
+    {
+      "md": ":name[lab]x tail",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": "lab"
+              },
+              {
+                "type": "text",
+                "text": "x tail"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:namelabx tail\n"
+    },
+    {
+      "md": "x :name[l1] y :other[l2] z",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "x "
+              },
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": "l1"
+              },
+              {
+                "type": "text",
+                "text": " y "
+              },
+              {
+                "type": "text",
+                "text": ":other"
+              },
+              {
+                "type": "text",
+                "text": "l2"
+              },
+              {
+                "type": "text",
+                "text": " z"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "x \\:namel1 y \\:otherl2 z\n"
+    },
+    {
+      "md": ":::custom\na\n\nb\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": ":name[unclosed rest",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": "[unclosed rest"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name\\[unclosed rest\n"
+    },
+    {
+      "md": ":name{unclosed rest",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name"
+              },
+              {
+                "type": "text",
+                "text": "{unclosed rest"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\:name{unclosed rest\n"
+    },
+    {
+      "md": "::name[unclosed",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "::name[unclosed"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\::name\\[unclosed\n"
+    },
+    {
+      "md": "::linkCard[PROJ-42]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "blockCard",
+            "attrs": {
+              "url": "PROJ-42"
+            }
+          }
+        ]
+      },
+      "roundtrip": "::linkCard[PROJ-42]\n"
+    },
+    {
+      "md": "::linkCard[https://docs.google.com/spreadsheets/d/xyz]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "blockCard",
+            "attrs": {
+              "url": "https://docs.google.com/spreadsheets/d/xyz"
+            }
+          }
+        ]
+      },
+      "roundtrip": "::linkCard[https://docs.google.com/spreadsheets/d/xyz]\n"
+    },
+    {
+      "md": "::linkCard[https://ixolit.atlassian.net/browse/PBP-5]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "blockCard",
+            "attrs": {
+              "url": "https://ixolit.atlassian.net/browse/PBP-5"
+            }
+          }
+        ]
+      },
+      "roundtrip": "::linkCard[PBP-5]\n"
+    },
+    {
+      "md": "::linkEmbed[https://example.com/embed]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "embedCard",
+            "attrs": {
+              "layout": "center",
+              "url": "https://example.com/embed"
+            }
+          }
+        ]
+      },
+      "roundtrip": "::linkEmbed[https://example.com/embed]{layout=\"center\"}\n"
+    },
+    {
+      "md": "::linkEmbed[https://example.com/embed]{layout=\"wide\" width=\"66.6\"}",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "embedCard",
+            "attrs": {
+              "layout": "wide",
+              "url": "https://example.com/embed",
+              "width": 66.6
+            }
+          }
+        ]
+      },
+      "roundtrip": "::linkEmbed[https://example.com/embed]{layout=\"wide\" width=\"66.6\"}\n"
+    },
+    {
+      "md": "::linkCard[]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": "\n"
+    },
+    {
+      "md": "::linkCard[PROJ-42]{junk=1}",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "blockCard",
+            "attrs": {
+              "url": "PROJ-42"
+            }
+          }
+        ]
+      },
+      "roundtrip": "::linkCard[PROJ-42]\n"
+    },
+    {
+      "md": "before\n\n::linkCard[PROJ-42]\n\nafter",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "before"
+              }
+            ]
+          },
+          {
+            "type": "blockCard",
+            "attrs": {
+              "url": "PROJ-42"
+            }
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "after"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "before\n\n::linkCard[PROJ-42]\n\nafter\n"
+    },
+    {
+      "md": ":::expand[More details]\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": "More details"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::expand[More details]\ncontent\n:::\n"
+    },
+    {
+      "md": ":::expand\nuntitled\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": ""
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "untitled"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::expand\nuntitled\n:::\n"
+    },
+    {
+      "md": ":::expand[Title]\npara one\n\npara two\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": "Title"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "para one"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "para two"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::expand[Title]\npara one\n\npara two\n:::\n"
+    },
+    {
+      "md": "::::expand[Outer]\n:::info\ninner\n:::\n::::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": "Outer"
+            },
+            "content": [
+              {
+                "type": "panel",
+                "attrs": {
+                  "panelType": "info"
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "inner"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "::::expand[Outer]\n:::info\ninner\n:::\n::::\n"
+    },
+    {
+      "md": ":::expand[label with **bold**]\ncontent\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": "label with bold"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::expand[label with bold]\ncontent\n:::\n"
+    },
+    {
+      "md": ":::expand[Title]\n- a\n- b\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": "Title"
+            },
+            "content": [
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "a"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "b"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":::expand[Title]\n- a\n- b\n:::\n"
+    },
+    {
+      "md": ":::expand[Title]\n:::",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": "Title"
+            },
+            "content": []
+          }
+        ]
+      },
+      "roundtrip": ":::expand[Title]\n:::\n"
+    },
+    {
+      "md": "~~0~",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "~~0~"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\~\\~0\\~\n"
+    },
+    {
+      "md": "~0~~",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "~0~~"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\~0\\~\\~\n"
+    },
+    {
+      "md": "~x~",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "x",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "~~x~~\n"
+    },
+    {
+      "md": "~~x~~",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "x",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "~~x~~\n"
+    },
+    {
+      "md": "x~~y~~z",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "x"
+              },
+              {
+                "type": "text",
+                "text": "y",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "z"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "x~~y~~z\n"
+    },
+    {
+      "md": "~~a~ b~~",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a~ b",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "~~a\\~ b~~\n"
+    },
+    {
+      "md": "a ~~b~~ c",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a "
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " c"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "a ~~b~~ c\n"
+    },
+    {
+      "md": "~~*em*~~",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "em",
+                "marks": [
+                  {
+                    "type": "em"
+                  },
+                  {
+                    "type": "strike"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "_~~em~~_\n"
+    },
+    {
+      "md": "~a~ ~~b~~",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " "
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "~~a~~ ~~b~~\n"
+    },
+    {
+      "md": "~~a~~b~~",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "b~~"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "~~a~~b\\~\\~\n"
+    },
+    {
+      "md": "w~x~y",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "w"
+              },
+              {
+                "type": "text",
+                "text": "x",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "y"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "w~~x~~y\n"
+    },
+    {
+      "md": "&#x61;_&#x62;_",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "&#x61;_&#x62;_\n"
+    },
+    {
+      "md": "&#x61;_&#x62;c&#x64;_&#x65;",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "bcd",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "e"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "&#x61;_&#x62;c&#x64;_&#x65;\n"
+    },
+    {
+      "md": "_&#x61;_&#x62;",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "b"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "_&#x61;_&#x62;\n"
+    },
+    {
+      "md": "&#x61;**_b_**&#x63;",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "strong"
+                  },
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "c"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "&#x61;**_b_**&#x63;\n"
+    },
+    {
+      "md": "a&#x20;b",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a b"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "a b\n"
+    },
+    {
+      "md": "a&amp;b",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a&b"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "a\\&b\n"
+    },
+    {
+      "md": "a&nbsp;b",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a b"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "a b\n"
+    },
+    {
+      "md": "&#x0;bad",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "�bad"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "�bad\n"
+    },
+    {
+      "md": "&notanentity;x",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "&notanentity;x"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "\\&notanentity;x\n"
+    },
+    {
+      "md": "AT&T",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "AT&T"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "AT\\&T\n"
+    },
+    {
+      "md": "- [x] done\n- [ ] todo",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "done"
+                  }
+                ]
+              },
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "TODO"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "todo"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- [x] done\n- [ ] todo\n"
+    },
+    {
+      "md": "- [X] upper",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "upper"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- [x] upper\n"
+    },
+    {
+      "md": "- [x]a",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "[x]a"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- \\[x]a\n"
+    },
+    {
+      "md": "- [x]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "[x]"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- \\[x]\n"
+    },
+    {
+      "md": "- [x] ",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "[x]"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- \\[x]\n"
+    },
+    {
+      "md": "* [X][X]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "[X][X]"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- \\[X]\\[X]\n"
+    },
+    {
+      "md": "- [x] **b** and `c`",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "b",
+                    "marks": [
+                      {
+                        "type": "strong"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "text",
+                    "text": " and "
+                  },
+                  {
+                    "type": "text",
+                    "text": "c",
+                    "marks": [
+                      {
+                        "type": "code"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- [x] **b** and `c`\n"
+    },
+    {
+      "md": "- [x] a\n- plain",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "a"
+                  }
+                ]
+              },
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "TODO"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "plain"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- [x] a\n- [ ] plain\n"
+    },
+    {
+      "md": "- [x] a\n\n- [ ] loose",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "a"
+                  }
+                ]
+              },
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "TODO"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "loose"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- [x] a\n- [ ] loose\n"
+    },
+    {
+      "md": "1. [x] ordered task",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "ordered task"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- [x] ordered task\n"
+    },
+    {
+      "md": "- [X] 0\n-",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "0"
+                  }
+                ]
+              },
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "TODO"
+                },
+                "content": []
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- [x] 0\n-\n"
+    },
+    {
+      "md": "- [X] 0\n+ [X] 0",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "0"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "0"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "- [x] 0\n\n* [x] 0\n"
+    },
+    {
+      "md": "````0\n```\n````",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "codeBlock",
+            "attrs": {
+              "language": "0"
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "```"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "````0\n```\n````\n"
+    },
+    {
+      "md": "cc :mention[Patrick Marschik]{#557058:7d0b} please",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "cc "
+              },
+              {
+                "type": "mention",
+                "attrs": {
+                  "id": "557058:7d0b",
+                  "text": "@Patrick Marschik"
+                }
+              },
+              {
+                "type": "text",
+                "text": " please"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "cc :mention[Patrick Marschik]{#557058:7d0b} please\n"
+    },
+    {
+      "md": ":status[In Progress]{color=\"blue\"}",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "status",
+                "attrs": {
+                  "color": "blue",
+                  "text": "In Progress"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":status[In Progress]{color=\"blue\"}\n"
+    },
+    {
+      "md": "warn: :color[red text]{color=\"#bf2600\"}",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "warn: "
+              },
+              {
+                "type": "text",
+                "text": "red text",
+                "marks": [
+                  {
+                    "type": "textColor",
+                    "attrs": {
+                      "color": "#bf2600"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "warn: :color[red text]{color=\"#bf2600\"}\n"
+    },
+    {
+      "md": "**:color[x]{color=\"#bf2600\"}**",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "x",
+                "marks": [
+                  {
+                    "type": "strong"
+                  },
+                  {
+                    "type": "textColor",
+                    "attrs": {
+                      "color": "#bf2600"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "**:color[x]{color=\"#bf2600\"}**\n"
+    },
+    {
+      "md": ":u[underlined]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "underlined",
+                "marks": [
+                  {
+                    "type": "underline"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":u[underlined]\n"
+    },
+    {
+      "md": "E=mc:sup[2] and H:sub[2]O",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "E=mc"
+              },
+              {
+                "type": "text",
+                "text": "2",
+                "marks": [
+                  {
+                    "type": "subsup",
+                    "attrs": {
+                      "type": "sup"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " and H"
+              },
+              {
+                "type": "text",
+                "text": "2",
+                "marks": [
+                  {
+                    "type": "subsup",
+                    "attrs": {
+                      "type": "sub"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "O"
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": "E=mc:sup[2] and H:sub[2]O\n"
+    },
+    {
+      "md": ":bg[highlight]{color=\"#fffae6\"}",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "highlight",
+                "marks": [
+                  {
+                    "type": "backgroundColor",
+                    "attrs": {
+                      "color": "#fffae6"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":bg[highlight]{color=\"#fffae6\"}\n"
+    },
+    {
+      "md": ":color[has **bold** inside]{color=\"#0747a6\"}",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "has ",
+                "marks": [
+                  {
+                    "type": "textColor",
+                    "attrs": {
+                      "color": "#0747a6"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "bold",
+                "marks": [
+                  {
+                    "type": "strong"
+                  },
+                  {
+                    "type": "textColor",
+                    "attrs": {
+                      "color": "#0747a6"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " inside",
+                "marks": [
+                  {
+                    "type": "textColor",
+                    "attrs": {
+                      "color": "#0747a6"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":color[has ]{color=\"#0747a6\"}**:color[bold]{color=\"#0747a6\"}**:color[ inside]{color=\"#0747a6\"}\n"
+    },
+    {
+      "md": ":mention[x]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "mention",
+                "attrs": {
+                  "text": "@x"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":mention[x]\n"
+    },
+    {
+      "md": ":status[no color]",
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "status",
+                "attrs": {
+                  "color": "neutral",
+                  "text": "no color"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "roundtrip": ":status[no color]{color=\"neutral\"}\n"
+    }
+  ],
+  "adf": [
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "single para"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::info\nsingle para\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name at start"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "\\:name at start\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "word:name and 12:30 pm"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "word\\:name and 12:30 pm\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "(:name) paren"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "(\\:name) paren\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " x"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "_:name_ x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name",
+                "marks": [
+                  {
+                    "type": "strong"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " x"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "**:name** x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " x"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "~~:name~~ x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a :name inside",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " x"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "_a \\:name inside_ x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":name",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://e.com"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "[:name](https://e.com)\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a:"
+              },
+              {
+                "type": "text",
+                "text": ":b"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "a::b\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":"
+              },
+              {
+                "type": "text",
+                "text": "name"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "\\:name\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "::"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "\\::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "::name x"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "\\::name x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":::name x"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "\\:::name x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": ":smile: emoji"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "\\:smile: emoji\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 2
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": ":name x"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "## \\:name x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": ":name x"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "- \\:name x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "TODO"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": ":name x"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "- [ ] \\:name x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "blockquote",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": ":name x"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "> \\:name x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "a"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "TODO"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "b"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "- [x] a\n\n* [ ] b\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "a"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "b"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "- a\n\n* [x] b\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "taskList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "taskItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DONE"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "a"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "b"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "- [x] a\n\n* b\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "codeBlock",
+            "attrs": {
+              "language": "go"
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "x := \"```\""
+              }
+            ]
+          }
+        ]
+      },
+      "md": "````go\nx := \"```\"\n````\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 1
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "# #"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "# # \\#\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 2
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "ends #"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "## ends \\#\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 1
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "x##"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "# x#\\#\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 1
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "x # y"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "# x # y\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "table",
+            "content": [
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableHeader",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Method"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableHeader",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "R"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableCell",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "foo()",
+                            "marks": [
+                              {
+                                "type": "code"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableCell",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "a long value here"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableCell",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "x"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableCell",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "| Method  | R                 |\n| ------- | ----------------- |\n| `foo()` | a long value here |\n| x       |                   |\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "table",
+            "content": [
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableCell",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "no"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableCell",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "header"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "|    |        |\n| -- | ------ |\n| no | header |\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "table",
+            "content": [
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableHeader",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "ä"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableHeader",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "**b**"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableCell",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "pipe|d"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableCell",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "y",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "| ä       | \\*\\*b\\*\\* |\n| ------- | --------- |\n| pipe\\|d | **y**     |\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "table",
+            "content": [
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableHeader",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "a"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableHeader",
+                    "content": []
+                  }
+                ]
+              },
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableCell",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "b"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableCell",
+                    "content": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "| a |   |\n| - | - |\n| b |   |\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "table",
+            "content": [
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableHeader",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "a|b",
+                            "marks": [
+                              {
+                                "type": "code"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableHeader",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "x|y",
+                            "marks": [
+                              {
+                                "type": "strong"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableHeader",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "l|t",
+                            "marks": [
+                              {
+                                "type": "link",
+                                "attrs": {
+                                  "href": "https://example.com/a?x=1|2"
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "| `a\\|b` | **x\\|y** | [l\\|t](https://example.com/a?x=1\\|2) |\n| ------ | -------- | ------------------------------------ |\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "orderedList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "one"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "two"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "three"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "1. one\n1. two\n1. three\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "orderedList",
+            "attrs": {
+              "order": 9
+            },
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "nine"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "ten, indent shifts"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "orderedList",
+                    "content": [
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "nested"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "nested two"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "9. nine\n9. ten, indent shifts\n   1. nested\n   1. nested two\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "orderedList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "first list a"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "first list b"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "orderedList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "second list a"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "second list b"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "1. first list a\n1. first list b\n\n1) second list a\n1) second list b\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "two paras"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "second block"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "plain"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "- two paras\n\n  second block\n- plain\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "item with code"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "codeBlock",
+                    "attrs": {
+                      "language": "go"
+                    },
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "x := 1"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "- item with code\n  ```go\n  x := 1\n  ```\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "before"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "codeBlock",
+                    "attrs": {
+                      "language": "go"
+                    },
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "x := 1"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "after code"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "bulletList",
+                    "content": [
+                      {
+                        "type": "listItem",
+                        "content": [
+                          {
+                            "type": "paragraph",
+                            "content": [
+                              {
+                                "type": "text",
+                                "text": "sub"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "after list"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "- before\n  ```go\n  x := 1\n  ```\n  after code\n  - sub\n  after list\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "paren link",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://x.com/a(b)c"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "[paren link](https://x.com/a\\(b\\)c)\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "space link",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://x.com/a b"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "[space link](<https://x.com/a b>)\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "align-start",
+              "width": 686,
+              "widthType": "pixel"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "b5773183-5f9a-481f-b1b8-8fe286bba8e9",
+                  "alt": "image-20260212-125503.png",
+                  "collection": "",
+                  "width": 2308,
+                  "height": 551
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::media[image-20260212-125503.png]{#b5773183-5f9a-481f-b1b8-8fe286bba8e9 collection height=\"551\" layout=\"align-start\" layoutWidth=\"686\" path=\"assets/shot.png\" type=\"file\" width=\"2308\" widthType=\"pixel\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "center"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "min-id",
+                  "alt": "",
+                  "collection": "c1",
+                  "width": 10,
+                  "height": 20.5
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::media{#min-id collection=\"c1\" height=\"20.5\" layout=\"center\" type=\"file\" width=\"10\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaGroup",
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "g1",
+                  "alt": "a.pdf",
+                  "collection": ""
+                }
+              },
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "g2",
+                  "alt": "b [x].pdf",
+                  "collection": ""
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::media[a.pdf]{#g1 collection group=\"true\" type=\"file\"}\n\n::media[b \\[x\\].pdf]{#g2 collection group=\"true\" type=\"file\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "before "
+              },
+              {
+                "type": "mediaInline",
+                "attrs": {
+                  "type": "file",
+                  "id": "c8387bc1",
+                  "collection": ""
+                }
+              },
+              {
+                "type": "text",
+                "text": " after"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "before :media{#c8387bc1 collection type=\"file\"} after\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "table",
+            "attrs": {
+              "isNumberColumnEnabled": false,
+              "layout": "center"
+            },
+            "content": [
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableHeader",
+                    "attrs": {
+                      "colwidth": [
+                        79
+                      ]
+                    },
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "A"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableHeader",
+                    "attrs": {
+                      "colwidth": [
+                        320
+                      ]
+                    },
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "B"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "type": "tableRow",
+                "content": [
+                  {
+                    "type": "tableCell",
+                    "attrs": {
+                      "colwidth": [
+                        79
+                      ]
+                    },
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "1"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "tableCell",
+                    "attrs": {
+                      "colwidth": [
+                        320
+                      ]
+                    },
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "2"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::colwidths[79,320]\n\n| A | B |\n| - | - |\n| 1 | 2 |\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "decisionList",
+            "attrs": {
+              "localId": ""
+            },
+            "content": [
+              {
+                "type": "decisionItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DECIDED"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "use jj for vcs"
+                  }
+                ]
+              },
+              {
+                "type": "decisionItem",
+                "attrs": {
+                  "localId": "",
+                  "state": "DECIDED"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "ship "
+                  },
+                  {
+                    "type": "text",
+                    "text": "v2",
+                    "marks": [
+                      {
+                        "type": "strong"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::decisions\n\n- use jj for vcs\n- ship **v2**\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "center"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "external",
+                  "url": "https://example.com/i.png",
+                  "alt": "shot"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": "![shot](https://example.com/i.png)\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "center"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "external",
+                  "url": "https://example.com/i.png",
+                  "alt": "shot",
+                  "width": 100,
+                  "height": 50
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::media[shot]{height=\"50\" layout=\"center\" type=\"external\" url=\"https://example.com/i.png\" width=\"100\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "wide"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "external",
+                  "url": "https://example.com/i.png"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::media{layout=\"wide\" type=\"external\" url=\"https://example.com/i.png\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "align-start"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "b5773183-5f9a-481f-b1b8-8fe286bba8e9",
+                  "alt": "shot.png",
+                  "collection": "",
+                  "width": 2308,
+                  "height": 551
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": "![shot.png](assets/shot.png)\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "align-start"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "0a1b2c3d-1111-2222-3333-444455556666",
+                  "alt": "old.png",
+                  "collection": "",
+                  "width": 640,
+                  "height": 480
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::media[old.png]{#0a1b2c3d-1111-2222-3333-444455556666 collection height=\"480\" layout=\"align-start\" path=\"assets/old.png\" type=\"file\" width=\"640\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "align-start",
+              "width": 300,
+              "widthType": "pixel"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "b5773183-5f9a-481f-b1b8-8fe286bba8e9",
+                  "alt": "shot.png",
+                  "collection": "",
+                  "width": 2308,
+                  "height": 551
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::media[shot.png]{#b5773183-5f9a-481f-b1b8-8fe286bba8e9 collection height=\"551\" layout=\"align-start\" layoutWidth=\"300\" path=\"assets/shot.png\" type=\"file\" width=\"2308\" widthType=\"pixel\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "mediaSingle",
+            "attrs": {
+              "layout": "align-start"
+            },
+            "content": [
+              {
+                "type": "media",
+                "attrs": {
+                  "type": "file",
+                  "id": "9f8e7d6c-aaaa-bbbb-cccc-ddddeeeeffff",
+                  "alt": "spec.pdf",
+                  "collection": "",
+                  "width": 1,
+                  "height": 1
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::media[spec.pdf]{#9f8e7d6c-aaaa-bbbb-cccc-ddddeeeeffff collection height=\"1\" layout=\"align-start\" path=\"assets/spec.pdf\" type=\"file\" width=\"1\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "+"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "\\+\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "-"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "\\-\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "1."
+              }
+            ]
+          }
+        ]
+      },
+      "md": "1\\.\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "12."
+              }
+            ]
+          }
+        ]
+      },
+      "md": "12\\.\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "0)"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "0\\)\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "3) x"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "3\\) x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "-x"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "-x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "0``0",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "`0``0`\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "`x",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "`` `x ``\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a`b`c",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "``a`b`c``\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": " x ",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "`  x  `\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "0",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "0",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "`0``0`\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "assign "
+              },
+              {
+                "type": "text",
+                "text": "organization_assigned ",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "to all"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "assign `organization_assigned `to all\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": " leading",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "` leading`\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "c"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "&#x61;_&#x62;_&#x63;\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "bcd",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "e"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "&#x61;_&#x62;c&#x64;_&#x65;\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "b c",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "d"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "&#x61;_&#x62; &#x63;_&#x64;\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "b"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "_&#x61;_&#x62;\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "&#x61;_&#x62;_\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "strong"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "c"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "a**b**c\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "strike"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "c"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "a~~b~~c\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "("
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": ")"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "(_b_)\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "1"
+              },
+              {
+                "type": "text",
+                "text": "2",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "3"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "&#x31;_&#x32;_&#x33;\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "em"
+                  },
+                  {
+                    "type": "strong"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "c"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "&#x61;**_b_**&#x63;\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "x."
+              },
+              {
+                "type": "text",
+                "text": "y",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "x._y_\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "ä"
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "ü"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "&#xE4;_&#x62;_&#xFC;\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "x",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "a`x`_b_\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a"
+              },
+              {
+                "type": "text",
+                "text": "(x)",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "b"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "&#x61;_(x)_&#x62;\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a "
+              },
+              {
+                "type": "text",
+                "text": "b",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " c"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "a _b_ c\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "0",
+                "marks": [
+                  {
+                    "type": "code"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": " 0",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "`0`_&#x20;0_\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "a "
+              },
+              {
+                "type": "text",
+                "text": "b ",
+                "marks": [
+                  {
+                    "type": "em"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": "c"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "a _b&#x20;_&#x63;\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "cc "
+              },
+              {
+                "type": "mention",
+                "attrs": {
+                  "id": "557058:7d0b",
+                  "text": "@Patrick Marschik",
+                  "accessLevel": "",
+                  "localId": "x"
+                }
+              },
+              {
+                "type": "text",
+                "text": " please"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "cc :mention[Patrick Marschik]{#557058:7d0b} please\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "status",
+                "attrs": {
+                  "text": "In Progress",
+                  "color": "blue",
+                  "localId": "y"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":status[In Progress]{color=\"blue\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "warn: "
+              },
+              {
+                "type": "text",
+                "text": "red text",
+                "marks": [
+                  {
+                    "type": "textColor",
+                    "attrs": {
+                      "color": "#bf2600"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "warn: :color[red text]{color=\"#bf2600\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "x",
+                "marks": [
+                  {
+                    "type": "strong"
+                  },
+                  {
+                    "type": "textColor",
+                    "attrs": {
+                      "color": "#bf2600"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "**:color[x]{color=\"#bf2600\"}**\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "u",
+                "marks": [
+                  {
+                    "type": "underline"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":u[u]\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "E=mc"
+              },
+              {
+                "type": "text",
+                "text": "2",
+                "marks": [
+                  {
+                    "type": "subsup",
+                    "attrs": {
+                      "type": "sup"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "E=mc:sup[2]\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "dn"
+              },
+              {
+                "type": "text",
+                "text": "2",
+                "marks": [
+                  {
+                    "type": "subsup",
+                    "attrs": {
+                      "type": "sub"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "dn:sub[2]\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "hl",
+                "marks": [
+                  {
+                    "type": "backgroundColor",
+                    "attrs": {
+                      "color": "#fffae6"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":bg[hl]{color=\"#fffae6\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "code",
+                "marks": [
+                  {
+                    "type": "code"
+                  },
+                  {
+                    "type": "textColor",
+                    "attrs": {
+                      "color": "#bf2600"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":color[`code`]{color=\"#bf2600\"}\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "mention",
+                "attrs": {
+                  "id": "5:a",
+                  "text": "@A B",
+                  "accessLevel": "CONTAINER"
+                }
+              },
+              {
+                "type": "text",
+                "text": " x"
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":mention[A B]{#5:a accessLevel=\"CONTAINER\"} x\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": "More details"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "hidden"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "stuff"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::expand[More details]\nhidden\n\nstuff\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": ""
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "untitled"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::expand\nuntitled\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": "With *chars* [x] back\\slash"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "body"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::expand[With *chars* \\[x\\] back\\slash]\nbody\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "expand",
+            "attrs": {
+              "title": "T"
+            },
+            "content": [
+              {
+                "type": "panel",
+                "attrs": {
+                  "panelType": "info"
+                },
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "inner"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": "::::expand[T]\n:::info\ninner\n:::\n::::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "nestedExpand",
+            "attrs": {
+              "title": "Nested"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "body"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::expand[Nested]\nbody\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "before"
+              }
+            ]
+          },
+          {
+            "type": "blockCard",
+            "attrs": {
+              "url": "https://ixolit.atlassian.net/browse/PBP-5"
+            }
+          },
+          {
+            "type": "blockCard",
+            "attrs": {
+              "url": "https://docs.google.com/spreadsheets/d/xyz"
+            }
+          },
+          {
+            "type": "embedCard",
+            "attrs": {
+              "url": "https://example.com/embed",
+              "layout": "wide",
+              "width": 66.6
+            }
+          },
+          {
+            "type": "embedCard",
+            "attrs": {
+              "url": "https://example.com/e2"
+            }
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "after"
+              }
+            ]
+          }
+        ]
+      },
+      "md": "before\n\n::linkCard[PBP-5]\n\n::linkCard[https://docs.google.com/spreadsheets/d/xyz]\n\n::linkEmbed[https://example.com/embed]{layout=\"wide\" width=\"66.6\"}\n\n::linkEmbed[https://example.com/e2]\n\nafter\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "para one"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "para two"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::info\npara one\n\npara two\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "note"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Label"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Content here"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::note\nLabel\n\nContent here\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "warning"
+            },
+            "content": [
+              {
+                "type": "bulletList",
+                "content": [
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "a"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "listItem",
+                    "content": [
+                      {
+                        "type": "paragraph",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "b"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::warning\n- a\n- b\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "intro"
+                  }
+                ]
+              },
+              {
+                "type": "codeBlock",
+                "attrs": {
+                  "language": "go"
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "x := 1"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::info\nintro\n\n```go\nx := 1\n```\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "info"
+            },
+            "content": [
+              {
+                "type": "heading",
+                "attrs": {
+                  "level": 2
+                },
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "heading"
+                  }
+                ]
+              },
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "content"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::info\n## heading\n\ncontent\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "custom"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "unknown panel type"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::info\nunknown panel type\n:::\n"
+    },
+    {
+      "adf": {
+        "type": "doc",
+        "version": 1,
+        "content": [
+          {
+            "type": "panel",
+            "attrs": {
+              "panelType": "success"
+            },
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "first"
+                  }
+                ]
+              },
+              {
+                "type": "blockquote",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "quoted"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "md": ":::success\nfirst\n\n> quoted\n:::\n"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+go test fuzz v1
+string("::decisions\n\n- use jj for vcs\n- ship **v2**")

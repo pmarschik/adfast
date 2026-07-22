@@ -1,0 +1,34 @@
+# Conventional commit scopes for this project.
+# Used by agents (via AGENTS.md reference) and optionally by cocogitto for enforcement.
+#
+# Component scopes:
+# - core       root package — conversion pipeline, public API glue
+# - parser     goldmark parser assembly (GFM tweaks, autolinks, strikethrough)
+# - AST      the Markdown AST and goldmark→AST lifting
+# - render     AST→markdown rendering (remark-compatible output)
+# - adf        ADF types, codecs, ADF↔AST converters
+# - directives the directive dialect (media, panels, smart links, …)
+# - format     the WithPrettierFormat style-preserving formatter mode
+# - jira       jira/ addon module
+# - confluence confluence/ addon module
+# - skill      skill/ agent-skill module
+# - docs       README, docs
+# - build      local tooling, mise, scripts, developer setup
+# - ci         GitHub Actions and CI automation
+# - release    release flow, changelog, versioning
+scopes = [
+  "core",
+  "parser",
+  "AST",
+  "render",
+  "adf",
+  "directives",
+  "format",
+  "jira",
+  "confluence",
+  "skill",
+  "docs",
+  "build",
+  "ci",
+  "release",
+]

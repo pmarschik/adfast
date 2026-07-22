@@ -1,0 +1,12 @@
+[files]
+# Fuzz corpus + fixtures contain arbitrary byte sequences; the emoji
+# map is generated from emoji-toolkit shortnames verbatim.
+extend-exclude = ["testdata/", "dialect/emoji_map.go"]
+
+[default.extend-identifiers]
+# goldmark's own API name (text.Reader) — not ours to fix.
+PrecendingCharacter = "PrecendingCharacter"
+
+[default.extend-words]
+# Legitimate plural the checker flags against its singular suggestion.
+canonicalizations = "canonicalizations"

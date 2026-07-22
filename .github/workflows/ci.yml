@@ -1,0 +1,91 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # go.work is committed, so ./... from the root covers the workspace;
+      # each submodule still runs on its own to catch anything the
+      # workspace resolution would paper over.
+      - name: Test
+        run: go test ./...
+
+      - name: Test (race)
+        run: go test -race ./...
+
+      - name: Test jira module
+        working-directory: jira
+        run: |
+          go test ./...
+          go test -race ./...
+
+      - name: Test confluence module
+        working-directory: confluence
+        run: |
+          go test ./...
+          go test -race ./...
+
+      - name: Test skill module
+        working-directory: skill
+        run: |
+          go test ./...
+          go test -race ./...
+
+      - name: Test frontmatter module
+        working-directory: frontmatter
+        run: |
+          go test ./...
+          go test -race ./...
+
+      - name: Coverage floor (75%)
+        run: |
+          go test -coverprofile=coverage.out -coverpkg=./... ./...
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')
+          echo "total coverage: ${total}%"
+          awk -v total="$total" 'BEGIN { exit (total + 0 < 75) ? 1 : 0 }'
+
+      - name: Fuzz smoke
+        run: go test -run=^$ -fuzz=FuzzRoundTripIdempotent -fuzztime=30s .
+
+      - name: Fuzz smoke (format contract)
+        run: go test -run=^$ -fuzz=FuzzFormatSemanticsPreserved -fuzztime=30s .
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2 # keep in sync with .config/mise/config.toml
+          args: -c .config/golangci.yml
+
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

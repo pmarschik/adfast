@@ -1,0 +1,6 @@
+github.com/pmarschik/goldmark-directive v0.1.0 h1:5VmuFABEICTfME3B3RfMbf/nuCtvY67b+3TVXAxTLnQ=
+github.com/pmarschik/goldmark-directive v0.1.0/go.mod h1:LO0rwcECJKKw8WgmK+z6WEwhxQrCbGEGvamcQLAZOvw=
+github.com/yuin/goldmark v1.8.2 h1:kEGpgqJXdgbkhcOgBxkC0X0PmoPG1ZyoZ117rDVp4zE=
+github.com/yuin/goldmark v1.8.2/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
+gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=

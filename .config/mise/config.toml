@@ -1,0 +1,21 @@
+# :schema https://mise.jdx.dev/schema/mise.json
+# SCAFFOLD: Merge common tools from assets/common/mise.toml into [tools]
+# Pinned exact versions (Renovate keeps them fresh); go.mod's go directive
+# stays the minimum supported language version.
+[tools]
+hk = "1.50.0"
+git-cliff = "2.13.1"
+typos = "1.47.2"
+go = "1.26.4"
+golangci-lint = "2.12.2"
+goreleaser = "2.15.4"
+dprint = "0.55.1"
+gofumpt = "0.9.2"
+cocogitto = "7.0.0"
+
+[env]
+HK_FILE = ".config/hk.pkl"
+HK_MISE = "1"
+
+# Tasks are file-based in .config/mise/tasks/
+# See assets/go/tasks/ for the task scripts

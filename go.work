@@ -1,0 +1,16 @@
+go 1.25
+
+use (
+	.
+	./confluence
+	./frontmatter
+	./jira
+	./skill
+)
+
+// The submodules' go.mod files pin the upcoming release version, which
+// is not on the module proxy until the root module is tagged. Resolve
+// exactly that version to the local checkout for development builds;
+// go.work never ships to consumers. Bump alongside the submodule
+// go.mod files at release time (see docs/RELEASING.md).
+replace github.com/pmarschik/adfast v0.1.0 => .
