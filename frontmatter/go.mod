@@ -6,8 +6,3 @@ require (
 	github.com/pmarschik/adfast v0.1.0
 	gopkg.in/yaml.v3 v3.0.1
 )
-
-require (
-	github.com/pmarschik/goldmark-directive v0.1.0 // indirect
-	github.com/yuin/goldmark v1.8.2 // indirect
-)
