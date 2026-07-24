@@ -166,3 +166,41 @@ func TestFormat_RewritesReferencesOnLayoutChange(t *testing.T) {
 		t.Errorf("rewritten:\n%q\nwant:\n%q", rewritten, want)
 	}
 }
+
+// TestWithStoreDir_PlacesBlobsInCustomTopLevelDir: the content-addressed
+// blobs + index land in the configured store dir (a dedicated top-level
+// ".asset-store") instead of the default hidden assets/.store, while the
+// friendly symlink still lives in the doc's assets/ folder.
+func TestWithStoreDir_PlacesBlobsInCustomTopLevelDir(t *testing.T) {
+	root := t.TempDir()
+	docDir := filepath.Join(root, "issues", "EPIC-1")
+	if err := os.MkdirAll(docDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewFSStoreSplit(root, docDir, WithStoreDir(".asset-store"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Add("", "media-1", "shot.png", tinyPNG(t, 2, 2)); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	// Blob + index live in <root>/.asset-store, NOT <root>/assets/.store.
+	if entries, _ := filepath.Glob(filepath.Join(root, ".asset-store", "*")); len(entries) == 0 {
+		t.Errorf("expected blobs under %s/.asset-store", root)
+	}
+	if _, err := os.Stat(filepath.Join(root, "assets", ".store")); !os.IsNotExist(err) {
+		t.Errorf("did not expect the default assets/.store dir, stat err=%v", err)
+	}
+	// Friendly symlink still next to the doc.
+	link := filepath.Join(docDir, "assets", "shot.png")
+	if fi, lerr := os.Lstat(link); lerr != nil {
+		t.Errorf("expected friendly file at %s: %v", link, lerr)
+	} else if fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("expected %s to be a symlink into the store", link)
+	}
+	// And it resolves back to the blob content.
+	if b, rerr := store.Load("assets/shot.png"); rerr != nil || len(b) == 0 {
+		t.Errorf("resolve via store failed: err=%v len=%d", rerr, len(b))
+	}
+}

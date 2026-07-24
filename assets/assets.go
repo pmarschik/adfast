@@ -159,6 +159,25 @@ type FSStore struct {
 	assetsParent string
 	blobParent   string
 	refPrefix    string
+	// storeSubdir is the content-addressed blob directory, relative to
+	// blobParent. Defaults to "assets/.store"; override with WithStoreDir.
+	storeSubdir string
+}
+
+// Option configures an FSStore at construction.
+type Option func(*FSStore)
+
+// WithStoreDir overrides the content-addressed blob directory (and its
+// index.json), relative to the store's blob parent. The default is the hidden
+// "assets/.store" nested in the friendly folder; pass e.g. ".asset-store" to
+// keep the blobs in a dedicated top-level directory instead. The friendly
+// assets/ folder (and therefore markdown reference paths) is unaffected.
+func WithStoreDir(subdir string) Option {
+	return func(s *FSStore) {
+		if subdir != "" {
+			s.storeSubdir = filepath.Clean(subdir)
+		}
+	}
 }
 
 // indexLocks maps a canonical index path to its process-wide lock.
@@ -180,8 +199,8 @@ func indexLock(indexPath string) *sync.Mutex {
 
 // NewFSStore opens (or initializes) the asset store for the assets/ folder
 // next to the markdown files in mdDir.
-func NewFSStore(mdDir string) (*FSStore, error) {
-	return NewFSStoreAt(mdDir, mdDir)
+func NewFSStore(mdDir string, opts ...Option) (*FSStore, error) {
+	return NewFSStoreAt(mdDir, mdDir, opts...)
 }
 
 // NewFSStoreAt opens the asset store whose assets/ folder lives under
@@ -192,8 +211,8 @@ func NewFSStore(mdDir string) (*FSStore, error) {
 // directory, or any other location. Documents at different depths each
 // construct their own (cheap) instance over the same folder; instances
 // cooperate through the shared index.
-func NewFSStoreAt(assetsParent, docDir string) (*FSStore, error) {
-	return openFSStore(assetsParent, assetsParent, docDir)
+func NewFSStoreAt(assetsParent, docDir string, opts ...Option) (*FSStore, error) {
+	return openFSStore(assetsParent, assetsParent, docDir, opts...)
 }
 
 // NewFSStoreSplit separates the TRUE store from the nice one: the
@@ -203,12 +222,15 @@ func NewFSStoreAt(assetsParent, docDir string) (*FSStore, error) {
 // assets/ folder next to the documents in docDir. Resolve materializes
 // a missing friendly file from the shared blobs, so a view that never
 // downloaded an asset still renders it locally.
-func NewFSStoreSplit(blobParent, docDir string) (*FSStore, error) {
-	return openFSStore(blobParent, docDir, docDir)
+func NewFSStoreSplit(blobParent, docDir string, opts ...Option) (*FSStore, error) {
+	return openFSStore(blobParent, docDir, docDir, opts...)
 }
 
-func openFSStore(blobParent, assetsParent, docDir string) (*FSStore, error) {
-	s := &FSStore{blobParent: blobParent, assetsParent: assetsParent, docDir: docDir, media: map[string]indexEntry{}}
+func openFSStore(blobParent, assetsParent, docDir string, opts ...Option) (*FSStore, error) {
+	s := &FSStore{blobParent: blobParent, assetsParent: assetsParent, docDir: docDir, media: map[string]indexEntry{}, storeSubdir: filepath.Join(Dir, storeDir)}
+	for _, opt := range opts {
+		opt(s)
+	}
 	s.mu = indexLock(s.indexPath())
 	rel, err := filepath.Rel(docDir, s.assetsDir())
 	if err != nil {
@@ -239,7 +261,7 @@ func openFSStore(blobParent, assetsParent, docDir string) (*FSStore, error) {
 func (s *FSStore) assetsDir() string { return filepath.Join(s.assetsParent, Dir) }
 
 // blobDir is the content-addressed store directory (the truth).
-func (s *FSStore) blobDir() string { return filepath.Join(s.blobParent, Dir, storeDir) }
+func (s *FSStore) blobDir() string { return filepath.Join(s.blobParent, s.storeSubdir) }
 
 // linkTarget is the symlink destination for a friendly file pointing at
 // a store blob — relative to the friendly folder, so trees stay
