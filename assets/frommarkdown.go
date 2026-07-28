@@ -36,6 +36,16 @@ func PushPipeline(ctx context.Context, store Store, up Uploader, extra ...adfast
 	)
 }
 
+// SyncMarkdown uploads the pending assets referenced by a single markdown
+// document as one batch. It parses md, collects its local image references,
+// and uploads the intersection with the store's pending worklist — a
+// convenience for callers that encode one markdown string at a time and
+// cannot use a Pipeline/BeforeEncode hook. Nothing uploads when the document
+// references no pending assets.
+func SyncMarkdown(ctx context.Context, store Store, up Uploader, md string) error {
+	return syncReferenced(ctx, store, up, []ast.Node{adfast.FromMarkdown(md)})
+}
+
 // syncReferenced uploads the intersection of the documents' local image
 // references and the store's pending worklist as one batch.
 func syncReferenced(ctx context.Context, store Store, up Uploader, docs []ast.Node) error {
