@@ -741,6 +741,15 @@ func (c *astConverter) singleAttachmentImage(node *ast.Paragraph) (*ast.Image, s
 	return img, strings.ToLower(id), true
 }
 
+// assetID resolves a markdown-relative asset reference to its media id via the
+// configured resolver, or ("", false) when unresolvable.
+func (c *astConverter) assetID(ref string) (string, bool) {
+	if c.resolveAssetID == nil || ref == "" {
+		return "", false
+	}
+	return c.resolveAssetID(ref)
+}
+
 // attachmentImageToMedia converts a downloaded-attachment image back to its
 // ADF media form: the id comes from the filename, the intrinsic dimensions
 // from the local file via the injected resolver.
@@ -1103,6 +1112,11 @@ func (e *blockEncodeContext) SmartLinkURL(label string) string {
 	return e.c.smartLinkURL(label)
 }
 
+// AssetID implements extension.EncodeContext.
+func (e *blockEncodeContext) AssetID(ref string) (string, bool) {
+	return e.c.assetID(ref)
+}
+
 // inlineEncodeContext is the EncodeContext handed to extension nodes in
 // inline position; it carries the marks inherited from enclosing
 // constructs.
@@ -1129,6 +1143,11 @@ func (e *inlineEncodeContext) EncodeInlinesStyled(style extension.InlineStyle, c
 // SmartLinkURL implements extension.EncodeContext.
 func (e *inlineEncodeContext) SmartLinkURL(label string) string {
 	return e.c.smartLinkURL(label)
+}
+
+// AssetID implements extension.EncodeContext.
+func (e *inlineEncodeContext) AssetID(ref string) (string, bool) {
+	return e.c.assetID(ref)
 }
 
 // flattenStyled layers an extension.InlineStyle onto the inherited mark

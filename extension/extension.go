@@ -172,6 +172,12 @@ type EncodeContext interface {
 	// expand via the configured SmartLinks resolver when known (and stay
 	// as-is otherwise), full URLs pass through; "" for a blank label.
 	SmartLinkURL(label string) string
+	// AssetID resolves a markdown-relative asset reference (e.g.
+	// "assets/shot.png") back to its product media id via the configured
+	// asset-store resolver. Lets a media directive omit an explicit id when
+	// the store can recover it. Returns ("", false) when no resolver is
+	// configured or the reference is unknown.
+	AssetID(ref string) (id string, ok bool)
 }
 
 // MediaAsset describes a downloaded attachment available on disk for

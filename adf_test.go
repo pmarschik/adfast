@@ -886,3 +886,46 @@ func TestMediaDirective_DefaultsRoundTrip(t *testing.T) {
 		t.Errorf("type not re-inferred: %q", media.Type)
 	}
 }
+
+// A downloaded media node drops its explicit uuid on decode (the store can
+// resolve it from the path) and regains it on encode via the reverse resolver
+// — proving the uuid-less directive round-trips losslessly.
+func TestMediaDirective_UUIDDropRoundTrip(t *testing.T) {
+	const id = "b58322aa-b563-4639-89b3-517dc0ceb4e9"
+	const path = "assets/shot.png"
+	in := doc(&adf.MediaSingle{
+		Layout: ptrOf("align-start"), Width: ptrOf(float64(671)), WidthType: ptrOf("pixel"),
+		Content: []adf.Node{&adf.Media{
+			Type: "file", ID: id, Alt: "shot.png",
+			Collection: ptrOf(""), Width: ptrOf(float64(817)), Height: ptrOf(float64(182)),
+		}},
+	})
+
+	// Decode with the asset present → id omitted, path kept.
+	md := adfToMD(in, WithMediaAssets(map[string]convert.MediaAsset{id: {Path: path}}))
+	if strings.Contains(md, id) {
+		t.Fatalf("expected uuid dropped, got %q", md)
+	}
+	if !strings.Contains(md, `path="assets/shot.png"`) {
+		t.Fatalf("expected path retained, got %q", md)
+	}
+
+	// Encode with the reverse (path→id) resolver → id restored.
+	back := mdToADF(md, WithAssetIDResolver(func(p string) (string, bool) {
+		if p == path {
+			return id, true
+		}
+		return "", false
+	}))
+	single, ok := back.Content[0].(*adf.MediaSingle)
+	if !ok {
+		t.Fatalf("expected *adf.MediaSingle, got %T", back.Content[0])
+	}
+	media, ok := single.Content[0].(*adf.Media)
+	if !ok {
+		t.Fatalf("expected *adf.Media, got %T", single.Content[0])
+	}
+	if media.ID != id {
+		t.Errorf("uuid not restored on encode: %q", media.ID)
+	}
+}

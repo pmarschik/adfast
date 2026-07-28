@@ -583,9 +583,6 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	if media.Height != nil {
 		attrs["height"] = formatJSNumber(*media.Height)
 	}
-	if media.ID != "" {
-		attrs["id"] = media.ID
-	}
 	if single != nil {
 		// Omit the file-media default layout ("align-start"); mediaSingleFromAttrs
 		// re-infers it when a file-type directive carries no layout, so the
@@ -600,8 +597,14 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	if v := strDeref(media.OccurrenceKey); v != "" {
 		attrs["occurrenceKey"] = v
 	}
+	// When the media is a locally downloaded asset, emit its markdown-relative
+	// path and OMIT the explicit id — encode resolves the id back from the path
+	// via the (issue-scoped) asset store. When it is not local, keep the
+	// explicit id (nothing can resolve it).
 	if a, ok := ctx.Asset(media.ID); ok {
 		attrs["path"] = a.Path
+	} else if media.ID != "" {
+		attrs["id"] = media.ID
 	}
 	// Omit the default media type ("file"); mediaFromAttrs re-infers it when a
 	// directive carries no type.

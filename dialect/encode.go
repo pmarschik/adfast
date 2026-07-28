@@ -52,8 +52,15 @@ func (n *Expand) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 // EncodeADF implements extension.Node: the inverse of decodeMediaNode —
 // a media node wrapped in mediaSingle, or a single-item mediaGroup that
 // the converter merges with adjacent group items.
-func (n *Media) EncodeADF(_ extension.EncodeContext) []adf.Node {
+func (n *Media) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 	media := mediaFromAttrs(n.Attrs, ast.PlainText(n.Children))
+	// A local asset omits its id (decode drops it); resolve it back from the
+	// markdown-relative path via the asset store.
+	if media.ID == "" {
+		if id, ok := ctx.AssetID(n.Attrs["path"]); ok {
+			media.ID = id
+		}
+	}
 	if n.Attrs["group"] == "true" {
 		return []adf.Node{&adf.MediaGroup{Content: []adf.Node{media}}}
 	}
