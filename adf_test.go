@@ -138,7 +138,7 @@ func TestAdfToMarkdown_BlockTypes(t *testing.T) {
 					Collection: ptrOf(""), Width: ptrOf(float64(2308)), Height: ptrOf(float64(551)),
 				}},
 			}),
-			contains: []string{`::media[shot.png]{#abc collection height="551" layout="align-start" layoutWidth="686" type="file" width="2308" widthType="pixel"}`},
+			contains: []string{`::media[shot.png]{#abc collection height="551" layoutWidth="686" width="2308" widthType="pixel"}`},
 		},
 	}
 
@@ -849,5 +849,40 @@ func TestRoundTripIdempotent_AdjacentOrderedLists(t *testing.T) {
 	second := adfToMD(mdToADF(first))
 	if first != second {
 		t.Errorf("round-trip not idempotent:\nfirst:  %q\nsecond: %q", first, second)
+	}
+}
+
+// The terse ::media directive (default type/layout omitted) must re-inflate to
+// the original ADF, so a Markdown-authored push reproduces the media node.
+func TestMediaDirective_DefaultsRoundTrip(t *testing.T) {
+	in := doc(&adf.MediaSingle{
+		Layout: ptrOf("align-start"), Width: ptrOf(float64(686)), WidthType: ptrOf("pixel"),
+		Content: []adf.Node{&adf.Media{
+			Type: "file", ID: "abc", Alt: "shot.png",
+			Collection: ptrOf(""), Width: ptrOf(float64(2308)), Height: ptrOf(float64(551)),
+		}},
+	})
+	md := adfToMD(in)
+	if strings.Contains(md, `type="file"`) || strings.Contains(md, `layout="align-start"`) {
+		t.Fatalf("expected default type/layout omitted, got %q", md)
+	}
+
+	back := mdToADF(md)
+	if len(back.Content) != 1 {
+		t.Fatalf("expected one block, got %d", len(back.Content))
+	}
+	single, ok := back.Content[0].(*adf.MediaSingle)
+	if !ok {
+		t.Fatalf("expected *adf.MediaSingle, got %T", back.Content[0])
+	}
+	if single.Layout == nil || *single.Layout != "align-start" {
+		t.Errorf("layout not re-inferred: %v", single.Layout)
+	}
+	media, ok := single.Content[0].(*adf.Media)
+	if !ok {
+		t.Fatalf("expected *adf.Media, got %T", single.Content[0])
+	}
+	if media.Type != "file" {
+		t.Errorf("type not re-inferred: %q", media.Type)
 	}
 }

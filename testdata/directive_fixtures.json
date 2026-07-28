@@ -1,7 +1,7 @@
 {
   "markdown": [
     {
-      "md": "::media[shot.png]{#abc collection height=\"551\" layout=\"align-start\" layoutWidth=\"686\" type=\"file\" width=\"2308\" widthType=\"pixel\"}\n",
+      "md": "::media[shot.png]{#abc collection height=\"551\" layoutWidth=\"686\" width=\"2308\" widthType=\"pixel\"}\n",
       "adf": {
         "type": "doc",
         "version": 1,
@@ -29,10 +29,10 @@
           }
         ]
       },
-      "roundtrip": "::media[shot.png]{#abc collection height=\"551\" layout=\"align-start\" layoutWidth=\"686\" type=\"file\" width=\"2308\" widthType=\"pixel\"}\n"
+      "roundtrip": "::media[shot.png]{#abc collection height=\"551\" layoutWidth=\"686\" width=\"2308\" widthType=\"pixel\"}\n"
     },
     {
-      "md": "::media{#g1 collection group=\"true\" type=\"file\"}\n::media[b.pdf]{#g2 collection group=\"true\" type=\"file\"}\n",
+      "md": "::media{#g1 collection group=\"true\"}\n::media[b.pdf]{#g2 collection group=\"true\"}\n",
       "adf": {
         "type": "doc",
         "version": 1,
@@ -61,10 +61,10 @@
           }
         ]
       },
-      "roundtrip": "::media{#g1 collection group=\"true\" type=\"file\"}\n\n::media[b.pdf]{#g2 collection group=\"true\" type=\"file\"}\n"
+      "roundtrip": "::media{#g1 collection group=\"true\"}\n\n::media[b.pdf]{#g2 collection group=\"true\"}\n"
     },
     {
-      "md": "inline :media{#c8387bc1 collection type=\"file\"} here\n",
+      "md": "inline :media{#c8387bc1 collection} here\n",
       "adf": {
         "type": "doc",
         "version": 1,
@@ -92,7 +92,7 @@
           }
         ]
       },
-      "roundtrip": "inline :media{#c8387bc1 collection type=\"file\"} here\n"
+      "roundtrip": "inline :media{#c8387bc1 collection} here\n"
     },
     {
       "md": "::colwidths[79,320]\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n",
@@ -5921,7 +5921,7 @@
           }
         ]
       },
-      "md": "::media[image-20260212-125503.png]{#b5773183-5f9a-481f-b1b8-8fe286bba8e9 collection height=\"551\" layout=\"align-start\" layoutWidth=\"686\" path=\"assets/shot.png\" type=\"file\" width=\"2308\" widthType=\"pixel\"}\n"
+      "md": "::media[image-20260212-125503.png]{#b5773183-5f9a-481f-b1b8-8fe286bba8e9 collection height=\"551\" layoutWidth=\"686\" path=\"assets/shot.png\" width=\"2308\" widthType=\"pixel\"}\n"
     },
     {
       "adf": {
@@ -5949,7 +5949,7 @@
           }
         ]
       },
-      "md": "::media{#min-id collection=\"c1\" height=\"20.5\" layout=\"center\" type=\"file\" width=\"10\"}\n"
+      "md": "::media{#min-id collection=\"c1\" height=\"20.5\" layout=\"center\" width=\"10\"}\n"
     },
     {
       "adf": {
@@ -5981,7 +5981,7 @@
           }
         ]
       },
-      "md": "::media[a.pdf]{#g1 collection group=\"true\" type=\"file\"}\n\n::media[b \\[x\\].pdf]{#g2 collection group=\"true\" type=\"file\"}\n"
+      "md": "::media[a.pdf]{#g1 collection group=\"true\"}\n\n::media[b \\[x\\].pdf]{#g2 collection group=\"true\"}\n"
     },
     {
       "adf": {
@@ -6011,7 +6011,7 @@
           }
         ]
       },
-      "md": "before :media{#c8387bc1 collection type=\"file\"} after\n"
+      "md": "before :media{#c8387bc1 collection} after\n"
     },
     {
       "adf": {
@@ -6299,7 +6299,7 @@
           }
         ]
       },
-      "md": "::media[old.png]{#0a1b2c3d-1111-2222-3333-444455556666 collection height=\"480\" layout=\"align-start\" path=\"assets/old.png\" type=\"file\" width=\"640\"}\n"
+      "md": "::media[old.png]{#0a1b2c3d-1111-2222-3333-444455556666 collection height=\"480\" path=\"assets/old.png\" width=\"640\"}\n"
     },
     {
       "adf": {
@@ -6329,7 +6329,7 @@
           }
         ]
       },
-      "md": "::media[shot.png]{#b5773183-5f9a-481f-b1b8-8fe286bba8e9 collection height=\"551\" layout=\"align-start\" layoutWidth=\"300\" path=\"assets/shot.png\" type=\"file\" width=\"2308\" widthType=\"pixel\"}\n"
+      "md": "::media[shot.png]{#b5773183-5f9a-481f-b1b8-8fe286bba8e9 collection height=\"551\" layoutWidth=\"300\" path=\"assets/shot.png\" width=\"2308\" widthType=\"pixel\"}\n"
     },
     {
       "adf": {
@@ -6357,7 +6357,7 @@
           }
         ]
       },
-      "md": "::media[spec.pdf]{#9f8e7d6c-aaaa-bbbb-cccc-ddddeeeeffff collection height=\"1\" layout=\"align-start\" path=\"assets/spec.pdf\" type=\"file\" width=\"1\"}\n"
+      "md": "::media[spec.pdf]{#9f8e7d6c-aaaa-bbbb-cccc-ddddeeeeffff collection height=\"1\" path=\"assets/spec.pdf\" width=\"1\"}\n"
     },
     {
       "adf": {

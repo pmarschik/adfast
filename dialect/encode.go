@@ -119,6 +119,9 @@ func mediaSingleFromAttrs(attrs map[string]string, media *adf.Media) *adf.MediaS
 	single := &adf.MediaSingle{Content: []adf.Node{media}}
 	if v := attrs["layout"]; v != "" {
 		single.Layout = strPtr(v)
+	} else if media.Type == "file" {
+		// Re-infer the file-media default layout omitted on decode.
+		single.Layout = strPtr("align-start")
 	}
 	if v, ok := attrs["layoutWidth"]; ok {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {

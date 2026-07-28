@@ -587,7 +587,10 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 		attrs["id"] = media.ID
 	}
 	if single != nil {
-		if layout := strDeref(single.Layout); layout != "" {
+		// Omit the file-media default layout ("align-start"); mediaSingleFromAttrs
+		// re-infers it when a file-type directive carries no layout, so the
+		// round-trip stays lossless while the directive stays terse.
+		if layout := strDeref(single.Layout); layout != "" && !(media.Type == "file" && layout == "align-start") {
 			attrs["layout"] = layout
 		}
 		if single.Width != nil {
@@ -600,7 +603,9 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	if a, ok := ctx.Asset(media.ID); ok {
 		attrs["path"] = a.Path
 	}
-	if media.Type != "" {
+	// Omit the default media type ("file"); mediaFromAttrs re-infers it when a
+	// directive carries no type.
+	if media.Type != "" && media.Type != "file" {
 		attrs["type"] = media.Type
 	}
 	if media.URL != "" {
@@ -816,7 +821,8 @@ func decodeMediaInline(n adf.Node, _ extension.DecodeContext) ([]ast.Node, bool)
 	if mi.ID != "" {
 		attrs["id"] = mi.ID
 	}
-	if mi.Type != "" {
+	// Omit the default media type ("file"); mediaInline encode re-infers it.
+	if mi.Type != "" && mi.Type != "file" {
 		attrs["type"] = mi.Type
 	}
 	var children []ast.Node
@@ -824,7 +830,7 @@ func decodeMediaInline(n adf.Node, _ extension.DecodeContext) ([]ast.Node, bool)
 		children = []ast.Node{&ast.Text{Value: mi.Alt}}
 	}
 	return []ast.Node{&MediaInline{
-		MediaType:  attrs["type"],
+		MediaType:  mi.Type,
 		ID:         attrs["id"],
 		Collection: attrs["collection"],
 		Attrs:      attrs,
