@@ -1663,6 +1663,11 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	dimsMatch := isLocal && asset.HasDim &&
 		m.width != nil && m.height != nil &&
 		float64(asset.Width) == *m.width && float64(asset.Height) == *m.height
+	// A pixel display width equal to the intrinsic width is a no-op resize;
+	// drop the redundant layoutWidth/widthType (mirrors dialect's
+	// mediaLeafNode natural-width normalization).
+	naturalWidth := m.layoutWidth != nil && m.width != nil &&
+		*m.layoutWidth == *m.width && m.widthType != nil && *m.widthType == "pixel"
 	if m.hasBorder {
 		if m.borderColor != "" {
 			attrs["borderColor"] = m.borderColor
@@ -1687,7 +1692,7 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 		if m.layout != nil && *m.layout != "" && !(m.mtype == "file" && *m.layout == "align-start") {
 			attrs["layout"] = *m.layout
 		}
-		if m.layoutWidth != nil {
+		if m.layoutWidth != nil && !naturalWidth {
 			attrs["layoutWidth"] = formatJSNumber(*m.layoutWidth)
 		}
 	}
@@ -1716,7 +1721,7 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	if m.width != nil && !dimsMatch {
 		attrs["width"] = formatJSNumber(*m.width)
 	}
-	if m.hasSingle && m.widthType != nil && *m.widthType != "" {
+	if m.hasSingle && m.widthType != nil && *m.widthType != "" && !naturalWidth {
 		attrs["widthType"] = *m.widthType
 	}
 	var children []ast.Node

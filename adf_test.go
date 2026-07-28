@@ -994,3 +994,42 @@ func TestMediaDirective_DimsAndCollectionRoundTrip(t *testing.T) {
 		t.Errorf("collection not restored: %v", media.Collection)
 	}
 }
+
+// A pixel display width equal to the intrinsic width is a no-op resize (the
+// ~68% Jira-default case): decode drops layoutWidth + widthType, leaving a
+// natural-size directive. A genuine resize keeps them.
+func TestMediaDirective_NaturalWidthDropped(t *testing.T) {
+	const id, path = "abc-123", "assets/shot.png"
+	dec := []Option{WithMediaAssets(map[string]convert.MediaAsset{id: {Path: path, Width: 817, Height: 182, HasDim: true}})}
+	mediaLeaf := func() *adf.Media {
+		return &adf.Media{
+			Type: "file", ID: id, Alt: "shot.png",
+			Collection: ptrOf(""), Width: ptrOf(float64(817)), Height: ptrOf(float64(182)),
+		}
+	}
+
+	// layoutWidth == intrinsic width (817) + matching file dims → slims to path.
+	natural := doc(&adf.MediaSingle{
+		Layout: ptrOf("align-start"), Width: ptrOf(float64(817)), WidthType: ptrOf("pixel"),
+		Content: []adf.Node{mediaLeaf()},
+	})
+	md := adfToMD(natural, dec...)
+	for _, bad := range []string{"layoutWidth", "widthType"} {
+		if strings.Contains(md, bad) {
+			t.Errorf("expected natural-size %q dropped, got:\n%s", bad, md)
+		}
+	}
+	if got := strings.TrimSpace(md); got != `::media[shot.png]{path="assets/shot.png"}` {
+		t.Errorf("expected slim natural-size directive, got: %q", got)
+	}
+
+	// A genuine resize (671 != 817) keeps layoutWidth + widthType.
+	resized := doc(&adf.MediaSingle{
+		Layout: ptrOf("align-start"), Width: ptrOf(float64(671)), WidthType: ptrOf("pixel"),
+		Content: []adf.Node{mediaLeaf()},
+	})
+	rmd := adfToMD(resized, dec...)
+	if !strings.Contains(rmd, `layoutWidth="671"`) || !strings.Contains(rmd, `widthType="pixel"`) {
+		t.Errorf("genuine resize must keep layoutWidth/widthType, got:\n%s", rmd)
+	}
+}

@@ -572,6 +572,15 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	dimsMatch := isLocal && localAsset.HasDim &&
 		media.Width != nil && media.Height != nil &&
 		float64(localAsset.Width) == *media.Width && float64(localAsset.Height) == *media.Height
+	// A pixel display width equal to the intrinsic width is a no-op resize
+	// (the image renders at its own size, the ~68% Jira-default case). Drop
+	// the redundant layoutWidth/widthType; the plain-size media is
+	// reconstructed on encode without them. This normalizes an explicit
+	// natural width to the no-width form (a one-time, visually-identical
+	// change on the next push), matching the many media that carry no
+	// display width at all.
+	naturalWidth := single != nil && single.Width != nil && media.Width != nil &&
+		*single.Width == *media.Width && strDeref(single.WidthType) == "pixel"
 	if border, ok := adf.FindMark[*adf.Border](media.Marks); ok {
 		if border.Color != "" {
 			attrs["borderColor"] = border.Color
@@ -598,7 +607,7 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 		if layout := strDeref(single.Layout); layout != "" && !(media.Type == "file" && layout == "align-start") {
 			attrs["layout"] = layout
 		}
-		if single.Width != nil {
+		if single.Width != nil && !naturalWidth {
 			attrs["layoutWidth"] = formatJSNumber(*single.Width)
 		}
 	}
@@ -626,7 +635,7 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 		attrs["width"] = formatJSNumber(*media.Width)
 	}
 	if single != nil {
-		if v := strDeref(single.WidthType); v != "" {
+		if v := strDeref(single.WidthType); v != "" && !naturalWidth {
 			attrs["widthType"] = v
 		}
 	}
