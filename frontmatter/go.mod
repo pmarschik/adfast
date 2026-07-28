@@ -1,6 +1,6 @@
 module github.com/pmarschik/adfast/frontmatter
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/pmarschik/adfast v0.3.0
