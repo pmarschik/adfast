@@ -38,6 +38,10 @@ import (
 	"strings"
 	"sync"
 
+	_ "golang.org/x/image/bmp"  // dimension probing
+	_ "golang.org/x/image/tiff" // dimension probing
+	_ "golang.org/x/image/webp" // dimension probing
+
 	"github.com/pmarschik/adfast/convert"
 )
 
