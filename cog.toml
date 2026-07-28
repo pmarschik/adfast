@@ -7,6 +7,7 @@
 # - AST      the Markdown AST and goldmark→AST lifting
 # - render     AST→markdown rendering (remark-compatible output)
 # - adf        ADF types, codecs, ADF↔AST converters
+# - assets     assets/ content-addressed media store + upload/sync
 # - directives the directive dialect (media, panels, smart links, …)
 # - format     the WithPrettierFormat style-preserving formatter mode
 # - jira       jira/ addon module
@@ -22,6 +23,7 @@ scopes = [
   "AST",
   "render",
   "adf",
+  "assets",
   "directives",
   "format",
   "jira",
