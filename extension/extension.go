@@ -178,6 +178,11 @@ type EncodeContext interface {
 	// the store can recover it. Returns ("", false) when no resolver is
 	// configured or the reference is unknown.
 	AssetID(ref string) (id string, ok bool)
+	// AssetDims resolves the intrinsic pixel dimensions of a markdown-relative
+	// asset reference from the local file. Lets a media directive omit width/
+	// height when they match the file. Returns (0, 0, false) when no resolver
+	// is configured or the file is not a measurable image.
+	AssetDims(ref string) (width, height int, ok bool)
 }
 
 // MediaAsset describes a downloaded attachment available on disk for

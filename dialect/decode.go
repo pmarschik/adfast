@@ -566,6 +566,12 @@ func mediaAsImage(media *adf.Media, single *adf.MediaSingle) ast.Node {
 // inverse of Media.EncodeADF).
 func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx extension.DecodeContext) *Media {
 	attrs := map[string]string{}
+	localAsset, isLocal := ctx.Asset(media.ID)
+	// A downloaded asset whose intrinsic dimensions match the file lets us omit
+	// width/height — encode re-derives them from the local file (AssetDims).
+	dimsMatch := isLocal && localAsset.HasDim &&
+		media.Width != nil && media.Height != nil &&
+		float64(localAsset.Width) == *media.Width && float64(localAsset.Height) == *media.Height
 	if border, ok := adf.FindMark[*adf.Border](media.Marks); ok {
 		if border.Color != "" {
 			attrs["borderColor"] = border.Color
@@ -574,13 +580,15 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 			attrs["borderSize"] = strconv.Itoa(border.Size)
 		}
 	}
-	if media.Collection != nil {
+	// Omit an empty collection on file media (the attachment default);
+	// mediaFromAttrs re-adds it.
+	if media.Collection != nil && !(media.Type == "file" && *media.Collection == "") {
 		attrs["collection"] = *media.Collection
 	}
 	if group {
 		attrs["group"] = "true"
 	}
-	if media.Height != nil {
+	if media.Height != nil && !dimsMatch {
 		attrs["height"] = formatJSNumber(*media.Height)
 	}
 	if single != nil {
@@ -601,8 +609,8 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	// path and OMIT the explicit id — encode resolves the id back from the path
 	// via the (issue-scoped) asset store. When it is not local, keep the
 	// explicit id (nothing can resolve it).
-	if a, ok := ctx.Asset(media.ID); ok {
-		attrs["path"] = a.Path
+	if isLocal {
+		attrs["path"] = localAsset.Path
 	} else if media.ID != "" {
 		attrs["id"] = media.ID
 	}
@@ -614,7 +622,7 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	if media.URL != "" {
 		attrs["url"] = media.URL
 	}
-	if media.Width != nil {
+	if media.Width != nil && !dimsMatch {
 		attrs["width"] = formatJSNumber(*media.Width)
 	}
 	if single != nil {

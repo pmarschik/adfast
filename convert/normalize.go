@@ -1657,6 +1657,12 @@ func (fn *normalizer) fileMediaAsImage(m *fmtMedia) ast.Node {
 // payload re-derived from the media shape.
 func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	attrs := map[string]string{}
+	asset, isLocal := fn.assets[m.id]
+	// A downloaded asset whose intrinsic dimensions match the file lets us omit
+	// width/height — encode re-derives them (mirrors dialect's mediaLeafNode).
+	dimsMatch := isLocal && asset.HasDim &&
+		m.width != nil && m.height != nil &&
+		float64(asset.Width) == *m.width && float64(asset.Height) == *m.height
 	if m.hasBorder {
 		if m.borderColor != "" {
 			attrs["borderColor"] = m.borderColor
@@ -1665,13 +1671,14 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 			attrs["borderSize"] = strconv.Itoa(m.borderSize)
 		}
 	}
-	if m.collection != nil {
+	// Omit an empty collection on file media (the attachment default).
+	if m.collection != nil && !(m.mtype == "file" && *m.collection == "") {
 		attrs["collection"] = *m.collection
 	}
 	if group {
 		attrs["group"] = "true"
 	}
-	if m.height != nil {
+	if m.height != nil && !dimsMatch {
 		attrs["height"] = formatJSNumber(*m.height)
 	}
 	if m.hasSingle {
@@ -1691,8 +1698,8 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	// (encode resolves the id from the path via the scoped store); otherwise
 	// keep the id (nothing can resolve it). Mirrors dialect's mediaLeafNode.
 	path := m.path
-	if a, ok := fn.assets[m.id]; ok {
-		path = a.Path
+	if isLocal {
+		path = asset.Path
 	}
 	if path != "" {
 		attrs["path"] = path
@@ -1706,7 +1713,7 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	if m.url != "" {
 		attrs["url"] = m.url
 	}
-	if m.width != nil {
+	if m.width != nil && !dimsMatch {
 		attrs["width"] = formatJSNumber(*m.width)
 	}
 	if m.hasSingle && m.widthType != nil && *m.widthType != "" {

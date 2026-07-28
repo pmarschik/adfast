@@ -138,7 +138,7 @@ func TestAdfToMarkdown_BlockTypes(t *testing.T) {
 					Collection: ptrOf(""), Width: ptrOf(float64(2308)), Height: ptrOf(float64(551)),
 				}},
 			}),
-			contains: []string{`::media[shot.png]{#abc collection height="551" layoutWidth="686" width="2308" widthType="pixel"}`},
+			contains: []string{`::media[shot.png]{#abc height="551" layoutWidth="686" width="2308" widthType="pixel"}`},
 		},
 	}
 
@@ -951,5 +951,46 @@ func TestFormatMode_SlimsMediaViaStore(t *testing.T) {
 	}
 	if again := ToMarkdown(FromMarkdown(out, opts...), opts...); again != out {
 		t.Errorf("format not idempotent:\n first: %q\nsecond: %q", out, again)
+	}
+}
+
+// A downloaded file media drops width/height (when they match the file) and an
+// empty collection on decode, and regains them on encode (dims via AssetDims,
+// collection via the file-media default) — proving the slim directive is a
+// lossless round-trip.
+func TestMediaDirective_DimsAndCollectionRoundTrip(t *testing.T) {
+	const id, path = "abc-123", "assets/shot.png"
+	in := doc(&adf.MediaSingle{
+		Layout: ptrOf("align-start"), Width: ptrOf(float64(945)), WidthType: ptrOf("pixel"),
+		Content: []adf.Node{&adf.Media{
+			Type: "file", ID: id, Alt: "shot.png",
+			Collection: ptrOf(""), Width: ptrOf(float64(1355)), Height: ptrOf(float64(568)),
+		}},
+	})
+	dec := []Option{WithMediaAssets(map[string]convert.MediaAsset{id: {Path: path, Width: 1355, Height: 568, HasDim: true}})}
+	md := adfToMD(in, dec...)
+	for _, bad := range []string{`width="1355"`, `height="568"`, "collection", "#" + id, `type="file"`} {
+		if strings.Contains(md, bad) {
+			t.Errorf("expected %q dropped, got:\n%s", bad, md)
+		}
+	}
+	if !strings.Contains(md, `layoutWidth="945"`) {
+		t.Errorf("layoutWidth (a real resize) must be kept, got:\n%s", md)
+	}
+
+	enc := []Option{
+		WithAssetIDResolver(func(p string) (string, bool) { return id, p == path }),
+		WithImageDimsResolver(func(p string) (int, int, bool) { return 1355, 568, p == path }),
+	}
+	back := mdToADF(md, enc...)
+	media := back.Content[0].(*adf.MediaSingle).Content[0].(*adf.Media)
+	if media.ID != id {
+		t.Errorf("id not restored: %q", media.ID)
+	}
+	if media.Width == nil || *media.Width != 1355 || media.Height == nil || *media.Height != 568 {
+		t.Errorf("dims not restored: w=%v h=%v", media.Width, media.Height)
+	}
+	if media.Collection == nil || *media.Collection != "" {
+		t.Errorf("collection not restored: %v", media.Collection)
 	}
 }

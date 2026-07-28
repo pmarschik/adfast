@@ -54,11 +54,17 @@ func (n *Expand) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 // the converter merges with adjacent group items.
 func (n *Media) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 	media := mediaFromAttrs(n.Attrs, ast.PlainText(n.Children))
-	// A local asset omits its id (decode drops it); resolve it back from the
-	// markdown-relative path via the asset store.
+	// A local asset omits its id + intrinsic dimensions (decode drops them);
+	// resolve them back from the markdown-relative path via the asset store.
 	if media.ID == "" {
 		if id, ok := ctx.AssetID(n.Attrs["path"]); ok {
 			media.ID = id
+		}
+	}
+	if media.Width == nil || media.Height == nil {
+		if w, h, ok := ctx.AssetDims(n.Attrs["path"]); ok {
+			wf, hf := float64(w), float64(h)
+			media.Width, media.Height = &wf, &hf
 		}
 	}
 	if n.Attrs["group"] == "true" {
@@ -82,6 +88,9 @@ func mediaFromAttrs(attrs map[string]string, alt string) *adf.Media {
 	}
 	if v, ok := attrs["collection"]; ok {
 		media.Collection = strPtr(v)
+	} else if media.Type == "file" {
+		// Re-add the empty collection omitted on decode for file media.
+		media.Collection = strPtr("")
 	}
 	if v, ok := attrs["height"]; ok {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {

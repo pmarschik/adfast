@@ -750,6 +750,15 @@ func (c *astConverter) assetID(ref string) (string, bool) {
 	return c.resolveAssetID(ref)
 }
 
+// assetDims resolves a markdown-relative asset reference to its intrinsic
+// pixel dimensions via the configured resolver, or (0, 0, false).
+func (c *astConverter) assetDims(ref string) (int, int, bool) {
+	if c.resolveImageDims == nil || ref == "" {
+		return 0, 0, false
+	}
+	return c.resolveImageDims(ref)
+}
+
 // attachmentImageToMedia converts a downloaded-attachment image back to its
 // ADF media form: the id comes from the filename, the intrinsic dimensions
 // from the local file via the injected resolver.
@@ -1117,6 +1126,11 @@ func (e *blockEncodeContext) AssetID(ref string) (string, bool) {
 	return e.c.assetID(ref)
 }
 
+// AssetDims implements extension.EncodeContext.
+func (e *blockEncodeContext) AssetDims(ref string) (int, int, bool) {
+	return e.c.assetDims(ref)
+}
+
 // inlineEncodeContext is the EncodeContext handed to extension nodes in
 // inline position; it carries the marks inherited from enclosing
 // constructs.
@@ -1148,6 +1162,11 @@ func (e *inlineEncodeContext) SmartLinkURL(label string) string {
 // AssetID implements extension.EncodeContext.
 func (e *inlineEncodeContext) AssetID(ref string) (string, bool) {
 	return e.c.assetID(ref)
+}
+
+// AssetDims implements extension.EncodeContext.
+func (e *inlineEncodeContext) AssetDims(ref string) (int, int, bool) {
+	return e.c.assetDims(ref)
 }
 
 // flattenStyled layers an extension.InlineStyle onto the inherited mark

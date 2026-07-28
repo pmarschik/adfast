@@ -5921,7 +5921,7 @@
           }
         ]
       },
-      "md": "::media[image-20260212-125503.png]{collection height=\"551\" layoutWidth=\"686\" path=\"assets/shot.png\" width=\"2308\" widthType=\"pixel\"}\n"
+      "md": "::media[image-20260212-125503.png]{layoutWidth=\"686\" path=\"assets/shot.png\" widthType=\"pixel\"}\n"
     },
     {
       "adf": {
@@ -5981,7 +5981,7 @@
           }
         ]
       },
-      "md": "::media[a.pdf]{#g1 collection group=\"true\"}\n\n::media[b \\[x\\].pdf]{#g2 collection group=\"true\"}\n"
+      "md": "::media[a.pdf]{#g1 group=\"true\"}\n\n::media[b \\[x\\].pdf]{#g2 group=\"true\"}\n"
     },
     {
       "adf": {
@@ -6299,7 +6299,7 @@
           }
         ]
       },
-      "md": "::media[old.png]{collection height=\"480\" path=\"assets/old.png\" width=\"640\"}\n"
+      "md": "::media[old.png]{height=\"480\" path=\"assets/old.png\" width=\"640\"}\n"
     },
     {
       "adf": {
@@ -6329,7 +6329,7 @@
           }
         ]
       },
-      "md": "::media[shot.png]{collection height=\"551\" layoutWidth=\"300\" path=\"assets/shot.png\" width=\"2308\" widthType=\"pixel\"}\n"
+      "md": "::media[shot.png]{layoutWidth=\"300\" path=\"assets/shot.png\" widthType=\"pixel\"}\n"
     },
     {
       "adf": {
@@ -6357,7 +6357,7 @@
           }
         ]
       },
-      "md": "::media[spec.pdf]{collection height=\"1\" path=\"assets/spec.pdf\" width=\"1\"}\n"
+      "md": "::media[spec.pdf]{height=\"1\" path=\"assets/spec.pdf\" width=\"1\"}\n"
     },
     {
       "adf": {
