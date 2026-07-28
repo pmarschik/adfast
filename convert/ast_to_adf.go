@@ -30,14 +30,15 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 		o(&cfg)
 	}
 	c := astConverter{
-		preserveTight:    cfg.preserveListTightness,
-		smartLinks:       cfg.smartLinks,
-		resolveImageDims: cfg.resolveImageDims,
-		resolveAssetID:   cfg.resolveAssetID,
-		diagnostics:      cfg.diagnostics,
-		codeLanguages:    cfg.codeLanguages,
-		unsupportedKind:  cfg.unsupportedProduct,
-		unsupportedKinds: cfg.unsupportedKinds,
+		preserveTight:       cfg.preserveListTightness,
+		preserveLocalImages: cfg.preserveLocalImages,
+		smartLinks:          cfg.smartLinks,
+		resolveImageDims:    cfg.resolveImageDims,
+		resolveAssetID:      cfg.resolveAssetID,
+		diagnostics:         cfg.diagnostics,
+		codeLanguages:       cfg.codeLanguages,
+		unsupportedKind:     cfg.unsupportedProduct,
+		unsupportedKinds:    cfg.unsupportedKinds,
 	}
 	content := c.convertBlocks(ast.Children(root))
 	if len(content) == 0 {
@@ -49,14 +50,15 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 }
 
 type astConverter struct {
-	smartLinks       SmartLinks
-	resolveImageDims ImageDimsResolver
-	resolveAssetID   AssetIDResolver
-	diagnostics      func(Diagnostic)
-	codeLanguages    map[string]bool
-	unsupportedKinds map[string]bool
-	unsupportedKind  string
-	preserveTight    bool
+	smartLinks          SmartLinks
+	resolveImageDims    ImageDimsResolver
+	resolveAssetID      AssetIDResolver
+	diagnostics         func(Diagnostic)
+	codeLanguages       map[string]bool
+	unsupportedKinds    map[string]bool
+	unsupportedKind     string
+	preserveTight       bool
+	preserveLocalImages bool
 }
 
 // checkUnsupportedKinds walks the produced document over both nodes and
@@ -537,7 +539,7 @@ func (c *astConverter) convertParagraph(node *ast.Paragraph) adf.Node {
 	if img, id, ok := c.singleAttachmentImage(node); ok {
 		return withImageCaption(c.attachmentImageToMedia(img, id), img.Title)
 	}
-	if url, alt, ok := singleImageChild(node); ok {
+	if url, alt, ok := c.singleImageChild(node); ok {
 		media := &adf.Media{Type: "external", URL: url, Alt: alt}
 		title := ""
 		if img, isImg := node.Children[0].(*ast.Image); isImg {
@@ -781,17 +783,23 @@ func (c *astConverter) attachmentImageToMedia(img *ast.Image, id string) adf.Nod
 }
 
 // singleImageChild reports the paragraph's sole child when it is an image
-// with an absolute http(s) URL (relative paths cannot be represented in
-// Jira until asset upload exists).
-func singleImageChild(node *ast.Paragraph) (url, alt string, ok bool) {
+// expressible as external media. An absolute http(s) URL is always an
+// embedded external image. A document-relative path is a local image
+// reference the store resolver (singleAttachmentImage, tried first) could
+// not map to an uploaded attachment; it is kept as external media carrying
+// the path ONLY when WithPreserveLocalImages is set — so a store-aware
+// round-trip and a later push upload can still see it — otherwise it is
+// dropped (the remark-reference default; a diagnostic is emitted downstream).
+func (c *astConverter) singleImageChild(node *ast.Paragraph) (url, alt string, ok bool) {
 	if len(node.Children) != 1 {
 		return "", "", false
 	}
 	img, ok := node.Children[0].(*ast.Image)
-	if !ok {
+	if !ok || img.URL == "" {
 		return "", "", false
 	}
-	if !strings.HasPrefix(img.URL, "http://") && !strings.HasPrefix(img.URL, "https://") {
+	isHTTP := strings.HasPrefix(img.URL, "http://") || strings.HasPrefix(img.URL, "https://")
+	if !isHTTP && !c.preserveLocalImages {
 		return "", "", false
 	}
 	return img.URL, ast.PlainText(img.Children), true

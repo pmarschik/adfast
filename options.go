@@ -21,23 +21,24 @@ type Option func(*options)
 
 // options is the union of everything the four primitives read.
 type options struct {
-	smartLinks       convert.SmartLinks
-	mediaAssets      map[string]convert.MediaAsset
-	frontmatter      FrontmatterProvider
-	diagnostics      func(convert.Diagnostic)
-	blockSep         *string
-	printWidth       *int
-	resolveImageDims convert.ImageDimsResolver
-	resolveAssetID   convert.AssetIDResolver
-	codeLanguages    []string
-	unsupportedKind  string
-	unsupportedKinds []string
-	docTransforms    []func(adf.Doc) adf.Doc
-	astTransforms    []func(ast.Node)
-	extensions       []extension.Registration
-	preserveTight    bool
-	noWrap           bool
-	prettier         bool
+	smartLinks          convert.SmartLinks
+	mediaAssets         map[string]convert.MediaAsset
+	frontmatter         FrontmatterProvider
+	diagnostics         func(convert.Diagnostic)
+	blockSep            *string
+	printWidth          *int
+	resolveImageDims    convert.ImageDimsResolver
+	resolveAssetID      convert.AssetIDResolver
+	codeLanguages       []string
+	unsupportedKind     string
+	unsupportedKinds    []string
+	docTransforms       []func(adf.Doc) adf.Doc
+	astTransforms       []func(ast.Node)
+	extensions          []extension.Registration
+	preserveTight       bool
+	preserveLocalImages bool
+	noWrap              bool
+	prettier            bool
 }
 
 func newOptions(opts []Option) options {
@@ -63,6 +64,9 @@ func (o *options) convertOptions() []convert.Option {
 	}
 	if o.preserveTight {
 		out = append(out, convert.WithPreserveListTightness())
+	}
+	if o.preserveLocalImages {
+		out = append(out, convert.WithPreserveLocalImages())
 	}
 	if o.resolveImageDims != nil {
 		out = append(out, convert.WithImageDimsResolver(o.resolveImageDims))
@@ -138,6 +142,17 @@ func WithUnsupportedKinds(product string, kinds []string) Option {
 // Jira-sourced documents, which lack this attribute.
 func WithPreserveListTightness() Option {
 	return func(o *options) { o.preserveTight = true }
+}
+
+// WithPreserveLocalImages keeps an unresolved document-relative image
+// reference (![alt](assets/x.png)) as external media carrying the path
+// instead of dropping it (the remark-reference default). Read by ToADF.
+// Use it for store-aware round-trips and diff normalization where a
+// not-yet-uploaded local image must survive so a later push upload can
+// resolve it; do NOT use it for the final Jira push encode, where an
+// unresolved image should drop with an unresolved-asset diagnostic.
+func WithPreserveLocalImages() Option {
+	return func(o *options) { o.preserveLocalImages = true }
 }
 
 // WithImageDimsResolver supplies the resolver used to re-derive intrinsic

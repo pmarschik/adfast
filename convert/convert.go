@@ -72,6 +72,7 @@ type config struct {
 	unsupportedProduct    string
 	extensions            []extension.Registration
 	preserveListTightness bool
+	preserveLocalImages   bool
 }
 
 // Option configures the ToADF and FromADF conversions; each option
@@ -96,6 +97,19 @@ func WithSmartLinks(sl SmartLinks) Option {
 // and would diverge.
 func WithPreserveListTightness() Option {
 	return func(c *config) { c.preserveListTightness = true }
+}
+
+// WithPreserveLocalImages keeps a document-relative image reference
+// (![alt](assets/x.png)) as external media carrying the path when the
+// asset store cannot resolve it to an uploaded media id, instead of
+// dropping it (the remark-reference default). Use it for store-aware
+// round-trips and diff normalization where a not-yet-uploaded local image
+// must survive — a later push upload then resolves it to file media. Do
+// NOT use it for the final Jira push encode: an image left unresolved
+// there should drop with an unresolved-asset diagnostic rather than send
+// invalid external media to Jira.
+func WithPreserveLocalImages() Option {
+	return func(c *config) { c.preserveLocalImages = true }
 }
 
 // WithImageDimsResolver supplies the resolver used to re-derive intrinsic

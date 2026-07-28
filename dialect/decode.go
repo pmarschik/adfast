@@ -380,7 +380,7 @@ func decodeMediaBlock(n adf.Node, ctx extension.DecodeContext) (ast.Node, bool) 
 func decodeCaptionedMedia(media *adf.Media, single *adf.MediaSingle, caption *adf.Caption, ctx extension.DecodeContext) ast.Node {
 	inlines := ctx.DecodeInlines(caption.Content)
 	if title, ok := plainCaptionText(inlines); ok {
-		if img := mediaAsImage(media, single); img != nil {
+		if img := mediaAsImage(media, single, ctx.PreserveLocalImages()); img != nil {
 			setImageTitle(img, title)
 			return img
 		}
@@ -455,7 +455,7 @@ func decodeMediaGroup(n adf.Node, ctx extension.DecodeContext) ([]ast.Node, bool
 // decodeMediaNode converts one media node (with its optional mediaSingle
 // wrapper) to a plain image when expressible, otherwise a ::media node.
 func decodeMediaNode(media *adf.Media, single *adf.MediaSingle, ctx extension.DecodeContext) ast.Node {
-	if img := mediaAsImage(media, single); img != nil {
+	if img := mediaAsImage(media, single, ctx.PreserveLocalImages()); img != nil {
 		return img
 	}
 	if img := fileMediaAsImage(media, single, ctx); img != nil {
@@ -524,15 +524,25 @@ func fileMediaAsImage(media *adf.Media, single *adf.MediaSingle, ctx extension.D
 
 // mediaAsImage renders an external media node as a plain markdown image
 // when every ADF property is expressible by ![alt](url): external type
-// with an absolute http(s) URL (the shape the encode side maps back to
-// external media — anything else would drop on re-encode), no
+// with a non-empty URL (the shape the encode side maps back to external
+// media — anything else would drop on re-encode), no
 // dimensions/occurrenceKey/collection, and at most the default
-// layout="center" wrapper. Anything richer falls back to ::media.
-func mediaAsImage(media *adf.Media, single *adf.MediaSingle) ast.Node {
+// layout="center" wrapper. Anything richer falls back to ::media. The URL
+// may be absolute (http(s), the usual embedded-image case) or a
+// document-relative path (a local image reference not yet uploaded to
+// Jira — preserved so the round-trip and the push upload can still see it).
+func mediaAsImage(media *adf.Media, single *adf.MediaSingle, preserveLocal bool) ast.Node {
 	if media.Type != "external" {
 		return nil
 	}
-	if !strings.HasPrefix(media.URL, "http://") && !strings.HasPrefix(media.URL, "https://") {
+	if media.URL == "" {
+		return nil
+	}
+	// A document-relative URL only round-trips to a plain image under
+	// WithPreserveLocalImages; otherwise it stays a ::media directive (the
+	// default, so a relative external URL survives re-encode losslessly).
+	isHTTP := strings.HasPrefix(media.URL, "http://") || strings.HasPrefix(media.URL, "https://")
+	if !isHTTP && !preserveLocal {
 		return nil
 	}
 	if media.Width != nil || adf.HasExtra(media, "width") {

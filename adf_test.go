@@ -995,6 +995,29 @@ func TestMediaDirective_DimsAndCollectionRoundTrip(t *testing.T) {
 	}
 }
 
+// WithPreserveLocalImages keeps an unresolved document-relative image through
+// the md->ADF->md round-trip (so a store-aware normalization or a later push
+// upload can still see it). Without it the image drops — the remark-reference
+// default — so the option must be opt-in.
+func TestPreserveLocalImages_RoundTrip(t *testing.T) {
+	const md = "Probe:\n\n![shot.png](assets/shot.png)\n"
+	roundTrip := func(opts ...Option) string {
+		d := ToADF(FromMarkdown(md, opts...), opts...)
+		return ToMarkdown(FromADF(d, opts...), opts...)
+	}
+	if got := roundTrip(); strings.Contains(got, "shot.png") {
+		t.Errorf("default must drop the unresolved local image, got %q", got)
+	}
+	if got := roundTrip(WithPreserveLocalImages()); got != md {
+		t.Errorf("preserve must keep the local image:\n got: %q\nwant: %q", got, md)
+	}
+	// An http image is unaffected (round-trips without the option).
+	const httpMD = "![a](https://example.com/y.png)\n"
+	if got := ToMarkdown(FromADF(ToADF(FromMarkdown(httpMD)))); got != httpMD {
+		t.Errorf("http image must round-trip: got %q", got)
+	}
+}
+
 // A pixel display width equal to the intrinsic width is a no-op resize (the
 // ~68% Jira-default case): decode drops layoutWidth + widthType, leaving a
 // natural-size directive. A genuine resize keeps them.

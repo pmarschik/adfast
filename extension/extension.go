@@ -213,6 +213,11 @@ type DecodeContext interface {
 	SmartLinkLabel(url string) string
 	// Asset looks up a downloaded media asset by media id.
 	Asset(id string) (MediaAsset, bool)
+	// PreserveLocalImages reports whether external media carrying a
+	// document-relative URL should render back to a plain ![alt](path)
+	// image (the WithPreserveLocalImages round-trip) rather than a
+	// ::media directive. Off by default.
+	PreserveLocalImages() bool
 }
 
 // Registration bundles the two factory-direction hooks of one extension

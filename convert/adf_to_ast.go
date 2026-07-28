@@ -97,9 +97,10 @@ func smartLinkLabel(rc renderCtx, url string) string {
 
 // renderCtx carries per-conversion configuration through the ADF→AST walk.
 type renderCtx struct {
-	assets      mediaAssetMap
-	smartLinks  SmartLinks
-	diagnostics func(Diagnostic)
+	assets              mediaAssetMap
+	smartLinks          SmartLinks
+	diagnostics         func(Diagnostic)
+	preserveLocalImages bool
 	// The decode hooks of the registered extensions (user-supplied
 	// WithExtensions first, then the dialect set — user hooks override),
 	// pre-filtered per hook kind and tried in registration order by the
@@ -175,6 +176,11 @@ func (d *decodeContext) Asset(id string) (extension.MediaAsset, bool) {
 	return a, ok
 }
 
+// PreserveLocalImages implements extension.DecodeContext.
+func (d *decodeContext) PreserveLocalImages() bool {
+	return d.rc.preserveLocalImages
+}
+
 // decodeBlockHook dispatches an ADF block node to the registered
 // DecodeBlock hooks, in registration order.
 func decodeBlockHook(node adf.Node, rc renderCtx) (ast.Node, bool) {
@@ -244,7 +250,7 @@ func FromADF(doc adf.Doc, opts ...Option) ast.Node {
 	if err := extension.ValidateSet(cfg.extensions); err != nil {
 		panic(err)
 	}
-	rc := renderCtx{assets: cfg.mediaAssets, smartLinks: cfg.smartLinks, diagnostics: cfg.diagnostics}
+	rc := renderCtx{assets: cfg.mediaAssets, smartLinks: cfg.smartLinks, diagnostics: cfg.diagnostics, preserveLocalImages: cfg.preserveLocalImages}
 	// User registrations first: their decode hooks win over the dialect.
 	regs := make([]extension.Registration, 0, len(cfg.extensions)+len(dialect.Registrations()))
 	regs = append(regs, cfg.extensions...)
