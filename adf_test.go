@@ -929,3 +929,27 @@ func TestMediaDirective_UUIDDropRoundTrip(t *testing.T) {
 		t.Errorf("uuid not restored on encode: %q", media.ID)
 	}
 }
+
+// Format mode (md→AST→md, WithPrettierFormat) must apply the same store-aware
+// media slimming as the ADF decode: a directive referencing a downloaded asset
+// drops its explicit id + default type/layout and gains the local path — and
+// the result is idempotent. Guards the convert.Normalize media path.
+func TestFormatMode_SlimsMediaViaStore(t *testing.T) {
+	md := `::media[shot.png]{#abc-123 collection height="182" layout="align-start" layoutWidth="671" type="file" width="817" widthType="pixel"}` + "\n"
+	opts := []Option{
+		WithPrettierFormat(),
+		WithMediaAssets(map[string]convert.MediaAsset{"abc-123": {Path: "assets/shot.png", Width: 817, Height: 182, HasDim: true}}),
+	}
+	out := ToMarkdown(FromMarkdown(md, opts...), opts...)
+	for _, bad := range []string{"#abc-123", `type="file"`, `layout="align-start"`} {
+		if strings.Contains(out, bad) {
+			t.Errorf("expected %q dropped in format mode, got:\n%s", bad, out)
+		}
+	}
+	if !strings.Contains(out, `path="assets/shot.png"`) {
+		t.Errorf("expected path retained, got:\n%s", out)
+	}
+	if again := ToMarkdown(FromMarkdown(out, opts...), opts...); again != out {
+		t.Errorf("format not idempotent:\n first: %q\nsecond: %q", out, again)
+	}
+}

@@ -1418,6 +1418,7 @@ type fmtMedia struct {
 	widthType     *string
 	mtype         string
 	id            string
+	path          string
 	alt           string
 	url           string
 	occurrenceKey string
@@ -1434,6 +1435,9 @@ func mediaFromAttrs(attrs map[string]string, alt string) *fmtMedia {
 		m.mtype = t
 	}
 	m.id = attrs["id"]
+	// A local asset carries its markdown-relative path (id may be omitted);
+	// keep it so the canonical form round-trips without re-resolving.
+	m.path = attrs["path"]
 	if alt != "" {
 		m.alt = alt
 	}
@@ -1670,11 +1674,10 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	if m.height != nil {
 		attrs["height"] = formatJSNumber(*m.height)
 	}
-	if m.id != "" {
-		attrs["id"] = m.id
-	}
 	if m.hasSingle {
-		if m.layout != nil && *m.layout != "" {
+		// Omit the file-media default layout ("align-start") — encode re-infers
+		// it (mirrors dialect's mediaLeafNode).
+		if m.layout != nil && *m.layout != "" && !(m.mtype == "file" && *m.layout == "align-start") {
 			attrs["layout"] = *m.layout
 		}
 		if m.layoutWidth != nil {
@@ -1684,10 +1687,20 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	if m.occurrenceKey != "" {
 		attrs["occurrenceKey"] = m.occurrenceKey
 	}
+	// A locally-downloaded asset emits its path and OMITS the explicit id
+	// (encode resolves the id from the path via the scoped store); otherwise
+	// keep the id (nothing can resolve it). Mirrors dialect's mediaLeafNode.
+	path := m.path
 	if a, ok := fn.assets[m.id]; ok {
-		attrs["path"] = a.Path
+		path = a.Path
 	}
-	if m.mtype != "" {
+	if path != "" {
+		attrs["path"] = path
+	} else if m.id != "" {
+		attrs["id"] = m.id
+	}
+	// Omit the default media type ("file") — encode re-infers it.
+	if m.mtype != "" && m.mtype != "file" {
 		attrs["type"] = m.mtype
 	}
 	if m.url != "" {
