@@ -186,7 +186,11 @@ func TestWithStoreDir_PlacesBlobsInCustomTopLevelDir(t *testing.T) {
 	}
 
 	// Blob + index live in <root>/.asset-store, NOT <root>/assets/.store.
-	if entries, _ := filepath.Glob(filepath.Join(root, ".asset-store", "*")); len(entries) == 0 {
+	entries, globErr := filepath.Glob(filepath.Join(root, ".asset-store", "*"))
+	if globErr != nil {
+		t.Fatal(globErr)
+	}
+	if len(entries) == 0 {
 		t.Errorf("expected blobs under %s/.asset-store", root)
 	}
 	if _, err := os.Stat(filepath.Join(root, "assets", ".store")); !os.IsNotExist(err) {

@@ -983,7 +983,14 @@ func TestMediaDirective_DimsAndCollectionRoundTrip(t *testing.T) {
 		WithImageDimsResolver(func(p string) (int, int, bool) { return 1355, 568, p == path }),
 	}
 	back := mdToADF(md, enc...)
-	media := back.Content[0].(*adf.MediaSingle).Content[0].(*adf.Media)
+	single, ok := back.Content[0].(*adf.MediaSingle)
+	if !ok {
+		t.Fatalf("expected *adf.MediaSingle, got %T", back.Content[0])
+	}
+	media, ok := single.Content[0].(*adf.Media)
+	if !ok {
+		t.Fatalf("expected *adf.Media, got %T", single.Content[0])
+	}
 	if media.ID != id {
 		t.Errorf("id not restored: %q", media.ID)
 	}
