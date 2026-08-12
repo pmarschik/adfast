@@ -570,18 +570,25 @@ func mediaAsImage(media *adf.Media, single *adf.MediaSingle, preserveLocal bool)
 	return &ast.Paragraph{Children: []ast.Node{img}}
 }
 
-// mediaLeafNode serializes a media node (with its optional mediaSingle
-// wrapper or group membership) as a ::media node: the alt text is the
-// label, every other ADF attribute rides as a directive attribute (the
-// inverse of Media.EncodeADF).
-func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx extension.DecodeContext) *Media {
-	attrs := map[string]string{}
-	localAsset, isLocal := ctx.Asset(media.ID)
+// mediaOmissions are the facts a canonical ::media leaves attributes out on:
+// what the asset store has for this media, whether its recorded dimensions are
+// just the local file's own, and whether its display width is a no-op resize.
+type mediaOmissions struct {
+	asset        extension.MediaAsset
+	isLocal      bool
+	dimsMatch    bool
+	naturalWidth bool
+}
+
+// mediaOmissionsOf derives them for one media node.
+func mediaOmissionsOf(media *adf.Media, single *adf.MediaSingle, ctx extension.DecodeContext) mediaOmissions {
+	var om mediaOmissions
+	om.asset, om.isLocal = ctx.Asset(media.ID)
 	// A downloaded asset whose intrinsic dimensions match the file lets us omit
 	// width/height — encode re-derives them from the local file (AssetDims).
-	dimsMatch := isLocal && localAsset.HasDim &&
+	om.dimsMatch = om.isLocal && om.asset.HasDim &&
 		media.Width != nil && media.Height != nil &&
-		float64(localAsset.Width) == *media.Width && float64(localAsset.Height) == *media.Height
+		float64(om.asset.Width) == *media.Width && float64(om.asset.Height) == *media.Height
 	// A pixel display width equal to the intrinsic width is a no-op resize
 	// (the image renders at its own size, the ~68% Jira-default case). Drop
 	// the redundant layoutWidth/widthType; the plain-size media is
@@ -589,16 +596,28 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	// natural width to the no-width form (a one-time, visually-identical
 	// change on the next push), matching the many media that carry no
 	// display width at all.
-	naturalWidth := single != nil && single.Width != nil && media.Width != nil &&
+	om.naturalWidth = single != nil && single.Width != nil && media.Width != nil &&
 		*single.Width == *media.Width && strDeref(single.WidthType) == "pixel"
-	if border, ok := adf.FindMark[*adf.Border](media.Marks); ok {
-		if border.Color != "" {
-			attrs["borderColor"] = border.Color
-		}
-		if border.Size != 0 {
-			attrs["borderSize"] = strconv.Itoa(border.Size)
-		}
+	return om
+}
+
+// mediaBorderAttrs writes the border mark's attributes.
+func mediaBorderAttrs(media *adf.Media, attrs map[string]string) {
+	border, ok := adf.FindMark[*adf.Border](media.Marks)
+	if !ok {
+		return
 	}
+	if border.Color != "" {
+		attrs["borderColor"] = border.Color
+	}
+	if border.Size != 0 {
+		attrs["borderSize"] = strconv.Itoa(border.Size)
+	}
+}
+
+// mediaShapeAttrs writes what the media leaf says about itself: its container,
+// its intrinsic size, its occurrence key.
+func mediaShapeAttrs(media *adf.Media, om mediaOmissions, group bool, attrs map[string]string) {
 	// Omit an empty collection on file media (the attachment default);
 	// mediaFromAttrs re-adds it.
 	if media.Collection != nil && (media.Type != "file" || *media.Collection != "") {
@@ -607,29 +626,45 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	if group {
 		attrs["group"] = "true"
 	}
-	if media.Height != nil && !dimsMatch {
+	if media.Height != nil && !om.dimsMatch {
 		attrs["height"] = formatJSNumber(*media.Height)
 	}
-	if single != nil {
-		// Omit the file-media default layout ("align-start"); mediaSingleFromAttrs
-		// re-infers it when a file-type directive carries no layout, so the
-		// round-trip stays lossless while the directive stays terse.
-		if layout := strDeref(single.Layout); layout != "" && (media.Type != "file" || layout != "align-start") {
-			attrs["layout"] = layout
-		}
-		if single.Width != nil && !naturalWidth {
-			attrs["layoutWidth"] = formatJSNumber(*single.Width)
-		}
+	if media.Width != nil && !om.dimsMatch {
+		attrs["width"] = formatJSNumber(*media.Width)
 	}
 	if v := strDeref(media.OccurrenceKey); v != "" {
 		attrs["occurrenceKey"] = v
 	}
+}
+
+// mediaSingleAttrs writes what the mediaSingle wrapper says: how the image is
+// aligned, and how large it is displayed.
+func mediaSingleAttrs(media *adf.Media, single *adf.MediaSingle, om mediaOmissions, attrs map[string]string) {
+	if single == nil {
+		return
+	}
+	// Omit the file-media default layout ("align-start"); mediaSingleFromAttrs
+	// re-infers it when a file-type directive carries no layout, so the
+	// round-trip stays lossless while the directive stays terse.
+	if layout := strDeref(single.Layout); layout != "" && (media.Type != "file" || layout != "align-start") {
+		attrs["layout"] = layout
+	}
+	if single.Width != nil && !om.naturalWidth {
+		attrs["layoutWidth"] = formatJSNumber(*single.Width)
+	}
+	if v := strDeref(single.WidthType); v != "" && !om.naturalWidth {
+		attrs["widthType"] = v
+	}
+}
+
+// mediaSourceAttrs writes where the media comes from.
+func mediaSourceAttrs(media *adf.Media, om mediaOmissions, attrs map[string]string) {
 	// When the media is a locally downloaded asset, emit its markdown-relative
 	// path and OMIT the explicit id — encode resolves the id back from the path
 	// via the (issue-scoped) asset store. When it is not local, keep the
 	// explicit id (nothing can resolve it).
-	if isLocal {
-		attrs["path"] = localAsset.Path
+	if om.isLocal {
+		attrs["path"] = om.asset.Path
 	} else if media.ID != "" {
 		attrs["id"] = media.ID
 	}
@@ -641,14 +676,19 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	if media.URL != "" {
 		attrs["url"] = media.URL
 	}
-	if media.Width != nil && !dimsMatch {
-		attrs["width"] = formatJSNumber(*media.Width)
-	}
-	if single != nil {
-		if v := strDeref(single.WidthType); v != "" && !naturalWidth {
-			attrs["widthType"] = v
-		}
-	}
+}
+
+// mediaLeafNode serializes a media node (with its optional mediaSingle
+// wrapper or group membership) as a ::media node: the alt text is the
+// label, every other ADF attribute rides as a directive attribute (the
+// inverse of Media.EncodeADF).
+func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx extension.DecodeContext) *Media {
+	om := mediaOmissionsOf(media, single, ctx)
+	attrs := map[string]string{}
+	mediaBorderAttrs(media, attrs)
+	mediaShapeAttrs(media, om, group, attrs)
+	mediaSingleAttrs(media, single, om, attrs)
+	mediaSourceAttrs(media, om, attrs)
 	var children []ast.Node
 	if media.Alt != "" {
 		children = []ast.Node{&ast.Text{Value: media.Alt}}
