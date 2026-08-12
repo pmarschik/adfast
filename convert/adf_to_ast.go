@@ -97,18 +97,14 @@ func smartLinkLabel(rc renderCtx, url string) string {
 
 // renderCtx carries per-conversion configuration through the ADF→AST walk.
 type renderCtx struct {
-	assets              mediaAssetMap
 	smartLinks          SmartLinks
+	assets              mediaAssetMap
 	diagnostics         func(Diagnostic)
+	blockHooks          []func(adf.Node, extension.DecodeContext) (ast.Node, bool)
+	blockListHooks      []func(adf.Node, extension.DecodeContext) ([]ast.Node, bool)
+	inlineHooks         []func(adf.Node, extension.DecodeContext) ([]ast.Node, bool)
+	markHooks           []func(adf.Mark, []ast.Node) (ast.Node, bool)
 	preserveLocalImages bool
-	// The decode hooks of the registered extensions (user-supplied
-	// WithExtensions first, then the dialect set — user hooks override),
-	// pre-filtered per hook kind and tried in registration order by the
-	// decode dispatch.
-	blockHooks     []func(adf.Node, extension.DecodeContext) (ast.Node, bool)
-	blockListHooks []func(adf.Node, extension.DecodeContext) ([]ast.Node, bool)
-	inlineHooks    []func(adf.Node, extension.DecodeContext) ([]ast.Node, bool)
-	markHooks      []func(adf.Mark, []ast.Node) (ast.Node, bool)
 }
 
 // reportRawNode emits the raw-node diagnostic: the markdown projection
@@ -838,13 +834,20 @@ type flatInline struct {
 	isInlineCard bool
 	isBreak      bool
 	underline    bool
-	strong       bool
-	em           bool
-	strike       bool
+	// breakLead/breakTrail record that the folded text had a line break at
+	// its very start or end (see collapseInlineNewlines): between two nodes
+	// the space that break folded into is content, at the edge of a block
+	// it is only the producer's wrap.
+	breakLead  bool
+	breakTrail bool
+	strong     bool
+	em         bool
+	strike     bool
 }
 
 func convertAdfInlines(nodes []adf.Node, rc renderCtx) []ast.Node {
 	items := collectInlines(nodes, rc)
+	trimBreakEdges(items)
 	ops := flatInlineSpanOps(rc)
 	inferAcrossCode(items, ops)
 	return groupSpans(items, ops, false, false, false)
@@ -862,6 +865,21 @@ func flatInlineSpanOps(rc renderCtx) spanOps[flatInline] {
 		setStrong: func(i *flatInline) { i.strong = true },
 		setEm:     func(i *flatInline) { i.em = true },
 		leaf:      func(i *flatInline) ast.Node { return inlineLeafNode(*i, rc) },
+	}
+}
+
+// trimBreakEdges drops the space a folded line break left at the very start or
+// end of a block's inline run, where it would render as an escaped space
+// rather than as the separator it was.
+func trimBreakEdges(items []flatInline) {
+	if len(items) == 0 {
+		return
+	}
+	if first := &items[0]; first.breakLead {
+		first.text = strings.TrimPrefix(first.text, " ")
+	}
+	if last := &items[len(items)-1]; last.breakTrail {
+		last.text = strings.TrimSuffix(last.text, " ")
 	}
 }
 
@@ -1131,7 +1149,8 @@ func (v *adfInlineVisitor) VisitBodiedSyncBlock(n *adf.BodiedSyncBlock) []flatIn
 // flatInline item.
 func convertTextInline(node *adf.Text) flatInline {
 	marks := node.Marks
-	item := flatInline{text: node.Text}
+	text, breakLead, breakTrail := collapseInlineNewlines(node.Text)
+	item := flatInline{text: text, breakLead: breakLead, breakTrail: breakTrail}
 	if adf.HasMark(marks, "code") {
 		// Code mark is exclusive in ADF — strong/em/strike are stripped.
 		item.isCode = true
@@ -1178,6 +1197,51 @@ func convertTextInline(node *adf.Text) flatInline {
 		}
 	}
 	return item
+}
+
+// collapseInlineNewlines folds the line breaks a producer left inside a text
+// node into single spaces, the way CommonMark folds a soft break, and reports
+// whether a break sat at either edge of the node.
+//
+// ADF spells a line break as a hardBreak node; a newline inside a text node is
+// whitespace, and that is how the products render it. The markdown side
+// already agrees — FromMarkdown turns a soft break into a space and never
+// produces a text node containing one — so keeping the byte here would make
+// the same paragraph render differently depending on which side it came from,
+// and the wrapper would then break lines at the producer's old width instead
+// of ours.
+//
+// Only inline text passes through: codeBlock content is read straight off the
+// node (see convertAdfCodeBlock) and keeps its newlines.
+func collapseInlineNewlines(s string) (text string, lead, trail bool) {
+	if !strings.ContainsAny(s, "\r\n") {
+		return s, false, false
+	}
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\n' && s[i] != '\r' {
+			out = append(out, s[i])
+			continue
+		}
+		// Swallow the whole break — CRLF, blank lines, and the indentation
+		// on either side of it, all of which CommonMark drops too.
+		for len(out) > 0 && (out[len(out)-1] == ' ' || out[len(out)-1] == '\t') {
+			out = out[:len(out)-1]
+		}
+		lead = lead || len(out) == 0
+		for i+1 < len(s) && isInlineBreakSpace(s[i+1]) {
+			i++
+		}
+		trail = i+1 >= len(s)
+		out = append(out, ' ')
+	}
+	return string(out), lead, trail
+}
+
+// isInlineBreakSpace reports whether the byte is part of the whitespace run a
+// soft break may span.
+func isInlineBreakSpace(c byte) bool {
+	return c == '\n' || c == '\r' || c == ' ' || c == '\t'
 }
 
 // coreConsumedMark reports whether the mark kind is consumed by the core

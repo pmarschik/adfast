@@ -1056,3 +1056,75 @@ func TestMediaDirective_NaturalWidthDropped(t *testing.T) {
 		t.Errorf("genuine resize must keep layoutWidth/widthType, got:\n%s", rmd)
 	}
 }
+
+// A producer that publishes a soft-wrapped source file (mark, say) leaves the
+// wrap newlines inside the text node. ADF spells a line break as hardBreak, so
+// those are whitespace: the paragraph flows and re-wraps at our print width
+// instead of keeping the producer's.
+func TestAdfToMarkdown_TextNodeNewlinesFlow(t *testing.T) {
+	const width = 40
+	opts := []Option{WithPrintWidth(width)}
+	in := doc(p(txt(
+		"The value in each field is an index that maps to a result entry\n" +
+			"where it matches. Indices are assigned in order.",
+	)))
+	got := ToMarkdown(FromADF(in, opts...), opts...)
+	const want = "The value in each field is an index that\n" +
+		"maps to a result entry where it matches.\n" +
+		"Indices are assigned in order.\n"
+	if got != want {
+		t.Errorf("newlines did not flow:\n got: %q\nwant: %q", got, want)
+	}
+	for line := range strings.SplitSeq(strings.TrimSuffix(got, "\n"), "\n") {
+		if len(line) > width {
+			t.Errorf("line over the print width: %q", line)
+		}
+	}
+}
+
+// The whitespace on either side of such a break goes with it — one space, the
+// CommonMark soft-break rule — and a break at an edge of the node separates
+// nothing at all.
+func TestAdfToMarkdown_TextNodeNewlineWhitespace(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{name: "indentation on both sides", text: "alpha   \n\t beta", want: "alpha beta\n"},
+		{name: "a blank line", text: "alpha\n\nbeta", want: "alpha beta\n"},
+		{name: "CRLF", text: "alpha\r\nbeta", want: "alpha beta\n"},
+		{name: "leading", text: "\nalpha", want: "alpha\n"},
+		{name: "trailing", text: "alpha\n", want: "alpha\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ToMarkdown(FromADF(doc(p(txt(tc.text))))); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Only the edges of the block drop that space. A break at the end of one text
+// node is the separator between it and the next — dropping it there would run
+// the words into the code span that follows.
+func TestAdfToMarkdown_TextNodeNewlineBetweenSiblings(t *testing.T) {
+	in := doc(p(
+		txt("a result entry where\n"),
+		txt("i", &adf.Code{}),
+		txt("\nmatches."),
+	))
+	if got, want := ToMarkdown(FromADF(in)), "a result entry where `i` matches.\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// A codeBlock is read straight off the node, so its newlines are content and
+// stay put.
+func TestAdfToMarkdown_CodeBlockKeepsNewlines(t *testing.T) {
+	in := doc(&adf.CodeBlock{Language: "go", Content: []adf.Node{txt("a := 1\nb := 2")}})
+	if got, want := ToMarkdown(FromADF(in)), "```go\na := 1\nb := 2\n```\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}

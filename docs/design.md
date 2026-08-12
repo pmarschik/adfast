@@ -43,8 +43,15 @@ that boundary. Deliberate remaining lossiness across it: emojis whose
 documents carry a `text` attribute degrade to that text (shortName/id
 gone), overlapping annotation marks on one text run keep only the
 outermost anchor, unmodeled `Extra` attributes on converted kinds do
-not ride along, and caption/section/column `localId`s regenerate
-server-side.
+not ride along, caption/section/column `localId`s regenerate
+server-side, and a line break a producer left inside a text node
+collapses to a single space.
+
+That last one is symmetry rather than lossiness: ADF spells a line break
+as `hardBreak`, and markdown's soft break is a space, which is what
+`FromMarkdown` already produces — so a text node carrying the newlines
+of a soft-wrapped source file renders as one flowing paragraph, wrapped
+at the configured print width instead of the producer's.
 
 ## Universal core, product-profile diagnostics
 
