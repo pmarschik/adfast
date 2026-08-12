@@ -1082,6 +1082,44 @@ func TestAdfToMarkdown_TextNodeNewlinesFlow(t *testing.T) {
 	}
 }
 
+// ADF records no marker style, so an ordered list renders as the reference
+// does — repeating the start number — until a caller asks for the numbering
+// people write.
+func TestAdfToMarkdown_IncrementListMarkers(t *testing.T) {
+	list := doc(&adf.OrderedList{Content: []adf.Node{li(p(txt("a"))), li(p(txt("b"))), li(p(txt("c")))}})
+	if got, want := adfToMD(list), "1. a\n1. b\n1. c\n"; got != want {
+		t.Errorf("default:\n got: %q\nwant: %q", got, want)
+	}
+	if got, want := adfToMD(list, WithIncrementListMarkers()), "1. a\n2. b\n3. c\n"; got != want {
+		t.Errorf("incrementing:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// The option only renumbers: the list's own start still says where the
+// numbering begins, and a bullet list is untouched.
+func TestAdfToMarkdown_IncrementListMarkersKeepsStart(t *testing.T) {
+	start := 9
+	in := doc(&adf.OrderedList{Order: &start, Content: []adf.Node{li(p(txt("a"))), li(p(txt("b")))}})
+	if got, want := adfToMD(in, WithIncrementListMarkers()), "9. a\n10. b\n"; got != want {
+		t.Errorf("start:\n got: %q\nwant: %q", got, want)
+	}
+	bullets := doc(&adf.BulletList{Content: []adf.Node{li(p(txt("a"))), li(p(txt("b")))}})
+	if got, want := adfToMD(bullets, WithIncrementListMarkers()), "- a\n- b\n"; got != want {
+		t.Errorf("bullets:\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// With the option on, an ordered list a document already spelled 1. 2. 3.
+// survives the md → ADF → md round trip unchanged.
+func TestAdfToMarkdown_IncrementListMarkersRoundTrip(t *testing.T) {
+	const md = "1. a\n2. b\n3. c\n"
+	opts := []Option{WithIncrementListMarkers(), WithPreserveListTightness()}
+	got := ToMarkdown(FromADF(ToADF(FromMarkdown(md, opts...), opts...), opts...), opts...)
+	if got != md {
+		t.Errorf("round trip renumbered:\n got: %q\nwant: %q", got, md)
+	}
+}
+
 // The whitespace on either side of such a break goes with it — one space, the
 // CommonMark soft-break rule — and a break at an edge of the node separates
 // nothing at all.

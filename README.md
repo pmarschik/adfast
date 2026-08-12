@@ -160,6 +160,13 @@ to run before submitting a document of uncertain origin, and
 Media/attachment resolution is pluggable via `WithMediaAssets`,
 `WithAssetIDResolver`, and `WithImageDimsResolver`.
 
+ADF records no ordered-list marker style, so `FromADF` renders the
+reference form — the start number repeated on every item, matching
+remark-stringify with `incrementListMarker` off. Add
+`WithIncrementListMarkers` where the Markdown is written and read by
+people: items renumber `1. 2. 3.`, and a list a document already spelled
+that way survives the round trip unchanged.
+
 Automatic link handling makes **no assumptions about the host product**:
 `WithSmartLinks(convert.SmartLinks{KeyFromURL, URLForKey})` teaches the
 conversion a URL scheme once for both directions (links whose text equals

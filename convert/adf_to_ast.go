@@ -105,6 +105,7 @@ type renderCtx struct {
 	inlineHooks         []func(adf.Node, extension.DecodeContext) ([]ast.Node, bool)
 	markHooks           []func(adf.Mark, []ast.Node) (ast.Node, bool)
 	preserveLocalImages bool
+	incrementLists      bool
 }
 
 // reportRawNode emits the raw-node diagnostic: the markdown projection
@@ -246,7 +247,10 @@ func FromADF(doc adf.Doc, opts ...Option) ast.Node {
 	if err := extension.ValidateSet(cfg.extensions); err != nil {
 		panic(err)
 	}
-	rc := renderCtx{assets: cfg.mediaAssets, smartLinks: cfg.smartLinks, diagnostics: cfg.diagnostics, preserveLocalImages: cfg.preserveLocalImages}
+	rc := renderCtx{
+		assets: cfg.mediaAssets, smartLinks: cfg.smartLinks, diagnostics: cfg.diagnostics,
+		preserveLocalImages: cfg.preserveLocalImages, incrementLists: cfg.incrementListMarkers,
+	}
 	// User registrations first: their decode hooks win over the dialect.
 	regs := make([]extension.Registration, 0, len(cfg.extensions)+len(dialect.Registrations()))
 	regs = append(regs, cfg.extensions...)
@@ -704,10 +708,14 @@ func convertAdfListItems(shape adfListShape, content []adf.Node, rc renderCtx) *
 	}
 
 	return &ast.List{
-		Ordered:  shape.ordered,
-		Start:    shape.start,
-		Spread:   loose,
-		Children: items,
+		Ordered: shape.ordered,
+		// ADF records no marker style, so the reference rendering repeats
+		// the start number. WithIncrementListMarkers asks for the form
+		// people write instead (see convert.WithIncrementListMarkers).
+		Increment: shape.ordered && rc.incrementLists,
+		Start:     shape.start,
+		Spread:    loose,
+		Children:  items,
 	}
 }
 

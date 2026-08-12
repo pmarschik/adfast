@@ -73,6 +73,7 @@ type config struct {
 	extensions            []extension.Registration
 	preserveListTightness bool
 	preserveLocalImages   bool
+	incrementListMarkers  bool
 }
 
 // Option configures the ToADF and FromADF conversions; each option
@@ -97,6 +98,17 @@ func WithSmartLinks(sl SmartLinks) Option {
 // and would diverge.
 func WithPreserveListTightness() Option {
 	return func(c *config) { c.preserveListTightness = true }
+}
+
+// WithIncrementListMarkers renumbers the items of an ADF ordered list
+// 1. 2. 3. instead of repeating the list's start number on every item.
+// Read by FromADF. ADF records no marker style, so the reference
+// rendering repeats the start number (remark-stringify with
+// incrementListMarker off); use this where the markdown is written and
+// read by people, and where an ordered list a document already spelled
+// 1. 2. 3. must survive the round trip unchanged.
+func WithIncrementListMarkers() Option {
+	return func(c *config) { c.incrementListMarkers = true }
 }
 
 // WithPreserveLocalImages keeps a document-relative image reference

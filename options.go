@@ -37,6 +37,7 @@ type options struct {
 	extensions          []extension.Registration
 	preserveTight       bool
 	preserveLocalImages bool
+	incrementLists      bool
 	noWrap              bool
 	prettier            bool
 }
@@ -67,6 +68,9 @@ func (o *options) convertOptions() []convert.Option {
 	}
 	if o.preserveLocalImages {
 		out = append(out, convert.WithPreserveLocalImages())
+	}
+	if o.incrementLists {
+		out = append(out, convert.WithIncrementListMarkers())
 	}
 	if o.resolveImageDims != nil {
 		out = append(out, convert.WithImageDimsResolver(o.resolveImageDims))
@@ -142,6 +146,17 @@ func WithUnsupportedKinds(product string, kinds []string) Option {
 // Jira-sourced documents, which lack this attribute.
 func WithPreserveListTightness() Option {
 	return func(o *options) { o.preserveTight = true }
+}
+
+// WithIncrementListMarkers renumbers the items of an ADF ordered list
+// 1. 2. 3. instead of repeating the list's start number on every item.
+// Read by FromADF. ADF records no marker style, so the reference
+// rendering repeats the start number (remark-stringify with
+// incrementListMarker off); use this where the Markdown is written and
+// read by people, and where a list a document already spelled 1. 2. 3.
+// has to survive the round trip unchanged.
+func WithIncrementListMarkers() Option {
+	return func(o *options) { o.incrementLists = true }
 }
 
 // WithPreserveLocalImages keeps an unresolved document-relative image
