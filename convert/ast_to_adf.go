@@ -754,7 +754,7 @@ func (c *astConverter) assetID(ref string) (string, bool) {
 
 // assetDims resolves a markdown-relative asset reference to its intrinsic
 // pixel dimensions via the configured resolver, or (0, 0, false).
-func (c *astConverter) assetDims(ref string) (int, int, bool) {
+func (c *astConverter) assetDims(ref string) (width, height int, ok bool) {
 	if c.resolveImageDims == nil || ref == "" {
 		return 0, 0, false
 	}
@@ -1135,7 +1135,7 @@ func (e *blockEncodeContext) AssetID(ref string) (string, bool) {
 }
 
 // AssetDims implements extension.EncodeContext.
-func (e *blockEncodeContext) AssetDims(ref string) (int, int, bool) {
+func (e *blockEncodeContext) AssetDims(ref string) (width, height int, ok bool) {
 	return e.c.assetDims(ref)
 }
 
@@ -1173,7 +1173,7 @@ func (e *inlineEncodeContext) AssetID(ref string) (string, bool) {
 }
 
 // AssetDims implements extension.EncodeContext.
-func (e *inlineEncodeContext) AssetDims(ref string) (int, int, bool) {
+func (e *inlineEncodeContext) AssetDims(ref string) (width, height int, ok bool) {
 	return e.c.assetDims(ref)
 }
 

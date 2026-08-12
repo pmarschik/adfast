@@ -1653,29 +1653,48 @@ func (fn *normalizer) fileMediaAsImage(m *fmtMedia) ast.Node {
 	return &ast.Paragraph{Children: []ast.Node{img}}
 }
 
-// mediaLeafNode mirrors dialect's mediaLeafNode: the canonical ::media
-// payload re-derived from the media shape.
-func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
-	attrs := map[string]string{}
-	asset, isLocal := fn.assets.lookup(m.id)
+// mediaOmissions mirrors dialect's mediaOmissions: the facts a canonical
+// ::media leaves attributes out on.
+type mediaOmissions struct {
+	asset        MediaAsset
+	isLocal      bool
+	dimsMatch    bool
+	naturalWidth bool
+}
+
+// mediaOmissionsOf derives them for one media shape.
+func (fn *normalizer) mediaOmissionsOf(m *fmtMedia) mediaOmissions {
+	var om mediaOmissions
+	om.asset, om.isLocal = fn.assets.lookup(m.id)
 	// A downloaded asset whose intrinsic dimensions match the file lets us omit
 	// width/height — encode re-derives them (mirrors dialect's mediaLeafNode).
-	dimsMatch := isLocal && asset.HasDim &&
+	om.dimsMatch = om.isLocal && om.asset.HasDim &&
 		m.width != nil && m.height != nil &&
-		float64(asset.Width) == *m.width && float64(asset.Height) == *m.height
+		float64(om.asset.Width) == *m.width && float64(om.asset.Height) == *m.height
 	// A pixel display width equal to the intrinsic width is a no-op resize;
 	// drop the redundant layoutWidth/widthType (mirrors dialect's
 	// mediaLeafNode natural-width normalization).
-	naturalWidth := m.layoutWidth != nil && m.width != nil &&
+	om.naturalWidth = m.layoutWidth != nil && m.width != nil &&
 		*m.layoutWidth == *m.width && m.widthType != nil && *m.widthType == "pixel"
-	if m.hasBorder {
-		if m.borderColor != "" {
-			attrs["borderColor"] = m.borderColor
-		}
-		if m.borderSize != 0 {
-			attrs["borderSize"] = strconv.Itoa(m.borderSize)
-		}
+	return om
+}
+
+// mediaBorderAttrs writes the border attributes.
+func mediaBorderAttrs(m *fmtMedia, attrs map[string]string) {
+	if !m.hasBorder {
+		return
 	}
+	if m.borderColor != "" {
+		attrs["borderColor"] = m.borderColor
+	}
+	if m.borderSize != 0 {
+		attrs["borderSize"] = strconv.Itoa(m.borderSize)
+	}
+}
+
+// mediaShapeAttrs writes what the media says about itself: its container, its
+// intrinsic size, its occurrence key.
+func mediaShapeAttrs(m *fmtMedia, om mediaOmissions, group bool, attrs map[string]string) {
 	// Omit an empty collection on file media (the attachment default).
 	if m.collection != nil && (m.mtype != "file" || *m.collection != "") {
 		attrs["collection"] = *m.collection
@@ -1683,28 +1702,44 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	if group {
 		attrs["group"] = "true"
 	}
-	if m.height != nil && !dimsMatch {
+	if m.height != nil && !om.dimsMatch {
 		attrs["height"] = formatJSNumber(*m.height)
 	}
-	if m.hasSingle {
-		// Omit the file-media default layout ("align-start") — encode re-infers
-		// it (mirrors dialect's mediaLeafNode).
-		if m.layout != nil && *m.layout != "" && (m.mtype != "file" || *m.layout != "align-start") {
-			attrs["layout"] = *m.layout
-		}
-		if m.layoutWidth != nil && !naturalWidth {
-			attrs["layoutWidth"] = formatJSNumber(*m.layoutWidth)
-		}
+	if m.width != nil && !om.dimsMatch {
+		attrs["width"] = formatJSNumber(*m.width)
 	}
 	if m.occurrenceKey != "" {
 		attrs["occurrenceKey"] = m.occurrenceKey
 	}
+}
+
+// mediaSingleAttrs writes what the mediaSingle wrapper says: alignment and
+// display size.
+func mediaSingleAttrs(m *fmtMedia, om mediaOmissions, attrs map[string]string) {
+	if !m.hasSingle {
+		return
+	}
+	// Omit the file-media default layout ("align-start") — encode re-infers
+	// it (mirrors dialect's mediaLeafNode).
+	if m.layout != nil && *m.layout != "" && (m.mtype != "file" || *m.layout != "align-start") {
+		attrs["layout"] = *m.layout
+	}
+	if m.layoutWidth != nil && !om.naturalWidth {
+		attrs["layoutWidth"] = formatJSNumber(*m.layoutWidth)
+	}
+	if m.widthType != nil && *m.widthType != "" && !om.naturalWidth {
+		attrs["widthType"] = *m.widthType
+	}
+}
+
+// mediaSourceAttrs writes where the media comes from.
+func mediaSourceAttrs(m *fmtMedia, om mediaOmissions, attrs map[string]string) {
 	// A locally-downloaded asset emits its path and OMITS the explicit id
 	// (encode resolves the id from the path via the scoped store); otherwise
 	// keep the id (nothing can resolve it). Mirrors dialect's mediaLeafNode.
 	path := m.path
-	if isLocal {
-		path = asset.Path
+	if om.isLocal {
+		path = om.asset.Path
 	}
 	if path != "" {
 		attrs["path"] = path
@@ -1718,12 +1753,17 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	if m.url != "" {
 		attrs["url"] = m.url
 	}
-	if m.width != nil && !dimsMatch {
-		attrs["width"] = formatJSNumber(*m.width)
-	}
-	if m.hasSingle && m.widthType != nil && *m.widthType != "" && !naturalWidth {
-		attrs["widthType"] = *m.widthType
-	}
+}
+
+// mediaLeafNode mirrors dialect's mediaLeafNode: the canonical ::media
+// payload re-derived from the media shape.
+func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
+	om := fn.mediaOmissionsOf(m)
+	attrs := map[string]string{}
+	mediaBorderAttrs(m, attrs)
+	mediaShapeAttrs(m, om, group, attrs)
+	mediaSingleAttrs(m, om, attrs)
+	mediaSourceAttrs(m, om, attrs)
 	var children []ast.Node
 	if m.alt != "" {
 		children = []ast.Node{&ast.Text{Value: m.alt}}
