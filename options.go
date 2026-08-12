@@ -23,6 +23,7 @@ type Option func(*options)
 type options struct {
 	smartLinks          convert.SmartLinks
 	mediaAssets         map[string]convert.MediaAsset
+	resolveMediaAsset   convert.MediaAssetResolver
 	frontmatter         FrontmatterProvider
 	diagnostics         func(convert.Diagnostic)
 	blockSep            *string
@@ -80,6 +81,9 @@ func (o *options) convertOptions() []convert.Option {
 	}
 	if len(o.mediaAssets) > 0 {
 		out = append(out, convert.WithMediaAssets(o.mediaAssets))
+	}
+	if o.resolveMediaAsset != nil {
+		out = append(out, convert.WithMediaAssetResolver(o.resolveMediaAsset))
 	}
 	if len(o.extensions) > 0 {
 		out = append(out, convert.WithExtensions(o.extensions...))
@@ -195,6 +199,15 @@ func WithDocTransforms(ts ...func(adf.Doc) adf.Doc) Option {
 // and the prettier-format mode of ToMarkdown.
 func WithMediaAssets(assets map[string]convert.MediaAsset) Option {
 	return func(o *options) { o.mediaAssets = assets }
+}
+
+// WithMediaAssetResolver answers the same question as WithMediaAssets one media
+// id at a time, so a conversion only asks about the media it meets (see
+// convert.WithMediaAssetResolver). Prefer it when the caller's collection is
+// large, or when producing an entry costs something. Read by FromADF and the
+// prettier-format mode of ToMarkdown.
+func WithMediaAssetResolver(r convert.MediaAssetResolver) Option {
+	return func(o *options) { o.resolveMediaAsset = r }
 }
 
 // WithPrintWidth sets the paragraph wrapping width. Pass 0 to disable

@@ -20,8 +20,16 @@ func MarkdownOptions(store Store) []adfast.Option {
 
 // RenderOptions bundles the ADF→md wiring for a store: downloaded media
 // render as local asset references.
+//
+// The store is asked about the media a document actually contains, one id at a
+// time, rather than for its whole index. That matters because Resolve is not a
+// passive read: an FSStore repairs the friendly file for the id it is asked
+// about, next to the document being rendered. One index can serve every document
+// in a repository, so rendering against the full map used to leave a copy of
+// every asset the repository ever downloaded beside whichever document was
+// being rendered.
 func RenderOptions(store Store) []adfast.Option {
-	return []adfast.Option{adfast.WithMediaAssets(store.Assets())}
+	return []adfast.Option{adfast.WithMediaAssetResolver(store.Resolve)}
 }
 
 // EnsureUploaded is the foolproof push-side entry point: it syncs

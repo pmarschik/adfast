@@ -158,7 +158,10 @@ to run before submitting a document of uncertain origin, and
 `adf.StripSynthetic` the corresponding cleanup.
 
 Media/attachment resolution is pluggable via `WithMediaAssets`,
-`WithAssetIDResolver`, and `WithImageDimsResolver`.
+`WithAssetIDResolver`, and `WithImageDimsResolver`. Where the collection
+of downloaded files is large, or producing an entry costs something,
+`WithMediaAssetResolver` answers the same question one media id at a
+time: the conversion asks only about the media it actually meets.
 
 ADF records no ordered-list marker style, so `FromADF` renders the
 reference form — the start number repeated on every item, matching
@@ -429,7 +432,8 @@ unknown text directives flatten to text).
 ### Related conventions (no directive needed)
 
 - **Attachments as images** — with a media-asset store wired in
-  (`WithMediaAssets` + `WithAssetIDResolver` + `WithImageDimsResolver`),
+  (`WithMediaAssets` or `WithMediaAssetResolver`, plus `WithAssetIDResolver`
+  and `WithImageDimsResolver`),
   file media whose local copy carries every ADF property renders as a plain
   `![alt](assets/shot.png)` and maps back to its media id on encode.
   Anything richer (PDFs, resized media, non-default layouts) keeps the

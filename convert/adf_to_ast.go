@@ -11,10 +11,6 @@ import (
 	"github.com/pmarschik/adfast/extension"
 )
 
-// mediaAssetMap indexes the configured downloaded attachments
-// (extension.MediaAsset, aliased as MediaAsset) by media id.
-type mediaAssetMap map[string]extension.MediaAsset
-
 // tableColwidths joins the first table row's cell colwidth attrs in column
 // order ("79,320") — Jira repeats the same array on every row; empty when
 // no cell carries widths.
@@ -98,7 +94,7 @@ func smartLinkLabel(rc renderCtx, url string) string {
 // renderCtx carries per-conversion configuration through the ADF→AST walk.
 type renderCtx struct {
 	smartLinks          SmartLinks
-	assets              mediaAssetMap
+	assets              mediaAssets
 	diagnostics         func(Diagnostic)
 	blockHooks          []func(adf.Node, extension.DecodeContext) (ast.Node, bool)
 	blockListHooks      []func(adf.Node, extension.DecodeContext) ([]ast.Node, bool)
@@ -169,8 +165,7 @@ func (d *decodeContext) SmartLinkLabel(url string) string {
 
 // Asset implements extension.DecodeContext.
 func (d *decodeContext) Asset(id string) (extension.MediaAsset, bool) {
-	a, ok := d.rc.assets[id]
-	return a, ok
+	return d.rc.assets.lookup(id)
 }
 
 // PreserveLocalImages implements extension.DecodeContext.
@@ -248,7 +243,7 @@ func FromADF(doc adf.Doc, opts ...Option) ast.Node {
 		panic(err)
 	}
 	rc := renderCtx{
-		assets: cfg.mediaAssets, smartLinks: cfg.smartLinks, diagnostics: cfg.diagnostics,
+		assets: newMediaAssets(cfg), smartLinks: cfg.smartLinks, diagnostics: cfg.diagnostics,
 		preserveLocalImages: cfg.preserveLocalImages, incrementLists: cfg.incrementListMarkers,
 	}
 	// User registrations first: their decode hooks win over the dialect.

@@ -2,14 +2,26 @@
 
 ## Local images need an asset store
 
-Without an asset store wired in (`WithMediaAssets` +
-`WithAssetIDResolver` + `WithImageDimsResolver`, or the `assets`
-package's `MarkdownOptions`/`RenderOptions` bundles), a local image
+Without an asset store wired in (`WithMediaAssets` or
+`WithMediaAssetResolver`, plus `WithAssetIDResolver` and
+`WithImageDimsResolver` — or the `assets` package's
+`MarkdownOptions`/`RenderOptions` bundles), a local image
 reference like `![sketch](assets/sketch.png)` has no media id and is
 **dropped from the ADF payload** with an `unresolved-asset` diagnostic.
 Images with absolute `https://` URLs survive as external media. To push
 local attachments: store them through `assets.FSStore`, upload via the
 `Uploader` seam (`assets.Sync` / `assets.PushPipeline`), then encode.
+
+## A store lookup can have side effects
+
+Handing a renderer every asset a store knows is not free. `assets.FSStore`
+repairs the friendly file for the id it is asked about, next to the document
+being rendered, so resolving an id materializes it. One index can serve every
+document under a project root; rendering against the whole of it therefore
+leaves a copy of every asset the repository ever downloaded beside whichever
+document was rendered. `assets.RenderOptions` uses `WithMediaAssetResolver` for
+exactly this reason — the store is asked about the media a document contains
+and nothing else. Wire your own store the same way.
 
 ## Attachment scope: one container per media id
 

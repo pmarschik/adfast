@@ -17,7 +17,8 @@ import (
 // unknown-attr diagnostics.
 //
 // Options read: WithExtensions, WithSmartLinks (KeyFromURL card labels),
-// WithMediaAssets, and WithDiagnostics (the raw-node projection notice).
+// WithMediaAssets or WithMediaAssetResolver, and WithDiagnostics (the
+// raw-node projection notice).
 func FromADF(doc adf.Doc, opts ...Option) ast.Node {
 	o := newOptions(opts)
 	return convert.FromADF(doc, o.convertOptions()...)

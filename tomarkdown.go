@@ -23,7 +23,8 @@ import (
 //
 // Options read: WithPrintWidth, WithNoWrap, WithBlockSeparator,
 // WithPrettierFormat, and (in the format mode only) the convert.Normalize
-// options WithSmartLinks, WithMediaAssets, WithCodeLanguages, WithExtensions
+// options WithSmartLinks, WithMediaAssets or WithMediaAssetResolver,
+// WithCodeLanguages, WithExtensions
 // and WithDiagnostics.
 func ToMarkdown(n ast.Node, opts ...Option) string {
 	o := newOptions(opts)

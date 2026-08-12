@@ -61,7 +61,7 @@ func Normalize(n ast.Node, opts ...Option) ast.Node {
 		o(&cfg)
 	}
 	fn := &normalizer{
-		assets:      cfg.mediaAssets,
+		assets:      newMediaAssets(cfg),
 		encodeSL:    cfg.smartLinks,
 		decodeSL:    cfg.smartLinks,
 		diagnostics: cfg.diagnostics,
@@ -77,7 +77,7 @@ func Normalize(n ast.Node, opts ...Option) ast.Node {
 
 // normalizer carries the per-format configuration through the pass.
 type normalizer struct {
-	assets      map[string]MediaAsset
+	assets      mediaAssets
 	encodeSL    SmartLinks // parse-side resolver (URLForKey)
 	decodeSL    SmartLinks // render-side resolver (KeyFromURL)
 	diagnostics func(Diagnostic)
@@ -1626,7 +1626,7 @@ func (fn *normalizer) fileMediaAsImage(m *fmtMedia) ast.Node {
 	if m.mtype != "file" {
 		return nil
 	}
-	asset, ok := fn.assets[m.id]
+	asset, ok := fn.assets.lookup(m.id)
 	if m.id == "" || !ok || !asset.HasDim {
 		return nil
 	}
@@ -1657,7 +1657,7 @@ func (fn *normalizer) fileMediaAsImage(m *fmtMedia) ast.Node {
 // payload re-derived from the media shape.
 func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	attrs := map[string]string{}
-	asset, isLocal := fn.assets[m.id]
+	asset, isLocal := fn.assets.lookup(m.id)
 	// A downloaded asset whose intrinsic dimensions match the file lets us omit
 	// width/height — encode re-derives them (mirrors dialect's mediaLeafNode).
 	dimsMatch := isLocal && asset.HasDim &&
@@ -1677,7 +1677,7 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 		}
 	}
 	// Omit an empty collection on file media (the attachment default).
-	if m.collection != nil && !(m.mtype == "file" && *m.collection == "") {
+	if m.collection != nil && (m.mtype != "file" || *m.collection != "") {
 		attrs["collection"] = *m.collection
 	}
 	if group {
@@ -1689,7 +1689,7 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	if m.hasSingle {
 		// Omit the file-media default layout ("align-start") — encode re-infers
 		// it (mirrors dialect's mediaLeafNode).
-		if m.layout != nil && *m.layout != "" && !(m.mtype == "file" && *m.layout == "align-start") {
+		if m.layout != nil && *m.layout != "" && (m.mtype != "file" || *m.layout != "align-start") {
 			attrs["layout"] = *m.layout
 		}
 		if m.layoutWidth != nil && !naturalWidth {

@@ -67,6 +67,7 @@ type config struct {
 	resolveAssetID        AssetIDResolver
 	diagnostics           func(Diagnostic)
 	mediaAssets           mediaAssetMap
+	resolveMediaAsset     MediaAssetResolver
 	codeLanguages         map[string]bool
 	unsupportedKinds      map[string]bool
 	unsupportedProduct    string
@@ -225,11 +226,21 @@ func WithMediaAssets(assets map[string]MediaAsset) Option {
 	return func(c *config) {
 		m := make(mediaAssetMap, len(assets))
 		for id, a := range assets {
-			if !a.HasDim && (a.Width != 0 || a.Height != 0) {
-				a.HasDim = true
-			}
-			m[id] = a
+			m[id] = withDerivedDims(a)
 		}
 		c.mediaAssets = m
 	}
+}
+
+// WithMediaAssetResolver supplies the same knowledge as WithMediaAssets one
+// media id at a time (see MediaAssetResolver): the conversion asks about the
+// media it meets instead of being handed a whole collection, which is what a
+// caller wants when its collection is large or when producing an entry costs
+// something. Read by FromADF and the prettier-format mode of ToMarkdown.
+//
+// Both options may be set: the map is consulted first and the resolver answers
+// for ids it does not cover. Resolver replies get the same HasDim treatment
+// WithMediaAssets documents.
+func WithMediaAssetResolver(r MediaAssetResolver) Option {
+	return func(c *config) { c.resolveMediaAsset = r }
 }
