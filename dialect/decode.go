@@ -601,7 +601,7 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	}
 	// Omit an empty collection on file media (the attachment default);
 	// mediaFromAttrs re-adds it.
-	if media.Collection != nil && !(media.Type == "file" && *media.Collection == "") {
+	if media.Collection != nil && (media.Type != "file" || *media.Collection != "") {
 		attrs["collection"] = *media.Collection
 	}
 	if group {
@@ -614,7 +614,7 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 		// Omit the file-media default layout ("align-start"); mediaSingleFromAttrs
 		// re-infers it when a file-type directive carries no layout, so the
 		// round-trip stays lossless while the directive stays terse.
-		if layout := strDeref(single.Layout); layout != "" && !(media.Type == "file" && layout == "align-start") {
+		if layout := strDeref(single.Layout); layout != "" && (media.Type != "file" || layout != "align-start") {
 			attrs["layout"] = layout
 		}
 		if single.Width != nil && !naturalWidth {
