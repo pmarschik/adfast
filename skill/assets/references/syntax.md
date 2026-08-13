@@ -192,6 +192,29 @@ key order, comments, and quoting untouched.
   to a mediaSingle caption child; richer captions (formatting, hard
   breaks) use the `:::media` container form.
 
+## Confluence macro sugar (host-installed)
+
+Hosts that sync Confluence pages install `confluence.Macros()`, which
+adds named directives for the core macros. They are ordinary directives —
+macro parameters are the attributes, and the macro's unnamed parameter is
+the `[label]`:
+
+| Markdown                      | Macro             | Notes                            |
+| ----------------------------- | ----------------- | -------------------------------- |
+| `::toc{maxLevel="3"}`         | `toc`             | Table of contents                |
+| `::children{sort="title"}`    | `children`        | Child pages                      |
+| `::pagetree{root="Notes"}`    | `pagetree`        | Page tree                        |
+| `:::excerpt{name="…"}` + body | `excerpt`         | Excerpt definition (bodied form) |
+| `::excerptInclude[Page]`      | `excerpt-include` | The label is the target page     |
+| `::includePage[Page]`         | `include`         | The label is the target page     |
+
+Each name also works inline (`:pagetree{…}`) and as a container
+(`:::toc`); the ADF node type decides the form on the way back. Do not
+write `macroId`, `schemaVersion`, or `title` — Confluence derives them,
+so a plain table of contents is just `::toc`. Macros without this sugar
+(or with parameters the sugar cannot carry) use the generic
+`::extension{key type parameters}` form instead.
+
 ## Degradation of unknown directives
 
 Unknown directive names keep the generic directive kinds and degrade

@@ -204,6 +204,44 @@ URLs (`…/wiki/spaces/KEY/pages/123456789/Title` ⇄ the stable
 the key) plus `confluence.CodeLanguages`, the language set of Confluence
 Cloud's code block macro (a much smaller set than Jira's editor list).
 
+Both bundles also install `confluence.Macros()`, named directives for the
+core Confluence macros. Each is expressible as the generic
+`::extension{key type parameters}` directive, but the `parameters`
+attribute carries a JSON blob no one wants to hand-write, so the macros
+people actually use get a directive of their own:
+
+| Directive                     | Macro key         | Notes                                         |
+| ----------------------------- | ----------------- | --------------------------------------------- |
+| `::toc{maxLevel="3"}`         | `toc`             | Table of contents                             |
+| `::children{sort="title"}`    | `children`        | Child pages                                   |
+| `::pagetree{root="Notes"}`    | `pagetree`        | Page tree                                     |
+| `:::excerpt{name="…"}` + body | `excerpt`         | Excerpt definition (the bodied form)          |
+| `::excerptInclude[Page]`      | `excerpt-include` | Insert excerpt — the label is the target page |
+| `::includePage[Page]`         | `include`         | Include page — the label is the target page   |
+
+Macro parameters ride as directive attributes, and the macro's unnamed
+parameter is the `[label]`. Every name registers in all three directive
+positions (`::name`, `:name`, `:::name`), because the same macro key
+genuinely appears as a block, an inline, and a bodied node in live pages;
+the ADF node type decides the form on the way back.
+
+Everything Confluence derives is left out of the markdown: `macroId` is
+server-generated (a macro written without one comes back with one filled
+in), and `schemaVersion`/`title` are constant per macro key, so the
+encode synthesizes them and the decode drops them — a plain table of
+contents is just `::toc`. A value that _diverges_ from the per-key
+default survives as an explicit `schemaVersion=` / `title=` attribute
+rather than being silently rewritten, and `layout="default"` is dropped
+as the default it is.
+
+The sugar claims only what it can carry exactly. An unsugared macro key,
+a non-string parameter, an unexpected metadata field, or a parameter
+named like one of the reserved attributes (`layout`, `localId`,
+`schemaVersion`, `title`) all decline and degrade through the generic
+`::extension` path with the `parameters` JSON intact. Measured against
+182 macro instances in 150 live pages: every one round-tripped through
+the sugar, none degraded.
+
 The [`skill/`](skill/) submodule ships the markdown dialect as an
 **agent skill**: an embedded `SKILL.md` + `references/` bundle
 (complete syntax, ADF coverage, a format-stable worked example, and
@@ -700,39 +738,39 @@ endpoint with INVALID_INPUT) — Jira renders every other kind probed.
 taskItem). `fontSize` is in neither set: both products reject it, but
 adfast retires the mark (never produced), so the check would be moot.
 
-| ADF node                                      | Jira | Confluence | adfast support | Markdown mapping / notes                                                                                                                                                                   |
-| --------------------------------------------- | ---- | ---------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| doc                                           | ✓    | ✓          | converted      | document root                                                                                                                                                                              |
-| paragraph                                     | ✓    | ✓          | converted      | paragraph                                                                                                                                                                                  |
-| text                                          | ✓    | ✓          | converted      | plain text carrying the marks below                                                                                                                                                        |
-| heading                                       | ✓    | ✓          | converted      | `#`–`######`                                                                                                                                                                               |
-| blockquote                                    | ✓    | ✓          | converted      | `>`                                                                                                                                                                                        |
-| rule                                          | ✓    | ✓          | converted      | `---`                                                                                                                                                                                      |
-| codeBlock                                     | ✓    | ✓          | converted      | fenced code block; fence grows past embedded backtick runs; language survives                                                                                                              |
-| bulletList / orderedList / listItem           | ✓    | ✓          | converted      | `-` / `1.` lists; marker alternation between adjacent lists; `order` start preserved                                                                                                       |
-| taskList / taskItem                           | ✓    | ✓          | converted      | `- [ ]` / `- [x]`; `localId` regenerates as empty on encode                                                                                                                                |
-| blockTaskItem                                 | ✓    | —          | converted      | `- [ ]` + indented blocks; a single-paragraph item re-encodes as the inline taskItem. Jira renders it first-class; Confluence downgrades it to a plain taskItem                            |
-| decisionList / decisionItem                   | ✓    | ✓          | converted      | `::decisions` + following plain bullet list; encodes with state DECIDED; Jira renders decisions first-class (live 2026-07-22)                                                              |
-| table / tableRow / tableHeader / tableCell    | ✓    | ✓          | converted      | GFM pipe table; colspan/rowspan via `>`/`^` markers; colwidth attrs via `::colwidths`                                                                                                      |
-| panel                                         | ✓    | ✓          | converted      | `:::info` …; unknown panelType degrades to `info`                                                                                                                                          |
-| expand / nestedExpand                         | ✓    | ✓          | converted      | `:::expand[Title]` …; encode always emits `expand` (Jira nests it as nestedExpand itself)                                                                                                  |
-| mediaSingle / mediaGroup / media              | ✓    | ✓          | converted      | `![alt](path)` or `::media`; plain image only when fully expressible; groups fan out to `group="true"` items                                                                               |
-| mediaInline                                   | ∘    | ✓          | converted      | `:media{…}` inline attachment chip. Jira is attachment-gated — not injection-testable with synthetic ids, so left inconclusive                                                             |
-| caption                                       | ✓    | ✓          | converted      | image title (`![alt](path "caption")`) when plain text on image-expressible media, else the `:::media` body                                                                                |
-| inlineCard                                    | ✓    | ✓          | converted      | `[KEY](url)` link; encodes back to inlineCard when the label equals the resolver-derived key                                                                                               |
-| blockCard                                     | ✓    | ✓          | converted      | `::linkCard[…]`; URL-less cards are dropped                                                                                                                                                |
-| blockCard + datasource                        | ✓    | ∘          | converted      | `::jql[…]{…}` — only the documented jira/jql shape; richer shapes fall back to `::linkCard`                                                                                                |
-| embedCard                                     | ✓    | ✓          | converted      | `::linkEmbed[…]{…}`                                                                                                                                                                        |
-| mention                                       | ✓    | ✓          | converted      | `:mention[Name]{#id}`                                                                                                                                                                      |
-| emoji                                         | ✓    | ✓          | converted      | with a `text` attr: that text (deliberately lossy — shortName/id degrade to plain text across markdown); without: unicode via the emoji-toolkit shortname table, else `:emoji{shortName…}` |
-| status                                        | ✓    | ✓          | converted      | `:status[Text]{color}`                                                                                                                                                                     |
-| date                                          | ✓    | ✓          | converted      | `:date[2026-07-15]{timestamp="…"}`; the timestamp attribute is authoritative                                                                                                               |
-| hardBreak                                     | ✓    | ✓          | converted      | backslash / trailing-space break                                                                                                                                                           |
-| placeholder                                   | —    | ✓          | converted      | `:placeholder[Type something…]`                                                                                                                                                            |
-| layoutSection / layoutColumn                  | ✓    | ✓          | converted      | `:::section` containing `:::column{width="…"}` containers. Jira renders a real multi-column layout (live 2026-07-22)                                                                       |
-| extension / bodiedExtension / inlineExtension | ✓    | ✓          | converted      | `::extension{…}` / `:::extension{…}` + body / `:extension{…}`. Jira renders them (ak-renderer-extension / inline fallback); Confluence resolves known macros                               |
-| multiBodiedExtension / extensionFrame         | —    | ✓          | converted      | `:::extension{…}` whose children are all `:::frame` containers; stage-0 schema. Jira REST rejects them (INVALID_INPUT); Confluence preserves them                                          |
-| syncBlock / bodiedSyncBlock                   | ✓    | ✓          | converted      | `::syncBlock{…}` (reference) / `:::syncBlock{…}` + body (source). Jira renders the sync-block widget (live 2026-07-22)                                                                     |
+| ADF node                                      | Jira | Confluence | adfast support | Markdown mapping / notes                                                                                                                                                                                                                                         |
+| --------------------------------------------- | ---- | ---------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| doc                                           | ✓    | ✓          | converted      | document root                                                                                                                                                                                                                                                    |
+| paragraph                                     | ✓    | ✓          | converted      | paragraph                                                                                                                                                                                                                                                        |
+| text                                          | ✓    | ✓          | converted      | plain text carrying the marks below                                                                                                                                                                                                                              |
+| heading                                       | ✓    | ✓          | converted      | `#`–`######`                                                                                                                                                                                                                                                     |
+| blockquote                                    | ✓    | ✓          | converted      | `>`                                                                                                                                                                                                                                                              |
+| rule                                          | ✓    | ✓          | converted      | `---`                                                                                                                                                                                                                                                            |
+| codeBlock                                     | ✓    | ✓          | converted      | fenced code block; fence grows past embedded backtick runs; language survives                                                                                                                                                                                    |
+| bulletList / orderedList / listItem           | ✓    | ✓          | converted      | `-` / `1.` lists; marker alternation between adjacent lists; `order` start preserved                                                                                                                                                                             |
+| taskList / taskItem                           | ✓    | ✓          | converted      | `- [ ]` / `- [x]`; `localId` regenerates as empty on encode                                                                                                                                                                                                      |
+| blockTaskItem                                 | ✓    | —          | converted      | `- [ ]` + indented blocks; a single-paragraph item re-encodes as the inline taskItem. Jira renders it first-class; Confluence downgrades it to a plain taskItem                                                                                                  |
+| decisionList / decisionItem                   | ✓    | ✓          | converted      | `::decisions` + following plain bullet list; encodes with state DECIDED; Jira renders decisions first-class (live 2026-07-22)                                                                                                                                    |
+| table / tableRow / tableHeader / tableCell    | ✓    | ✓          | converted      | GFM pipe table; colspan/rowspan via `>`/`^` markers; colwidth attrs via `::colwidths`                                                                                                                                                                            |
+| panel                                         | ✓    | ✓          | converted      | `:::info` …; unknown panelType degrades to `info`                                                                                                                                                                                                                |
+| expand / nestedExpand                         | ✓    | ✓          | converted      | `:::expand[Title]` …; encode always emits `expand` (Jira nests it as nestedExpand itself)                                                                                                                                                                        |
+| mediaSingle / mediaGroup / media              | ✓    | ✓          | converted      | `![alt](path)` or `::media`; plain image only when fully expressible; groups fan out to `group="true"` items                                                                                                                                                     |
+| mediaInline                                   | ∘    | ✓          | converted      | `:media{…}` inline attachment chip. Jira is attachment-gated — not injection-testable with synthetic ids, so left inconclusive                                                                                                                                   |
+| caption                                       | ✓    | ✓          | converted      | image title (`![alt](path "caption")`) when plain text on image-expressible media, else the `:::media` body                                                                                                                                                      |
+| inlineCard                                    | ✓    | ✓          | converted      | `[KEY](url)` link; encodes back to inlineCard when the label equals the resolver-derived key                                                                                                                                                                     |
+| blockCard                                     | ✓    | ✓          | converted      | `::linkCard[…]`; URL-less cards are dropped                                                                                                                                                                                                                      |
+| blockCard + datasource                        | ✓    | ∘          | converted      | `::jql[…]{…}` — only the documented jira/jql shape; richer shapes fall back to `::linkCard`                                                                                                                                                                      |
+| embedCard                                     | ✓    | ✓          | converted      | `::linkEmbed[…]{…}`                                                                                                                                                                                                                                              |
+| mention                                       | ✓    | ✓          | converted      | `:mention[Name]{#id}`                                                                                                                                                                                                                                            |
+| emoji                                         | ✓    | ✓          | converted      | with a `text` attr: that text (deliberately lossy — shortName/id degrade to plain text across markdown); without: unicode via the emoji-toolkit shortname table, else `:emoji{shortName…}`                                                                       |
+| status                                        | ✓    | ✓          | converted      | `:status[Text]{color}`                                                                                                                                                                                                                                           |
+| date                                          | ✓    | ✓          | converted      | `:date[2026-07-15]{timestamp="…"}`; the timestamp attribute is authoritative                                                                                                                                                                                     |
+| hardBreak                                     | ✓    | ✓          | converted      | backslash / trailing-space break                                                                                                                                                                                                                                 |
+| placeholder                                   | —    | ✓          | converted      | `:placeholder[Type something…]`                                                                                                                                                                                                                                  |
+| layoutSection / layoutColumn                  | ✓    | ✓          | converted      | `:::section` containing `:::column{width="…"}` containers. Jira renders a real multi-column layout (live 2026-07-22)                                                                                                                                             |
+| extension / bodiedExtension / inlineExtension | ✓    | ✓          | converted      | `::extension{…}` / `:::extension{…}` + body / `:extension{…}`. Jira renders them (ak-renderer-extension / inline fallback); Confluence resolves known macros, and `confluence.Macros()` sugars the common ones (`::toc`, `:::excerpt`, `::includePage[Page]`, …) |
+| multiBodiedExtension / extensionFrame         | —    | ✓          | converted      | `:::extension{…}` whose children are all `:::frame` containers; stage-0 schema. Jira REST rejects them (INVALID_INPUT); Confluence preserves them                                                                                                                |
+| syncBlock / bodiedSyncBlock                   | ✓    | ✓          | converted      | `::syncBlock{…}` (reference) / `:::syncBlock{…}` + body (source). Jira renders the sync-block widget (live 2026-07-22)                                                                                                                                           |
 
 | ADF mark        | Jira | Confluence | adfast support | Markdown mapping / notes                                                                                                                                                                                                                                                                                              |
 | --------------- | ---- | ---------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -869,21 +907,21 @@ The module is layered into public subpackages along the pipeline stages;
 the root package is a thin facade composing them. Full package notes live
 in [docs/design.md](docs/design.md).
 
-| Package                        | Purpose                                                                                                              |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `adfast` (root)                | The facade: the four `FromMarkdown`/`FromADF`/`ToADF`/`ToMarkdown` primitives, `Pipeline`, the shared option set     |
-| [`adf/`](adf/)                 | Typed ADF document model + JSON codec; lossless `RawNode`/`RawMark`/`Extra` preservation                             |
-| [`ast/`](ast/)                 | The pivot Markdown AST (remark-mdast-shaped) both directions share                                                   |
-| [`extension/`](extension/)     | Public AST extension contract (`Node`, context interfaces, `Registration`)                                           |
-| [`dialect/`](dialect/)         | The known directive dialect as typed AST nodes; wired as the default set                                             |
-| [`markdown/`](markdown/)       | Text edge: goldmark parser assembly + remark-compatible renderer                                                     |
-| [`convert/`](convert/)         | AST ⇄ ADF transforms (`ToADF`, `FromADF`) and their parameter types                                                  |
-| [`assets/`](assets/)           | Pluggable attachment store behind the media resolvers — see [Asset store](#asset-store)                              |
-| [`debug/`](debug/)             | Tree dumps of both ASTs; debugging aid only                                                                          |
-| [`jira/`](jira/)               | **Separate module**: Jira conventions (`MarkdownOptions`, `RenderOptions`, `EncodeRichText`, `CodeLanguages`)        |
-| [`confluence/`](confluence/)   | **Separate module**: Confluence conventions (`MarkdownOptions`, `RenderOptions`, page `SmartLinks`, `CodeLanguages`) |
-| [`skill/`](skill/)             | **Separate module**: the dialect as an embeddable agent skill (`Files`, `Install`)                                   |
-| [`frontmatter/`](frontmatter/) | **Separate module**: optional YAML frontmatter access (`Parse`, `Render`, `Patch`, `PatchPreserving`, path helpers)  |
+| Package                        | Purpose                                                                                                                                        |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `adfast` (root)                | The facade: the four `FromMarkdown`/`FromADF`/`ToADF`/`ToMarkdown` primitives, `Pipeline`, the shared option set                               |
+| [`adf/`](adf/)                 | Typed ADF document model + JSON codec; lossless `RawNode`/`RawMark`/`Extra` preservation                                                       |
+| [`ast/`](ast/)                 | The pivot Markdown AST (remark-mdast-shaped) both directions share                                                                             |
+| [`extension/`](extension/)     | Public AST extension contract (`Node`, context interfaces, `Registration`)                                                                     |
+| [`dialect/`](dialect/)         | The known directive dialect as typed AST nodes; wired as the default set                                                                       |
+| [`markdown/`](markdown/)       | Text edge: goldmark parser assembly + remark-compatible renderer                                                                               |
+| [`convert/`](convert/)         | AST ⇄ ADF transforms (`ToADF`, `FromADF`) and their parameter types                                                                            |
+| [`assets/`](assets/)           | Pluggable attachment store behind the media resolvers — see [Asset store](#asset-store)                                                        |
+| [`debug/`](debug/)             | Tree dumps of both ASTs; debugging aid only                                                                                                    |
+| [`jira/`](jira/)               | **Separate module**: Jira conventions (`MarkdownOptions`, `RenderOptions`, `EncodeRichText`, `CodeLanguages`)                                  |
+| [`confluence/`](confluence/)   | **Separate module**: Confluence conventions (`MarkdownOptions`, `RenderOptions`, page `SmartLinks`, `CodeLanguages`, macro sugar via `Macros`) |
+| [`skill/`](skill/)             | **Separate module**: the dialect as an embeddable agent skill (`Files`, `Install`)                                                             |
+| [`frontmatter/`](frontmatter/) | **Separate module**: optional YAML frontmatter access (`Parse`, `Render`, `Patch`, `PatchPreserving`, path helpers)                            |
 
 The root module is platform-neutral ADF ⇄ Markdown. Platform-specific
 addons ship as separate submodules (`jira/`, `confluence/`, the

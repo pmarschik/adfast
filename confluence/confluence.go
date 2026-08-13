@@ -1,6 +1,7 @@
 // Package confluence provides the Confluence-specific ADF addons for
 // github.com/pmarschik/adfast: page smart links matching Confluence
-// Cloud's URL conventions and the code block macro language set.
+// Cloud's URL conventions, the code block macro language set, and named
+// directives for the core Confluence macros (see Macros).
 package confluence
 
 import (
@@ -98,13 +99,18 @@ func MarkdownOptions(baseURL string) []adfast.Option {
 		adfast.WithSmartLinks(SmartLinks(baseURL)),
 		adfast.WithCodeLanguages(CodeLanguages),
 		adfast.WithUnsupportedKinds("confluence", UnsupportedKinds),
+		adfast.WithExtensions(Macros()),
 	}
 }
 
 // RenderOptions bundles the Confluence behavior for the decode direction
 // (adfast.FromADF): inline and block smart-link cards pointing at
-// Confluence pages label with the SPACE/pageID key. See MarkdownOptions
+// Confluence pages label with the SPACE/pageID key, and the core macros
+// decode to their sugared directives (see Macros). See MarkdownOptions
 // for the encode side.
 func RenderOptions() []adfast.Option {
-	return []adfast.Option{adfast.WithSmartLinks(SmartLinks(""))}
+	return []adfast.Option{
+		adfast.WithSmartLinks(SmartLinks("")),
+		adfast.WithExtensions(Macros()),
+	}
 }
