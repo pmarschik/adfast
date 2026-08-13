@@ -399,21 +399,21 @@ attributes for the ADF border mark on the media node.
 
 ### Text directives (inline elements)
 
-| Markdown                                                | ADF                  | Notes                                                                                                                                                 |
-| ------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:mention[Jane Doe]{#712020:aa…}`                       | mention              | `#…` is the account id; `accessLevel` kept when present; a legacy leading `@` in the label is accepted (stripped)                                     |
-| `:status[In Progress]{color="blue"}`                    | status               | Lozenge; `style` kept when present                                                                                                                    |
-| `:date[2026-07-15]{timestamp="1784073600000"}`          | date                 | `timestamp` (ms since epoch) is authoritative; the label is the UTC day derived from it (and parses without one); `localId` kept when present         |
-| `:placeholder[Type something…]`                         | placeholder          | Template placeholder text; `localId` kept when present                                                                                                |
-| `:emoji{#custom-id shortName=":team_logo:"}`            | emoji                | Fallback for custom/site emojis only — see the emoji row in the coverage table. `shortName` required; `#<id>` and `text` (rendered fallback) optional |
-| `:extension{key="…" type="…" …}`                        | inlineExtension      | Inline macros; same attrs as `::extension` minus `layout`                                                                                             |
-| `:annotation[text]{#id annotationType="inlineComment"}` | annotation mark      | Confluence inline-comment anchor — pushing a body without it orphans the comment thread, so the mark must survive                                     |
-| `:color[text]{color="#ff5630"}`                         | textColor mark       |                                                                                                                                                       |
-| `:bg[text]{color="#fffae6"}`                            | backgroundColor mark |                                                                                                                                                       |
-| `:u[text]`                                              | underline mark       |                                                                                                                                                       |
-| `:sub[text]` / `:sup[text]`                             | subsup mark          |                                                                                                                                                       |
-| `:fontSize[text]{small}`                                | _retired_            | Parses (the bare value is the size; `size="…"` also parses) but is dropped to plain text — no product supports the mark. See the coverage table       |
-| `:media{#<media-uuid> collection type="file"}`          | mediaInline          | Inline attachment chip                                                                                                                                |
+| Markdown                                                | ADF                  | Notes                                                                                                                                                    |
+| ------------------------------------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:mention[Jane Doe]{#712020:aa…}`                       | mention              | `#…` is the account id; `accessLevel` kept when present; a legacy leading `@` in the label is accepted (stripped)                                        |
+| `:status[In Progress]{color="blue"}`                    | status               | Lozenge; `style` kept when present                                                                                                                       |
+| `:date[2026-07-15]{timestamp="1784073600000"}`          | date                 | `timestamp` (ms since epoch) is authoritative; the label is the UTC day derived from it (and parses without one); `localId` kept when present            |
+| `:placeholder[Type something…]`                         | placeholder          | Template placeholder text; `localId` kept when present                                                                                                   |
+| `:emoji{#custom-id shortName=":team_logo:"}`            | emoji                | Fallback for custom/site emojis only — see the emoji row in the coverage table. `shortName` required; `#<id>` and `text` (rendered fallback) optional    |
+| `:extension{key="…" type="…" …}`                        | inlineExtension      | Inline macros; same attrs as `::extension` minus `layout`                                                                                                |
+| `:annotation[text]{#id annotationType="inlineComment"}` | annotation mark      | Confluence inline-comment anchor — pushing a body without it orphans the comment thread, so the mark must survive                                        |
+| `:color[text]{color="#ff5630"}`                         | textColor mark       |                                                                                                                                                          |
+| `:bg[text]{color="#fffae6"}`                            | backgroundColor mark |                                                                                                                                                          |
+| `:u[text]`                                              | underline mark       |                                                                                                                                                          |
+| `:sub[text]` / `:sup[text]`                             | subsup mark          |                                                                                                                                                          |
+| `:fontSize[text]{small}`                                | _retired_            | Parses (the bare value is the size; `size="…"` also parses) but is dropped to plain text — no product supports the mark. See the coverage table          |
+| `:media{#<media-uuid> collection}`                      | mediaInline          | Inline attachment chip. `type` defaults to `file` and is left out when canonical; a bare `collection` is an empty collection, and its absence means none |
 
 Mark directives nest with regular emphasis:
 `:color[**bold red**]{color="#ff5630"}`. Inline mark directives wrap
@@ -627,15 +627,15 @@ An image with a title becomes a captioned figure:
 
 A leaf `::media` attaches a file by its media id:
 
-::media[hive-inspection-sheet.pdf]{#b5773183-5f9a-481f-b1b8-8fe286bba8e9 collection type="file"}
+::media[hive-inspection-sheet.pdf]{#b5773183-5f9a-481f-b1b8-8fe286bba8e9}
 
 A bodied `:::media` adds a caption beneath the attachment:
 
-:::media[hive stand sketch]{#0f4b9a2c-3d5e-4f60-8a71-92b3c4d5e6f7 collection height="480" layout="center" type="file" width="640"}
+:::media[hive stand sketch]{#0f4b9a2c-3d5e-4f60-8a71-92b3c4d5e6f7 height="480" layout="center" width="640"}
 Sketch of the **vertical** stand — drawn by Sam.
 :::
 
-An inline :media{#7c1e0d2a-4b3f-45e8-9a2b-6c5d4e3f2a1b collection type="file"} drops an attachment mid-sentence — here the field kit.
+An inline :media{#7c1e0d2a-4b3f-45e8-9a2b-6c5d4e3f2a1b collection} drops an attachment mid-sentence — here the field kit.
 
 Finally, a `:::breakout` lets a block escape the content column's width:
 

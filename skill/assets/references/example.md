@@ -147,13 +147,13 @@ Other macros reference this block by its fragment name.
 
 ![Mite counts by week](https://static.example.org/mite-counts.png "Varroa counts, spring 2026")
 
-::media[hive-inspection-sheet.pdf]{#b5773183-5f9a-481f-b1b8-8fe286bba8e9 collection type="file"}
+::media[hive-inspection-sheet.pdf]{#b5773183-5f9a-481f-b1b8-8fe286bba8e9}
 
-:::media[hive stand sketch]{#0f4b9a2c-3d5e-4f60-8a71-92b3c4d5e6f7 collection height="480" layout="center" type="file" width="640"}
+:::media[hive stand sketch]{#0f4b9a2c-3d5e-4f60-8a71-92b3c4d5e6f7 height="480" layout="center" width="640"}
 Sketch of the **vertical** stand — drawn by Sam.
 :::
 
-Field kit: :media{#7c1e0d2a-4b3f-45e8-9a2b-6c5d4e3f2a1b collection type="file"}
+Field kit: :media{#7c1e0d2a-4b3f-45e8-9a2b-6c5d4e3f2a1b collection}
 
 :::breakout{wide}
 > This wide quote breaks out of the content column.

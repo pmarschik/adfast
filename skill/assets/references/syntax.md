@@ -99,7 +99,7 @@ so round trips preserve mark order.
 | `:u[text]`                                              | underline mark       |                                                                                                                                                                                         |
 | `:sub[text]` / `:sup[text]`                             | subsup mark          |                                                                                                                                                                                         |
 | `:fontSize[text]{small}`                                | _retired_            | Parses (bare value or `size="…"`) but no product supports the mark — it is dropped to plain text with a `fontsize-dropped` diagnostic. Do not author it; text is kept, size lost        |
-| `:media{#<media-uuid> collection type="file"}`          | mediaInline          | Inline attachment chip                                                                                                                                                                  |
+| `:media{#<media-uuid> collection}`                      | mediaInline          | Inline attachment chip. `type` defaults to `file` and is left out when canonical; a bare `collection` is an empty collection, and its absence means none                                |
 
 Mark directives nest with regular emphasis:
 `:color[**bold red**]{color="#ff5630"}`. Inline mark directives wrap per
