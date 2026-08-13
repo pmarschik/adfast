@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/pmarschik/adfast/ast"
@@ -150,12 +151,59 @@ func fixMarkerBreakSuffix(prefix, suffix string) string {
 	return suffix[:len(suffix)-1] + string(other)
 }
 
+// withoutBlankParagraphs drops the paragraphs that would render to nothing.
+//
+// ADF carries empty paragraphs — Confluence's editor emits them as spacing —
+// but Markdown has no way to write one: a blank line between blocks is
+// separation, not content, so parsing can never give one back. Rendering them
+// as the blank lines they turn into makes the output re-parse to a different
+// tree, which shows up as a spurious diff on the first format pass. Dropping
+// them is what makes rendering a fixed point, wherever the run of blocks sits
+// (a container body, a blockquote, the document itself).
+//
+// A directive label is never dropped: it is not body content, and the container
+// renderer peels it off the front before it gets here.
+func withoutBlankParagraphs(children []ast.Node) []ast.Node {
+	blank := func(node ast.Node) bool {
+		p, ok := node.(*ast.Paragraph)
+		return ok && !p.DirectiveLabel && ast.PlainText(p.Children) == "" && !hasVisibleInline(p.Children)
+	}
+	if !slices.ContainsFunc(children, blank) {
+		return children
+	}
+	out := make([]ast.Node, 0, len(children))
+	for _, node := range children {
+		if !blank(node) {
+			out = append(out, node)
+		}
+	}
+	return out
+}
+
+// hasVisibleInline reports whether a run of inline nodes renders as anything at
+// all — a paragraph holding only an empty text node is blank, one holding an
+// image or a media chip is not, and neither carries plain text.
+func hasVisibleInline(children []ast.Node) bool {
+	for _, node := range children {
+		switch node.(type) {
+		case *ast.Text, *ast.Emphasis, *ast.Strong, *ast.Delete, *ast.Link:
+			if ast.PlainText([]ast.Node{node}) != "" {
+				return true
+			}
+		default:
+			return true
+		}
+	}
+	return false
+}
+
 // renderBlockSequence renders sibling blocks separated by sep, alternating
 // list markers for consecutive lists (unordered bullets '-'/'*', ordered
 // delimiters '.'/')') like remark-stringify so adjacent lists don't merge
 // on re-parse. Used at the document root and inside blockquotes and
 // container directives.
 func (r *mdRenderer) renderBlockSequence(b *strings.Builder, children []ast.Node, sep string) {
+	children = withoutBlankParagraphs(children)
 	prevBullet := ""
 	prevOrderedList := false
 	for i := range children {

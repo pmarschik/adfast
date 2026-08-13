@@ -332,6 +332,50 @@ func TestMacroDecodeBodiedKeepsBodyAndLabel(t *testing.T) {
 	}
 }
 
+// TestMacroBodyEndingInAnEmptyParagraphIsStable: Confluence's editor leaves a
+// trailing empty paragraph in a macro body, which has no Markdown spelling — a
+// blank line before the closing fence re-parses as nothing. Rendering one made
+// the first format pass of a pulled page show a diff it could not explain, so
+// the body is written without it. The typed sugar and the generic extension
+// form go through the same renderer and must agree.
+func TestMacroBodyEndingInAnEmptyParagraphIsStable(t *testing.T) {
+	body := []adf.Node{
+		&adf.Paragraph{Content: []adf.Node{&adf.Text{Text: "The hive is healthy."}}},
+		&adf.Paragraph{},
+	}
+	cases := []struct {
+		name string
+		key  string
+		want string
+	}{
+		{
+			name: "sugared macro",
+			key:  "excerpt",
+			want: ":::excerpt\nThe hive is healthy.\n:::\n",
+		},
+		{
+			name: "generic extension",
+			key:  "unsugared-macro",
+			want: ":::extension{key=\"unsugared-macro\" " +
+				"type=\"com.atlassian.confluence.macro.core\"}\nThe hive is healthy.\n:::\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := adf.Doc{Type: "doc", Version: 1, Content: []adf.Node{&adf.BodiedExtension{
+				ExtensionType: MacroExtensionType, ExtensionKey: tc.key, Content: body,
+			}}}
+			got := adfToMD(t, doc)
+			if got != tc.want {
+				t.Errorf("decoded = %q, want %q", got, tc.want)
+			}
+			if again := adfToMD(t, mdToADF(t, got)); again != got {
+				t.Errorf("round trip = %q, want %q", again, got)
+			}
+		})
+	}
+}
+
 // TestMacrosRegistrationIsValid guards the structural contract the
 // registries check at install time.
 func TestMacrosRegistrationIsValid(t *testing.T) {
