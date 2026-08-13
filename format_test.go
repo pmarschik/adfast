@@ -75,3 +75,30 @@ func TestFormatMarkdown_PrettierParity(t *testing.T) {
 		})
 	}
 }
+
+// Format mode and the ADF decode must agree on what a canonical inline
+// :media looks like. The default media type ("file") is re-inferred on
+// encode, so neither path writes it — format used to, which left the
+// formatter and the ADF round trip disagreeing about the same node. A
+// bare `collection` is NOT a default: mediaInline encode keeps the
+// difference between an empty collection and no collection at all, so it
+// survives both paths.
+func TestFormatMediaInlineOmitsTheDefaultType(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"bare id", "kit: :media{#7c1e}\n", "kit: :media{#7c1e}\n"},
+		{"explicit default type dropped", "kit: :media{#7c1e type=\"file\"}\n", "kit: :media{#7c1e}\n"},
+		{"empty collection kept", "kit: :media{#7c1e collection type=\"file\"}\n", "kit: :media{#7c1e collection}\n"},
+		{"other type kept", "kit: :media{#7c1e type=\"link\"}\n", "kit: :media{#7c1e type=\"link\"}\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := fmtMD(tc.in); got != tc.want {
+				t.Errorf("FormatMarkdown mismatch\n in:  %q\n got: %q\n want:%q", tc.in, got, tc.want)
+			}
+			// The same document taken through ADF must land on the same text.
+			if got := adfToMD(mdToADF(tc.in)); got != tc.want {
+				t.Errorf("ADF round trip disagrees with format\n in:  %q\n got: %q\n want:%q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

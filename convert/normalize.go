@@ -423,7 +423,14 @@ func normalizeMediaInline(v *dialect.MediaInline) ast.Node {
 	if mtype == "" {
 		mtype = "file"
 	}
-	attrs := map[string]string{"type": mtype}
+	attrs := map[string]string{}
+	// Omit the default media type ("file") — encode re-infers it, and the
+	// ADF decode omits it too (mirrors dialect's decodeMediaInline).
+	if mtype != "file" {
+		attrs["type"] = mtype
+	}
+	// A collection is not a default: mediaInline encode carries an empty
+	// collection through as one, so its presence is the caller's to keep.
 	if c, ok := v.Attrs["collection"]; ok {
 		attrs["collection"] = c
 	}
@@ -435,7 +442,9 @@ func normalizeMediaInline(v *dialect.MediaInline) ast.Node {
 		children = []ast.Node{&ast.Text{Value: alt}}
 	}
 	return &dialect.MediaInline{
-		MediaType:  attrs["type"],
+		// The effective type, as decode reports it, even where the
+		// rendered attributes leave the default out.
+		MediaType:  mtype,
 		ID:         attrs["id"],
 		Collection: attrs["collection"],
 		Attrs:      attrs,
