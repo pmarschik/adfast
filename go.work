@@ -13,4 +13,4 @@ use (
 // exactly that version to the local checkout for development builds;
 // go.work never ships to consumers. Bump alongside the submodule
 // go.mod files at release time (see docs/RELEASING.md).
-replace github.com/pmarschik/adfast v0.1.0 => .
+replace github.com/pmarschik/adfast v0.5.0 => .
