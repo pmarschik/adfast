@@ -56,9 +56,9 @@ consequences:
   carries a version-specific replace
   (`replace github.com/pmarschik/adfast vX.Y.Z => .`) so that the module
   graph can be computed without fetching the not-yet-published version.
-  Bump this replace version together with the submodule go.mod requires
-  when preparing a release (`release:prepare` handles the go.mod side;
-  update `go.work` alongside it).
+  `release:prepare` bumps it together with the submodule go.mod requires;
+  a stale pin here breaks every build between `prepare` and `tag` with
+  "unknown revision vX.Y.Z".
 
 ## After tagging
 

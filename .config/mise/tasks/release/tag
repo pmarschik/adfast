@@ -77,7 +77,7 @@ echo ""
 info "Pushing… (hardware key touch required)"
 
 if [[ "${VCS}" == "jj" ]]; then
-  jj bookmark set main -r "${version}"
+  advance_main_bookmark "${version}"
   jj git push --all
 else
   HK=0 git push origin HEAD

@@ -11,17 +11,24 @@ echo ""
 detect_vcs
 info "VCS: ${VCS}"
 
-# ── resolve version from most recent local v* tag ────────────────────────────
-version=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1)
-[[ -n "${version}" ]] || die "no version tag found — run 'mise run release:tag' first"
+# ── resolve the version being released from CHANGELOG.md ─────────────────────
+# Not "the newest v* tag in the repo": run before release:tag has tagged
+# anything — which is exactly when someone reaches for this task — that
+# resolves to the *previous* release, pushes nothing new, and then tries to
+# drag main backwards onto it. The changelog names the release that prepare
+# and tag produced, and the tag for it must already exist.
+version=$(sed -n 's/^## \[\(v[0-9][^]]*\)\].*/\1/p' CHANGELOG.md | head -1)
+[[ -n "${version}" ]] \
+  || die "no version heading in CHANGELOG.md — run 'mise run release:prepare' first"
+git rev-parse -q --verify "refs/tags/${version}" > /dev/null \
+  || die "${version} is not tagged locally — run 'mise run release:tag' first"
 info "Version: ${bold}${version}${reset}"
 echo ""
 
 # ── advance main bookmark to the tagged commit ────────────────────────────────
 if [[ "${VCS}" == "jj" ]]; then
   info "Advancing main bookmark to ${version}…"
-  jj bookmark set main -r "${version}"
-  success "main → ${version}"
+  advance_main_bookmark "${version}"
 fi
 
 # ── push branch ───────────────────────────────────────────────────────────────

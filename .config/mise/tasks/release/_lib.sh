@@ -26,6 +26,25 @@ detect_vcs() {
   fi
 }
 
+# Fast-forward the main bookmark onto rev (jj only).
+#
+# Refuses to move it backwards or sideways: main sitting somewhere that is not
+# an ancestor of the release means either the release commit is not on main or
+# main has moved on since, and dragging the bookmark would paper over both. The
+# tags still need pushing either way, so this warns rather than aborting.
+advance_main_bookmark() {
+  local rev="$1"
+  if ! jj bookmark list main 2>/dev/null | grep -q '^main'; then
+    jj bookmark set main -r "${rev}"
+  elif jj log -r "main & ::${rev}" --no-graph --template 'commit_id' 2>/dev/null | grep -q .; then
+    jj bookmark set main -r "${rev}"
+  else
+    warn "main is not an ancestor of ${rev} — leaving the bookmark where it is"
+    return 0
+  fi
+  success "main → ${rev}"
+}
+
 # Populate MONOREPO_MODULES (module paths) and MODULE_DIRS (relative dirs) from go.work.
 # Also sets ROOT_MODULE to the root module path.
 # Paths whose directory component matches EXCLUDE_GLOB (default: "example/*") are skipped.

@@ -89,6 +89,19 @@ for dir in "${MODULE_DIRS[@]}"; do
 done
 success "go.mod files updated"
 
+# ── update go.work: its local replace pins the same upcoming version ─────────
+# The submodule go.mod files now require ${version}, which the proxy cannot
+# serve until the root module is tagged. go.work resolves exactly that version
+# to this checkout, so a stale pin here breaks every build between prepare and
+# tag with "unknown revision ${version}". Edited with sed rather than
+# `go work edit` to keep the comment above the directive.
+if [[ -f go.work ]] && grep -q "^replace ${ROOT_MODULE} v" go.work; then
+  info "Pinning ${ROOT_MODULE} in go.work…"
+  sed -i.bak "s|^replace ${ROOT_MODULE} v[^ ]* => \.|replace ${ROOT_MODULE} ${version} => .|" go.work
+  rm -f go.work.bak
+  success "go.work updated"
+fi
+
 echo ""
 echo -e "  Review the changelog and go.mod changes, then run:"
 echo -e "  ${bold}mise run release:tag${reset}"
