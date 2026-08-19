@@ -13,6 +13,7 @@
 # - jira       jira/ addon module
 # - confluence confluence/ addon module
 # - skill      skill/ agent-skill module
+# - wasm       wasm/ js/wasm build exposing adfast to JavaScript
 # - docs       README, docs
 # - deps       dependency bumps (the scope renovate writes)
 # - build      local tooling, mise, scripts, developer setup
@@ -30,6 +31,7 @@ scopes = [
   "jira",
   "confluence",
   "skill",
+  "wasm",
   "docs",
   "deps",
   "build",

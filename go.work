@@ -6,6 +6,7 @@ use (
 	./frontmatter
 	./jira
 	./skill
+	./wasm
 )
 
 // The submodules' go.mod files pin the upcoming release version, which
