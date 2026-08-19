@@ -27,6 +27,19 @@ Requires Go 1.25+. Note that [`jira/`](jira/), [`confluence/`](confluence/),
 modules** (product-specific addons ship as submodules so consumers only pull
 what they use).
 
+[`wasm/`](wasm/) is a separate module too, but a **build artifact rather
+than a library**: it compiles the conversion and the directive dialect to
+WebAssembly for JavaScript consumers (editor integrations that must
+locate and convert directives without a second parser in TypeScript).
+Build it rather than `go get` it:
+
+```sh
+mise run wasm:build   # writes wasm/adfast.wasm; ship it with wasm/wasm_exec.js
+```
+
+See [`wasm/README.md`](wasm/README.md) for the JS surface — and for the
+offsets contract, which is the one thing a consumer must not get wrong.
+
 ## Quickstart
 
 ```go
@@ -922,6 +935,7 @@ in [docs/design.md](docs/design.md).
 | [`confluence/`](confluence/)   | **Separate module**: Confluence conventions (`MarkdownOptions`, `RenderOptions`, page `SmartLinks`, `CodeLanguages`, macro sugar via `Macros`) |
 | [`skill/`](skill/)             | **Separate module**: the dialect as an embeddable agent skill (`Files`, `Install`)                                                             |
 | [`frontmatter/`](frontmatter/) | **Separate module**: optional YAML frontmatter access (`Parse`, `Render`, `Patch`, `PatchPreserving`, path helpers)                            |
+| [`wasm/`](wasm/)               | **Separate module**: a js/wasm build exposing conversion and directive span scanning to JavaScript — a build artifact, not an importable API   |
 
 The root module is platform-neutral ADF ⇄ Markdown. Platform-specific
 addons ship as separate submodules (`jira/`, `confluence/`, the
@@ -930,6 +944,11 @@ helpers), so consumers only pull what they use.
 Smart-link recognition (bare issue keys, `/browse/` URLs, inline cards)
 stays in the root module — Confluence content links to Jira issues
 through the same ADF nodes.
+
+`wasm/` is a submodule for the same reason but a different kind of
+thing: no Go code imports it. It is compiled to WebAssembly and consumed
+from JavaScript, so it is versioned and tagged with the rest but
+delivered as a `.wasm` file rather than a `go get`.
 
 ## Asset store
 

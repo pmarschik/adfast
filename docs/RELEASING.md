@@ -4,9 +4,13 @@ adfast is a multi-module repository: the root module
 `github.com/pmarschik/adfast` and the nested modules
 `github.com/pmarschik/adfast/jira`,
 `github.com/pmarschik/adfast/confluence`,
-`github.com/pmarschik/adfast/skill`, and
-`github.com/pmarschik/adfast/frontmatter` (listed in `go.work`). All
+`github.com/pmarschik/adfast/skill`,
+`github.com/pmarschik/adfast/frontmatter`, and
+`github.com/pmarschik/adfast/wasm` (listed in `go.work`). All
 release together, from one commit, with matched version numbers.
+
+The release tasks discover modules from `go.work`, so adding a module
+there is enough for it to be pinned and tagged — no task edits needed.
 
 ## TL;DR
 
@@ -28,16 +32,23 @@ Go modules in one repository resolve independently, so the order matters:
    intra-repo requirements, so its tag is immediately consumable.
 2. **Every submodule go.mod must require that version**: `require
    github.com/pmarschik/adfast vX.Y.Z` in `jira/go.mod`,
-   `confluence/go.mod`, `skill/go.mod`, and `frontmatter/go.mod`. The
-   pin is written at release time — `mise run release:prepare` runs `go
-   mod edit -require` with the bumped version (and strips any intra-repo
-   `replace` directives) in every workspace module.
+   `confluence/go.mod`, `skill/go.mod`, `frontmatter/go.mod`, and
+   `wasm/go.mod`. The pin is written at release time — `mise run
+   release:prepare` runs `go mod edit -require` with the bumped version
+   (and strips any intra-repo `replace` directives) in every workspace
+   module. `wasm/go.mod` is the one module that requires more than the
+   root: it also pins `github.com/pmarschik/adfast/jira vX.Y.Z` and
+   `github.com/pmarschik/adfast/confluence vX.Y.Z`, so it must be
+   consumable only after those two are tagged.
 3. **Tag the submodules**: `jira/vX.Y.Z`, `confluence/vX.Y.Z`,
-   `skill/vX.Y.Z`, and `frontmatter/vX.Y.Z`, all on the same commit. The
-   `release:tag` task creates the tags and pushes the root tag first
-   (GitHub suppresses workflow events when more than three tags arrive
-   at once, so the root tag goes alone to reliably trigger Actions; the
-   submodule tags follow in a second push).
+   `skill/vX.Y.Z`, `frontmatter/vX.Y.Z`, and — after those —
+   `wasm/vX.Y.Z`, all on the same commit. The `release:tag` task creates
+   the tags and pushes the root tag first (GitHub suppresses workflow
+   events when more than three tags arrive at once, so the root tag goes
+   alone to reliably trigger Actions; the submodule tags follow in a
+   second push, which carries `jira/` and `confluence/` alongside
+   `wasm/`, so `wasm/vX.Y.Z` is never resolvable before its
+   requirements).
 
 ## The unpublished-version window
 
@@ -47,9 +58,11 @@ consequences:
 
 - **`GOWORK=off` resolution of a submodule alone is expected to fail
   until the root tag `vX.Y.Z` exists** — `go build`/`go test` in
-  `jira/`, `confluence/`, `skill/`, or `frontmatter/` with the workspace
-  disabled tries to download `github.com/pmarschik/adfast@vX.Y.Z` and
-  gets an unknown revision. This is normal before a release; do not
+  `jira/`, `confluence/`, `skill/`, `frontmatter/`, or `wasm/` with the
+  workspace disabled tries to download
+  `github.com/pmarschik/adfast@vX.Y.Z` (and, for `wasm/`, the `jira/`
+  and `confluence/` tags too) and gets an unknown revision. This is
+  normal before a release; do not
   "fix" it by re-adding a `replace` to a submodule go.mod (released
   module files must be replace-free).
 - **Local development builds resolve through the workspace.** `go.work`
@@ -79,6 +92,6 @@ available as manual recovery steps:
 - SemVer, driven by Conventional Commits (`git cliff --bumped-version`).
 - Breaking API changes must use `feat!:`/`fix!:` (major bump); this is a
   public library — see AGENTS.md for the API stability rules.
-- Root and submodule versions stay in lockstep: one release, five tags
+- Root and submodule versions stay in lockstep: one release, six tags
   (`vX.Y.Z` + `jira/vX.Y.Z` + `confluence/vX.Y.Z` + `skill/vX.Y.Z` +
-  `frontmatter/vX.Y.Z`) on the same commit.
+  `frontmatter/vX.Y.Z` + `wasm/vX.Y.Z`) on the same commit.
