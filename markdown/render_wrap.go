@@ -28,8 +28,13 @@ func wrapTextProtected(s string, maxWidth int) string {
 	if strings.ContainsRune(masked, ':') {
 		masked = directiveSpanRe.ReplaceAllStringFunc(masked, func(span string) string {
 			return strings.Map(func(r rune) rune {
-				if r == ' ' {
+				switch r {
+				case ' ':
 					return wrapMask
+				case '\t':
+					// wrapText splits words on tabs too, and a tab reaches
+					// a label whenever the source text carries one.
+					return wrapMaskTab
 				}
 				return r
 			}, span)

@@ -64,11 +64,18 @@ func (v *blockRenderVisitor) VisitCode(n *ast.Code) struct{} {
 }
 
 // VisitList implements ast.Visitor.
+//
+// The list renders unindented: every caller (renderBlockSequence, and
+// renderItemFirstBlock/renderItemFollowBlock via their childIndent)
+// places the block itself. Indenting by v.depth here counted the nesting
+// twice, and at depth 2 the four extra columns re-parsed the item's
+// first line as indented code ("- - - 0)" round-tripped into a code
+// block).
 func (v *blockRenderVisitor) VisitList(n *ast.List) struct{} {
 	if isTaskList(n) {
 		v.r.renderTaskList(v.b, n, "-")
 	} else {
-		v.r.renderList(v.b, n, strings.Repeat("  ", v.depth), "-", ".")
+		v.r.renderList(v.b, n, "", "-", ".")
 	}
 	return struct{}{}
 }

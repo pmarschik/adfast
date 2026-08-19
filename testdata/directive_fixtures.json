@@ -5839,7 +5839,7 @@
           }
         ]
       },
-      "md": "- before\n  ```go\n  x := 1\n  ```\n  after code\n  - sub\n  after list\n"
+      "md": "- before\n  ```go\n  x := 1\n  ```\n  after code\n  - sub\n\n  after list\n"
     },
     {
       "adf": {
@@ -6607,7 +6607,7 @@
           }
         ]
       },
-      "md": "`0``0`\n"
+      "md": "`00`\n"
     },
     {
       "adf": {

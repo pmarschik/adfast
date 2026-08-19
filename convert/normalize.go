@@ -152,7 +152,47 @@ var fmtAtomSpanOps = spanOps[fmtAtom]{
 // run into canonical strong/em/delete nesting.
 func regroupAtoms(atoms []fmtAtom) []ast.Node {
 	inferAcrossCode(atoms, fmtAtomSpanOps)
-	return groupSpans(atoms, fmtAtomSpanOps, false, false, false)
+	return groupSpans(joinTextAtoms(atoms), fmtAtomSpanOps, false, false, false)
+}
+
+// joinTextAtoms concatenates neighboring plain-text atoms carrying the
+// same marks. Flattening leaves two of them adjacent whenever what stood
+// between them normalized to nothing (an empty link, a ':u' with no
+// content), and the renderer's escaping is node-local: a one-byte
+// lookahead cannot see that "0@A" and ".A" are written contiguously and
+// re-parse as one email autolink literal (probe: "0@A:u.A"). Joining them
+// hands the renderer the run the parser will see.
+func joinTextAtoms(atoms []fmtAtom) []fmtAtom {
+	out := make([]fmtAtom, 0, len(atoms))
+	for i := range atoms {
+		if n := len(out) - 1; n >= 0 && joinableText(&out[n], &atoms[i]) {
+			out[n].text += atoms[i].text
+			continue
+		}
+		out = append(out, atoms[i])
+	}
+	return out
+}
+
+// joinableText reports whether two adjacent atoms are plain text under the
+// same marks, so their content can be written as one node.
+func joinableText(a, b *fmtAtom) bool {
+	return a.node == nil && b.node == nil &&
+		!a.isCode && !b.isCode && !a.isBreak && !b.isBreak &&
+		sameMarks(&a.m, &b.m)
+}
+
+// sameMarks compares two mark contexts field by field; the annotation
+// list keeps fmtMarks out of reach of the == operator.
+func sameMarks(a, b *fmtMarks) bool {
+	return a.href == b.href && a.linkTitle == b.linkTitle &&
+		a.textColor == b.textColor && a.bgColor == b.bgColor &&
+		a.subsup == b.subsup &&
+		a.link == b.link && a.linkBare == b.linkBare &&
+		a.linkExplicit == b.linkExplicit &&
+		a.strong == b.strong && a.em == b.em &&
+		a.strike == b.strike && a.underline == b.underline &&
+		slices.Equal(a.annotations, b.annotations)
 }
 
 func (fn *normalizer) flattenInlines(nodes []ast.Node, ctx fmtMarks) []fmtAtom {

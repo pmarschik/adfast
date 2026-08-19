@@ -171,10 +171,28 @@ func (c *inlineRenderContext) WriteTextDirective(name string, attrs map[string]s
 }
 
 // escapeDirectiveLabel escapes a directive [label]: remark-stringify only
-// treats brackets as unsafe inside labels (markdown marks like * and even
-// backslashes stay verbatim — see the directive fixtures).
+// treats brackets as unsafe inside labels (markdown marks like * stay
+// verbatim, and are flattened away by ast.PlainText on re-parse anyway —
+// see the directive fixtures).
+//
+// A backslash is verbatim-safe only where it cannot start an escape
+// sequence. One that can is escaped here, a deliberate divergence:
+// remark writes "::media[\!0]" for the alt text "\!0", and re-parsing
+// that consumes the backslash, so the label is LOSSY rather than merely
+// unstable. A trailing backslash is escaped for the same reason — the
+// "]" this function's caller writes next would be the escaped byte, and
+// the label would never terminate.
+//
+// A ':' that could open a nested text directive is escaped too, a second
+// deliberate divergence. Label content is parsed as inline markdown, so
+// ":0" inside a label becomes a text directive node, and the label is
+// read back from ast.PlainText, which has no text for it — the content
+// vanishes. Unlike the prose escaper (which only protects letter-led
+// names, for remark parity) this covers digit-led names as well: they
+// are what goldmark-directive parses, and inside a label the divergence
+// is lossy rather than cosmetic.
 func escapeDirectiveLabel(s string) string {
-	if !strings.ContainsAny(s, "[]") {
+	if !strings.ContainsAny(s, `[]\:`) {
 		return s
 	}
 	var sb strings.Builder
@@ -183,10 +201,66 @@ func escapeDirectiveLabel(s string) string {
 		switch s[i] {
 		case '[', ']':
 			sb.WriteByte('\\')
+		case '\\':
+			if i+1 == len(s) || isASCIIPunct(s[i+1]) {
+				sb.WriteByte('\\')
+			}
+		case ':':
+			// A directive name starts with an alphanumeric; a ':' before
+			// anything else cannot open one.
+			if i+1 < len(s) && isDirectiveNameStart(s[i+1]) {
+				sb.WriteByte('\\')
+			}
 		}
 		sb.WriteByte(s[i])
 	}
 	return sb.String()
+}
+
+// escapeLabelIndent keeps a text-directive label out of indented-code
+// territory by writing its first whitespace byte as a character
+// reference, which the label parse decodes back to the byte.
+//
+// A text-directive label is parsed as block content, so a label opening
+// with a whitespace run that reaches the 4-column indent is an indented
+// code block, where nothing is parsed and escapes stay literal: the
+// label ":u[    \*]" reads back a literal backslash, and every re-format
+// escapes the survivor again (probe: "00:u[    *]0", whose format grew a
+// backslash per pass). The reference is one column wide, so the run that
+// follows it can no longer reach four.
+//
+// Leaf and container labels do not need this: they are read back through
+// ast.PlainText over inline content, which resolves the escape.
+func escapeLabelIndent(s string) string {
+	if !labelIndentsToCode(s) {
+		return s
+	}
+	return hexRef(rune(s[0])) + s[1:]
+}
+
+// labelIndentsToCode reports whether a label opens with a whitespace run
+// reaching the 4-column indent goldmark reads as an indented code block.
+// A tab advances to the next 4-column stop, so a leading tab reaches it
+// alone.
+func labelIndentsToCode(s string) bool {
+	col := 0
+	for i := 0; i < len(s) && col < 4; i++ {
+		switch s[i] {
+		case ' ':
+			col++
+		case '\t':
+			col += 4 - col%4
+		default:
+			return false
+		}
+	}
+	return col >= 4
+}
+
+// isDirectiveNameStart reports whether c can begin a directive name
+// (goldmark-directive: an ASCII alphanumeric).
+func isDirectiveNameStart(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // codeColonFenceRe matches a code-block line that could read as a

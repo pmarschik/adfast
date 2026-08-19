@@ -415,11 +415,13 @@ func TestExtended_UnknownDirectivesStillDegrade(t *testing.T) {
 	assertSameADF(t, doc(p(txt("hello"))), got)
 	// A bare prose ":date" is consumed by the claimed name — the same
 	// degradation the historical claimed names (:mention/:status/:u)
-	// show, and the same fuzz skip class covers the dropped-construct
-	// double space. The renderer escapes colons on the way out, so
-	// ADF-sourced text never re-parses as a directive.
+	// show. The space run the dropped construct leaves across the two
+	// text nodes collapses (adf.NormalizeTextNewlines): markdown cannot
+	// write it, so keeping it would break the round trip. The renderer
+	// escapes colons on the way out, so ADF-sourced text never re-parses
+	// as a directive.
 	got = mdToADF("a :date in prose")
-	assertSameADF(t, doc(p(txt("a "), txt(" in prose"))), got)
+	assertSameADF(t, doc(p(txt("a "), txt("in prose"))), got)
 	if md := adfToMD(doc(p(txt("a :date in prose")))); !strings.Contains(md, "\\:date") {
 		t.Fatalf("prose colon not escaped: %q", md)
 	}

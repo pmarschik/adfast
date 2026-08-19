@@ -252,11 +252,15 @@ func TestTableSpans_InvalidPositionDiagnostics(t *testing.T) {
 
 // TestTableDelimiterAmbiguousCellIdempotent guards the round-trip fixpoint
 // for a table cell whose content is only dashes/colons. A header-only table
-// emits its delimiter row bare ("| - |"); when two such tables render
-// adjacently they merge on re-parse (GFM concatenates the blocks) so the
-// second delimiter row becomes a body cell. That cell must render bare too —
-// escaping it to "| \- |" (and widening the column) makes adfToMD∘mdToADF
-// non-idempotent. See bareDelimiterAmbiguousCell.
+// emits its delimiter row bare ("| - |"), and such a row re-parses as a body
+// cell wherever it lands inside another table. That cell must render bare
+// too — escaping it to "| \- |" (and widening the column) makes
+// adfToMD∘mdToADF non-idempotent. See bareDelimiterAmbiguousCell.
+//
+// The two tables here no longer render adjacently: followBlockNeedsGap
+// blank-separates a list item's blocks after a table, because a GFM table
+// runs to the first blank line and would otherwise swallow the second table
+// as extra rows — which was lossy, not merely unstable.
 func TestTableDelimiterAmbiguousCellIdempotent(t *testing.T) {
 	// The reported repro: adjacent header-only tables inside a list item.
 	md := "*\n      0\n  0\n--\n\n  0\n-- "
@@ -265,9 +269,22 @@ func TestTableDelimiterAmbiguousCellIdempotent(t *testing.T) {
 	if first != second {
 		t.Errorf("round-trip not idempotent:\nfirst:  %q\nsecond: %q", first, second)
 	}
-	want := "- ```\n  0\n  ```\n  | 0 |\n  | - |\n  | 0 |\n  | - |\n"
+	want := "- ```\n  0\n  ```\n  | 0 |\n  | - |\n\n  | 0 |\n  | - |\n"
 	if first != want {
 		t.Errorf("first render = %q, want %q", first, want)
+	}
+	// The blank line keeps both tables: re-parsing must not fold the second
+	// one into the first as body rows.
+	tables := 0
+	for _, top := range mdToADF(first).Content {
+		for n := range adf.Walk(top) {
+			if _, ok := n.(*adf.Table); ok {
+				tables++
+			}
+		}
+	}
+	if tables != 2 {
+		t.Errorf("re-parse found %d tables, want 2", tables)
 	}
 
 	// A genuine table with a lone-dash body cell renders bare and is stable.

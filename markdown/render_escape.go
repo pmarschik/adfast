@@ -55,6 +55,7 @@ func (r *mdRenderer) escapeText(s string, st *inlineContext, nextLead byte, enco
 	// st.prev advances through the loop, but a digit RUN's start position
 	// needs the state where the run began.
 	nodeAtLineStart := atLineStart(st)
+	st.nodePrev, st.nodeHasPrev = st.prev, st.hasPrev
 	for i := range len(s) {
 		ch := s[i]
 		// Table-cell pipe escaping applies even where markdown escaping is
@@ -219,16 +220,98 @@ func (r *mdRenderer) writeTokenEscapePrefix(sb *strings.Builder, s string, i int
 }
 
 // escapeAt reports whether an '@' would form a GFM email autolink literal
-// with its neighbors on re-parse (remark escapes it; prettier's
-// pre-CommonMark parser has no autolink literals and drops the escape).
+// with its neighbors on re-parse. remark escapes on its unsafe rule's
+// one-character neighborhood; prettier's pre-CommonMark parser has no
+// autolink literals at all and would leave the '@' bare, but the parse
+// adfast round-trips against does linkify — so in format mode the escape
+// is written exactly where that parse would produce a link, a deliberate
+// divergence (see linkifiesAsEmail).
 func (r *mdRenderer) escapeAt(s string, i int, nextLead byte, st *inlineContext) bool {
-	if r.cfg.prettierText || st.label {
+	if st.label {
 		return false
+	}
+	if r.cfg.prettierText {
+		return linkifiesAsEmail(s, i, st)
 	}
 	if !st.hasPrev || !isEmailBeforeByte(st.prev) {
 		return false
 	}
 	return isEmailAfterByte(byteAt(s, i+1, nextLead))
+}
+
+// linkifiesAsEmail reports whether goldmark's linkify extension would read
+// an email autolink literal over the '@' at s[i], mirroring its parser
+// (extension/linkify.go): the literal begins at a line head or right after
+// one of the trigger bytes " *_~(", never on ASCII punctuation, its shape
+// is gfmEmailRe (the regexp adfast configures), its domain needs a dot,
+// and a '-' or '_' directly after the match cancels it.
+//
+// The check is node-local, which is why normalization joins adjacent text
+// atoms first: the local part and the domain must sit in one node for the
+// walk to see them.
+func linkifiesAsEmail(s string, i int, st *inlineContext) bool {
+	lo := i
+	for lo > 0 && isEmailLocalByte(s[lo-1]) {
+		lo--
+	}
+	// The local part can also run out of the node and into the markup that
+	// precedes it — an emphasis closer is an underscore, which the linkify
+	// scan reads as part of the address ("*a*@b.com" renders "_a_@b.com",
+	// whose literal is "a_@b.com"). The walk cannot follow it there, so
+	// escape whenever it might continue.
+	if lo == 0 && st.nodeHasPrev && isEmailLocalByte(st.nodePrev) {
+		return true
+	}
+	for p := lo; p < i; p++ {
+		if emailLiteralStarts(s, p, st) && emailLiteralMatches(s[p:], i-p) {
+			return true
+		}
+	}
+	return false
+}
+
+// emailLiteralStarts reports whether an autolink literal can begin at s[p]:
+// goldmark's linkify parser is triggered by one of " *_~(" (or a line head,
+// where the block parser hands it the line), and it rejects a candidate
+// opening on punctuation.
+func emailLiteralStarts(s string, p int, st *inlineContext) bool {
+	if isASCIIPunct(s[p]) {
+		return false
+	}
+	if p > 0 {
+		return isLinkifyTrigger(s[p-1])
+	}
+	return !st.nodeHasPrev || st.nodePrev == '\n' || isLinkifyTrigger(st.nodePrev)
+}
+
+// isLinkifyTrigger reports whether c is one of the bytes goldmark's
+// linkify parser triggers on (linkifyParser.Trigger).
+func isLinkifyTrigger(c byte) bool {
+	return c == ' ' || c == '*' || c == '_' || c == '~' || c == '('
+}
+
+// emailLiteralMatches reports whether cand opens with an email autolink
+// literal whose '@' sits at index at.
+func emailLiteralMatches(cand string, at int) bool {
+	m := gfmEmailRe.FindStringIndex(cand)
+	if len(m) != 2 || m[0] != 0 || strings.IndexByte(cand[:m[1]], '@') != at {
+		return false
+	}
+	stop := m[1]
+	// The domain must hold a dot; a trailing one is not part of the link,
+	// and a '-' or '_' right after the match voids it (linkifyParser.Parse).
+	if strings.IndexByte(cand[at:stop-1], '.') < 0 {
+		return false
+	}
+	if cand[stop-1] == '.' {
+		stop--
+	}
+	return stop >= len(cand) || (cand[stop] != '-' && cand[stop] != '_')
+}
+
+// isEmailLocalByte matches gfmEmailRe's local-part class [a-zA-Z0-9.+_-].
+func isEmailLocalByte(c byte) bool {
+	return isWordByte(c) || c == '.' || c == '+' || c == '-'
 }
 
 // isEmailBeforeByte matches mdast-util-gfm-autolink-literal's before class
@@ -277,13 +360,24 @@ func (r *mdRenderer) escapeAngle(s string, i int, nextLead byte) bool {
 // writeColonEscapePrefix writes the backslash before a ':' that would
 // re-parse as a text directive (a ':' before an ASCII letter, not preceded by
 // another ':') or a leading "::" at a block break.
+//
+// Inside a text directive's [label] the rule widens, a deliberate
+// divergence from remark: a nested text directive there is LOSSY (the
+// label is read back with ast.PlainText, which has no text for a
+// directive node), so it also covers digit-led names — goldmark-directive
+// parses those — and the label's first character, which has no previous
+// character but does follow the '[' the renderer just wrote.
 func (r *mdRenderer) writeColonEscapePrefix(sb *strings.Builder, s string, i int, nextLead byte, st *inlineContext) {
 	if st.colons && !r.cfg.prettierText {
 		next := nextLead
 		if i+1 < len(s) {
 			next = s[i+1]
 		}
+		notAfterColon := st.prev != ':' || !st.hasPrev
 		escapes := st.hasPrev && st.prev != ':' && isASCIILetter(next)
+		if st.directiveLabel {
+			escapes = notAfterColon && isDirectiveNameStart(next)
+		}
 		atBreak := st.hasPrev && st.prev == '\n' && next == ':'
 		if escapes || atBreak {
 			sb.WriteByte('\\')

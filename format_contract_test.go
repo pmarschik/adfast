@@ -146,6 +146,530 @@ func TestFormatIdempotence_Corpus(t *testing.T) {
 	}
 }
 
+// A hard break whose two-space marker would land at a line start keeps
+// its meaning only in the backslash form: nothing precedes the spaces,
+// so they are the line's leading whitespace and are stripped on
+// re-parse. The formatter otherwise keeps the source's trailing-space
+// form. See markdown.writeHardBreak.
+func TestHardBreakAtLineStartKeepsItsMeaning(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			// The fuzz repro: the emoji has no shortName to write, so
+			// the break is the paragraph's first rendered content.
+			name: "after a directive that renders nothing",
+			md:   ":emoji  \n0",
+			want: "\\\n0\n",
+		},
+		{
+			// With content before it the source form is kept.
+			name: "mid-line break keeps the source form",
+			md:   "x  \n0",
+			want: "x  \n0\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
+// Markdown cannot write two code spans back to back — the closing fence
+// of the first and the opening fence of the second are one backtick run
+// to the parser — so the renderer joins their content. The adjacency is
+// reachable because the code mark is exclusive, which drops an emphasis
+// wrapping nothing but a code span. See markdown.joinAdjacentCodeSpans.
+func TestAdjacentCodeSpansAreJoined(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			// The fuzz repro: both spans hold a lone space, and the
+			// joined span keeps both (`  ` is all-space, so CommonMark
+			// strips nothing).
+			name: "spaces",
+			md:   "` `*` `* 0",
+			want: "`  ` 0\n",
+		},
+		{
+			name: "words",
+			md:   "`a`*`b`* 0",
+			want: "`ab` 0\n",
+		},
+		{
+			// remark's own bytes for the joined pair, "`0``0`", are the
+			// bytes it writes for the single span 0``0 as well.
+			name: "the ambiguous reference form stays readable",
+			md:   "`0``0`",
+			want: "`0``0`\n",
+		},
+		{
+			// Different links keep the spans apart: the label and target
+			// bytes stand between the fences.
+			name: "separated by link syntax",
+			md:   "[`a`](x)[`b`](y)",
+			want: "[`a`](x)[`b`](y)\n",
+		},
+		{
+			// An emphasis with other content keeps its markers, and they
+			// separate the fences.
+			name: "emphasis with more than the code span",
+			md:   "`a`*x`b`*",
+			want: "`a`_x`b`_\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
+// The formatter adds no escapes of its own — it writes back the source
+// form the parse captured — so a '[' or '_' that the source left bare
+// still fuses onto a preceding directive name. The empty attribute block
+// terminates the name there, the same repair the renderer applies to the
+// unescapable continuations. See markdown.needsPunctTrail.
+func TestDirectiveBeforeUnescapedSyntaxIsTerminated(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			// The fuzz repro: the label cannot span the line break, so
+			// the brackets are text — until the formatter joins the
+			// lines and the directive swallows them as its label.
+			name: "bracket across a soft break",
+			md:   ":media[\n]",
+			want: ":media{}[ ]\n",
+		},
+		{
+			// prettier drops the source's '[' escape, so the terminator
+			// is what keeps the brackets out of the directive.
+			name: "escaped bracket loses its escape",
+			md:   ":media\\[x]",
+			want: ":media{}[x]\n",
+		},
+		{
+			// An underscore that opens intraword is left bare too.
+			name: "intraword underscore",
+			md:   ":media_x_",
+			want: ":media_x\\_\n",
+		},
+		{
+			// A space separates the name from the marker; no repair.
+			name: "separated by a space",
+			md:   ":media _x_",
+			want: ":media _x_\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
+// TestDirectiveLabelIndentStaysOutOfCode pins the character reference
+// that keeps a text-directive label from opening as an indented code
+// block, where escapes stay literal and grow a backslash per format.
+func TestDirectiveLabelIndentStaysOutOfCode(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			// The fuzz repro: the label's four leading spaces made the
+			// escape literal, so each pass escaped the survivor again.
+			name: "four spaces",
+			md:   "00:u[    *]0",
+			want: "00:u[&#x20;   \\*]0\n",
+		},
+		{
+			// Already indented code in the source: the backslash is
+			// content, and the reference keeps it that way.
+			name: "four spaces before an escape",
+			md:   ":u[    \\*]",
+			want: ":u[&#x20;   \\\\\\*]\n",
+		},
+		{
+			// A tab reaches the indent on its own.
+			name: "leading tab",
+			md:   ":u[\t\\*]",
+			want: ":u[&#x9;\\\\\\*]\n",
+		},
+		{
+			// Two spaces then a tab: the tab advances to column 4.
+			name: "spaces then a tab",
+			md:   ":u[  \t\\*]",
+			want: ":u[&#x20; \t\\\\\\*]\n",
+		},
+		{
+			// Three spaces stop short of the indent; no repair.
+			name: "three spaces",
+			md:   ":u[   \\*]",
+			want: ":u[   \\*]\n",
+		},
+		{
+			// The run has to lead the label to indent it.
+			name: "run after content",
+			md:   ":u[a   \\*]",
+			want: ":u[a   \\*]\n",
+		},
+		{
+			// Leaf labels read back through ast.PlainText over inline
+			// content, which resolves the escape; nothing to repair.
+			name: "leaf label",
+			md:   "::media[    \\*]{url=\"x\"}",
+			want: "::media[    *]{url=\"x\"}\n",
+		},
+		{
+			name: "container label",
+			md:   ":::expand[    \\*]\nx\n:::",
+			want: ":::expand[    *]\nx\n:::\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
+// TestBlankCodeSpanKeepsItsPadding pins the code-span pad against
+// goldmark's trim rule: whitespace-only content is left alone, because
+// padding it would grow a space per format pass.
+func TestBlankCodeSpanKeepsItsPadding(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			// The fuzz repro: content that is blank to goldmark (a tab
+			// counts) is never trimmed, so it needs no pad.
+			name: "spaces around a tab",
+			md:   "` \t `0",
+			want: "` \t `0\n",
+		},
+		{
+			name: "wider blank run",
+			md:   "`  \t  `0",
+			want: "`  \t  `0\n",
+		},
+		{
+			name: "only spaces",
+			md:   "`  `0",
+			want: "`  `0\n",
+		},
+		{
+			// Not blank: the trim applies, so the pad has to survive it.
+			name: "spaces around content",
+			md:   "`  a  `0",
+			want: "`  a  `0\n",
+		},
+		{
+			// One space each side is the pad itself; the value is "a".
+			name: "padded content",
+			md:   "` a `0",
+			want: "`a`0\n",
+		},
+		{
+			// Only one edge is a space: nothing is trimmed.
+			name: "leading space only",
+			md:   "` a`0",
+			want: "` a`0\n",
+		},
+		{
+			// A backtick edge is padded whatever the trim does.
+			name: "backtick content",
+			md:   "`` ` ``0",
+			want: "`` ` ``0\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
+// TestURLLiteralEndsWhereTheParserEndsIt pins adfast's own re-linkification
+// (relinkifyTexts, for text goldmark skipped inside a link label) to the
+// boundary goldmark's linkify parser gives a literal: its regexp match
+// minus the trailing punctuation the parser strips. Each case pairs a
+// source that takes the relinkify path with the plain one that goldmark
+// linkifies; both must reach the same ADF.
+func TestURLLiteralEndsWhereTheParserEndsIt(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			// The fuzz repro: the escaped '/' suppressed goldmark's
+			// linkify, and relinkify kept the '!' the parser strips.
+			name: "escaped slash, trailing bang",
+			md:   "http:\\//0.a#!",
+			want: "http://0.a#!\n",
+		},
+		{
+			name: "trailing bang in a label",
+			md:   "[ http://0.a#!",
+			want: "[ http://0.a#!\n",
+		},
+		{
+			name: "trailing dot in a label",
+			md:   "[ http://0.a#/x.",
+			want: "[ http://0.a#/x.\n",
+		},
+		{
+			name: "trailing punctuation run in a label",
+			md:   "[ http://0.a#*_~",
+			want: "[ http://0.a#\\*\\_~\n",
+		},
+		{
+			// Unbalanced closing parens are not part of the link; a
+			// balanced pair is.
+			name: "unbalanced parens in a label",
+			md:   "[ http://0.a#/x))",
+			want: "[ http://0.a#/x))\n",
+		},
+		{
+			name: "balanced parens in a label",
+			md:   "[ http://0.a#/x(y)",
+			want: "[ http://0.a#/x(y)\n",
+		},
+		{
+			// A trailing "&…;" is a character reference, not link text.
+			name: "entity after a label URL",
+			md:   "[ http://0.a#/x&y;",
+			want: "[ http://0.a#/x&y;\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
+// TestEmailLiteralStaysUnlinkedAcrossFormat pins the escape the formatter
+// writes where its own output would otherwise re-parse as a GFM email
+// autolink literal. Prettier, whose text escaping the formatter mirrors,
+// has no autolink literals and would leave the '@' bare; adfast escapes it
+// against the parser it round-trips against (see markdown.linkifiesAsEmail).
+func TestEmailLiteralStaysUnlinkedAcrossFormat(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			// The fuzz repro: the empty ':u' normalizes away and leaves the
+			// local part beside the domain, fusing into one literal.
+			name: "fused across a dropped directive",
+			md:   "0@A:u.A",
+			want: "0\\@A.A\n",
+		},
+		{
+			name: "fused after a word",
+			md:   "x a@b:u.com",
+			want: "x a\\@b.com\n",
+		},
+		{
+			name: "fused inside parentheses",
+			md:   "(a@b:u.com)",
+			want: "(a\\@b.com)\n",
+		},
+		{
+			// The local part runs out of the node and into the emphasis
+			// closer, which the linkify scan reads as an address byte.
+			name: "fused with an emphasis closer",
+			md:   "*a*@b:u.com",
+			want: "_a_\\@b.com\n",
+		},
+		{
+			// An address opening on punctuation never linkifies, so the
+			// '@' stays bare.
+			name: "candidate opens on punctuation",
+			md:   ".a@b:u.com",
+			want: ".a@b.com\n",
+		},
+		{
+			// No dot in the domain: not a literal.
+			name: "no domain dot",
+			md:   "a@b:u",
+			want: "a@b\n",
+		},
+		{
+			// A code span ends in a backtick, which is neither an address
+			// byte nor a linkify trigger.
+			name: "after a code span",
+			md:   "`a@b`:u.com",
+			want: "`a@b`.com\n",
+		},
+		{
+			// Inside a link label the text is atomic: no literal forms.
+			name: "inside a link label",
+			md:   "[a@b:u.com](x)",
+			want: "[a@b.com](x)\n",
+		},
+		{
+			// A real autolink literal keeps its link mark and renders in
+			// the explicit form.
+			name: "genuine autolink literal",
+			md:   "a@b.com",
+			want: "[a@b.com](a@b.com)\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
+// TestEscapeProvenanceSurvivesAURLSplit pins the Value ↔ Raw alignment the
+// re-linkifier relies on when it cuts a URL literal out of a text node that
+// also carries preserved escapes: only PreservedEscapes stand undecoded in
+// Raw, so a literal backslash pair must not read as one escape (see
+// markdown.rawEscapeAt).
+func TestEscapeProvenanceSurvivesAURLSplit(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			// The fuzz repro: "\\" and the escape-less "\0" put two
+			// literal backslashes in the value ahead of the '\+' the
+			// formatter keeps, so the walk over Raw desynchronized and the
+			// text kept the literal's first byte.
+			name: "literal backslash pair before a preserved escape",
+			md:   "\\\\\\0+\\+\\(www.0.a0",
+			want: "\\\\\\0+\\+([www.0.a](http://www.0.a)0\n",
+		},
+		{
+			name: "preserved escape alone",
+			md:   "\\+\\(www.0.a0",
+			want: "\\+([www.0.a](http://www.0.a)0\n",
+		},
+		{
+			name: "literal backslash alone",
+			md:   "\\\\\\(www.0.a0",
+			want: "\\\\([www.0.a](http://www.0.a)0\n",
+		},
+		{
+			// Every preserved escape, each standing for one value byte.
+			name: "all preserved escapes",
+			md:   "\\~\\:\\-\\+ www.0.a0",
+			want: "\\~\\:\\-\\+ [www.0.a](http://www.0.a)0\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
 // FuzzFormatSemanticsPreserved fuzzes the two contract properties: the
 // formatted document keeps the source's canonical ADF (semantic
 // coherence) and formats to itself (idempotence). Skip classes mirror

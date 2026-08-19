@@ -87,8 +87,11 @@ func foldDirectivesIntoURLs(nodes []ast.Node) []ast.Node {
 		}
 		merged := sb.String()
 		for _, loc := range urlLiteralRe.FindAllStringIndex(merged, -1) {
+			// The literal ends where the parser would end it, not where
+			// the regexp does (see trimURLLiteralEnd).
+			stop := loc[0] + len(trimURLLiteralEnd(merged[loc[0]:loc[1]]))
 			for _, sp := range spans {
-				if sp.from >= loc[0] && sp.to <= loc[1] && (sp.from > loc[0] || sp.to < loc[1]) {
+				if sp.from >= loc[0] && sp.to <= stop && (sp.from > loc[0] || sp.to < stop) {
 					nodes[sp.idx] = &ast.Text{Value: ":" + sp.name}
 					changed = true
 				}
@@ -161,7 +164,7 @@ func rawSliceFor(raw, value string, a, b int) string {
 			rEnd = ri
 			break
 		}
-		if vi < len(value) && ri+1 < len(raw) && raw[ri] == '\\' && raw[ri+1] == value[vi] {
+		if vi < len(value) && rawEscapeAt(raw, ri, value[vi]) {
 			ri += 2
 		} else {
 			ri++
@@ -171,6 +174,17 @@ func rawSliceFor(raw, value string, a, b int) string {
 		return value[a:b] // fall back to the decoded slice on any mismatch
 	}
 	return raw[rStart:rEnd]
+}
+
+// rawEscapeAt reports whether raw[i:] opens a preserved escape standing for
+// the single Value byte c. Only PreservedEscapes survive undecoded in Raw,
+// so a backslash before anything else is a literal one — without that test
+// two literal backslashes in Value ("\\\0…", where the second escapes
+// nothing) read as one escape pair and the walk desynchronizes, handing a
+// URL split a Raw slice one byte too long (probe: "\\\0+\+\(www.0.a0").
+func rawEscapeAt(raw string, i int, c byte) bool {
+	return i+1 < len(raw) && raw[i] == '\\' && raw[i+1] == c &&
+		strings.IndexByte(PreservedEscapes, c) >= 0
 }
 
 // splitURLLiterals splits a text node around URL literals at GFM autolink
@@ -201,7 +215,8 @@ func splitURLLiterals(node *ast.Text) []ast.Node {
 		if start > pos {
 			out = append(out, textSlice(node, value, pos, start))
 		}
-		url := value[start:end]
+		url := trimURLLiteralEnd(value[start:end])
+		end = start + len(url)
 		href := url
 		if strings.HasPrefix(url, "www.") {
 			href = "http://" + url
@@ -222,6 +237,62 @@ func splitURLLiterals(node *ast.Text) []ast.Node {
 		return []ast.Node{node}
 	}
 	return out
+}
+
+// trimURLLiteralEnd shortens a URL literal to the end goldmark's linkify
+// parser gives it, which its regexp alone does not: a trailing '.', an
+// unbalanced ')' run and an entity-closing ';' come off, and then so does
+// the trailing run of "?!.,:*_~" (extension/linkify.go). adfast
+// re-linkifies decoded text where the parser was inside a link label, so
+// the two boundaries have to agree — otherwise the render writes a literal
+// the re-parse cuts shorter ("http://0.a#!" links only through the '#';
+// probe: "http:\//0.a#!", whose escape sent it down this path).
+func trimURLLiteralEnd(s string) string {
+	switch s[len(s)-1] {
+	case '.':
+		s = s[:len(s)-1]
+	case ')':
+		closing := 0
+		for i := range len(s) {
+			switch s[i] {
+			case ')':
+				closing++
+			case '(':
+				closing--
+			}
+		}
+		if closing > 0 {
+			s = s[:len(s)-closing]
+		}
+	case ';':
+		// A trailing "&…;" is a character reference, not part of the link.
+		i := len(s) - 2
+		for ; i >= 0; i-- {
+			if !isAlphaNumericByte(s[i]) {
+				break
+			}
+		}
+		if i >= 0 && i != len(s)-2 && s[i] == '&' {
+			s = s[:i]
+		}
+	}
+	i := len(s) - 1
+	for i > 0 && isURLTrailPunct(s[i]) {
+		i--
+	}
+	return s[:i+1]
+}
+
+// isURLTrailPunct lists the bytes goldmark strips from the end of an
+// autolink literal (never all of them: one byte always remains).
+func isURLTrailPunct(c byte) bool {
+	return c == '?' || c == '!' || c == '.' || c == ',' ||
+		c == ':' || c == '*' || c == '_' || c == '~'
+}
+
+// isAlphaNumericByte mirrors goldmark's util.IsAlphaNumeric for ASCII.
+func isAlphaNumericByte(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // maxLiftDepth caps the lift recursion. Legitimate documents nest a few

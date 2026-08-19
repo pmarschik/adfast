@@ -542,6 +542,48 @@ func TestNormalizeTextNewlines(t *testing.T) {
 	})
 }
 
+// A space run that spans two adjacent same-mark text nodes collapses
+// too: markdown writes those nodes contiguously, so the run only exists
+// in the ADF and re-parsing the render would shorten it. The junctions
+// come from inline nodes that convert to nothing — an empty link, or a
+// registered text directive with no content.
+func TestNormalizeTextNewlines_AcrossTextNodes(t *testing.T) {
+	tests := []struct {
+		name, md, want string
+	}{
+		{"dropped empty link", "x []() y", "x |y"},
+		{"dropped empty directive", "*0aaa[0 :u ]*", "0aaa[0 |]"},
+		{"run of dropped constructs", "x []() []() y", "x |y"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got strings.Builder
+			walkTexts(mdToADF(tt.md).Content, func(text string) {
+				if got.Len() > 0 {
+					got.WriteString("|")
+				}
+				got.WriteString(text)
+			})
+			if got.String() != tt.want {
+				t.Errorf("text nodes = %q, want %q", got.String(), tt.want)
+			}
+		})
+	}
+}
+
+// Marks part the run: two text nodes with different marks render with a
+// mark delimiter between them, so both spaces survive the re-parse.
+func TestNormalizeTextNewlines_KeepsRunAcrossMarks(t *testing.T) {
+	var got strings.Builder
+	walkTexts(mdToADF("[x ](https://example.com) y").Content, func(text string) {
+		got.WriteString("|")
+		got.WriteString(text)
+	})
+	if want := "|x | y"; got.String() != want {
+		t.Errorf("text nodes = %q, want %q", got.String(), want)
+	}
+}
+
 func walkTexts(nodes []adf.Node, fn func(string)) {
 	for _, n := range nodes {
 		if text, ok := n.(*adf.Text); ok && text.Text != "" {

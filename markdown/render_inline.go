@@ -24,12 +24,22 @@ type inlineContext struct {
 	// prevRune is the last rune actually emitted (syntax included), used for
 	// CommonMark flanking checks; '\n' at block start counts as whitespace.
 	prevRune rune
-	prev     byte
-	hasPrev  bool
-	escape   bool // markdown character escaping (off inside link labels)
-	colons   bool // directive colon escaping (off in table cells + link labels)
-	pipes    bool // '|' escaping inside table cells (mdast-util-gfm-table)
-	label    bool // inside a link label (atomic: no marker-risk escaping)
+	// directiveHazard is the rune that would fuse onto a text directive
+	// rendered at this position, 0 when none. writeTextDirectiveForm
+	// answers it with the empty attribute block. See needsPunctTrail.
+	directiveHazard rune
+	prev            byte
+	hasPrev         bool
+	// nodePrev is the output byte preceding the text node being escaped
+	// (st.prev advances byte by byte through it), so a check anchored at
+	// the node's first byte can still see its left boundary. See
+	// emailLiteralStarts.
+	nodePrev    byte
+	nodeHasPrev bool
+	escape      bool // markdown character escaping (off inside link labels)
+	colons      bool // directive colon escaping (off in table cells + link labels)
+	pipes       bool // '|' escaping inside table cells (mdast-util-gfm-table)
+	label       bool // inside a link label (atomic: no marker-risk escaping)
 	// encodeLead asks the next text node to hex-encode its first
 	// alphanumeric rune (set when an adjacent emphasis marker would not be
 	// flankable — remark-stringify does the same with &#xNN; references).
@@ -42,6 +52,11 @@ type inlineContext struct {
 	// character into the last child's safety checks, so escapes like the
 	// gfm-autolink '@' rule see across a closing emphasis marker.
 	afterLead byte
+	// directiveLabel marks content written inside a text directive's
+	// [label], where a nested text directive is lossy rather than merely
+	// unstable: the label is read back with ast.PlainText, which has no
+	// text for a directive node. See writeColonEscapePrefix.
+	directiveLabel bool
 }
 
 // renderInlineString renders inline nodes at the start of a block line
@@ -81,11 +96,59 @@ func (r *mdRenderer) renderCellString(nodes []ast.Node) string {
 }
 
 func (r *mdRenderer) writeInlines(b *strings.Builder, nodes []ast.Node, st *inlineContext) {
+	nodes = joinAdjacentCodeSpans(nodes)
 	v := &inlineWriteVisitor{r: r, b: b, st: st, nodes: nodes}
 	for i := range nodes {
 		v.i = i
+		st.directiveHazard = r.needsPunctTrail(nodes, i, st)
 		ast.Visit(nodes[i], v)
 	}
+	st.directiveHazard = 0
+}
+
+// joinAdjacentCodeSpans concatenates neighboring inline code nodes into
+// one. Markdown cannot write two code spans back to back: the closing
+// fence of the first and the opening fence of the second are one
+// backtick run to the parser, and no fence length or padding splits it,
+// so the spans "a" and "b" written in sequence re-parse as the single
+// span holding "a", two backticks and "b". Joining is the only
+// representable form, and it is the faithful one: adjacent code content
+// with equal marks is one run in ADF too.
+//
+// The adjacency is reachable because the code mark is exclusive — an
+// emphasis wrapping nothing but a code span drops in normalization, and
+// its span lands beside its neighbor (probe: "`a`*`b`*", which
+// normalizes to two sibling code spans).
+func joinAdjacentCodeSpans(nodes []ast.Node) []ast.Node {
+	joins := false
+	for i := 1; i < len(nodes); i++ {
+		if isInlineCode(nodes[i-1]) && isInlineCode(nodes[i]) {
+			joins = true
+			break
+		}
+	}
+	if !joins {
+		return nodes
+	}
+	out := make([]ast.Node, 0, len(nodes))
+	for _, n := range nodes {
+		code, ok := n.(*ast.InlineCode)
+		if ok && len(out) > 0 {
+			if prev, prevOK := out[len(out)-1].(*ast.InlineCode); prevOK {
+				// A fresh node: the input tree is not the renderer's to edit.
+				out[len(out)-1] = &ast.InlineCode{Value: prev.Value + code.Value}
+				continue
+			}
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+// isInlineCode reports whether n is an inline code span.
+func isInlineCode(n ast.Node) bool {
+	_, ok := n.(*ast.InlineCode)
+	return ok
 }
 
 // inlineWriteVisitor writes the inline node at nodes[i] into b under the
@@ -295,9 +358,16 @@ func (r *mdRenderer) writeTextInline(b *strings.Builder, nodes []ast.Node, i int
 // backslash (goldmark reads "\\\" + newline as a soft break; remark parses
 // it per spec, and the trailing-space form parses identically in both);
 // otherwise remark's backslash form.
+//
+// At a line start the trailing-space form cannot be kept: nothing precedes
+// the two spaces, so they are the line's leading whitespace and are
+// stripped on re-parse (probe: "  \n0" is one paragraph "0"). The source
+// only reaches that shape when whatever preceded the break rendered to
+// nothing (":emoji  \n0" — the emoji has no shortName to write), and the
+// backslash form carries the break there instead.
 func (r *mdRenderer) writeHardBreak(b *strings.Builder, node *ast.Break, st *inlineContext) {
 	switch {
-	case r.cfg.prettierText && node.Value == "  ":
+	case r.cfg.prettierText && node.Value == "  " && !atLineStart(st):
 		b.WriteString("  \n")
 	case strings.HasSuffix(b.String(), "\\"):
 		b.WriteString("  \n")
@@ -338,13 +408,19 @@ func (r *mdRenderer) writeTextDirective(b *strings.Builder, node *ast.TextDirect
 // there would break the re-parse — a deliberate, documented divergence
 // from remark's wrapping.
 func (r *mdRenderer) writeTextDirectiveForm(b *strings.Builder, name string, attrs map[string]string, children []ast.Node, st *inlineContext) {
+	encodeBackslashBefore(b)
 	b.WriteString(":")
 	b.WriteString(name)
 	last := byte(0)
 	if len(children) > 0 {
 		b.WriteString("[")
-		child := inlineContext{escape: st.escape, colons: st.colons, pipes: st.pipes, prevRune: '['}
-		r.writeInlines(b, children, &child)
+		child := inlineContext{escape: st.escape, colons: st.colons, pipes: st.pipes, prevRune: '[', directiveLabel: true}
+		// Into a temp builder: the label's own leading whitespace decides
+		// whether the parse reads it as an indented code block, and that
+		// is only knowable once the label is written. See escapeLabelIndent.
+		var lb strings.Builder
+		r.writeInlines(&lb, children, &child)
+		b.WriteString(escapeLabelIndent(lb.String()))
 		b.WriteString("]")
 		last = ']'
 	}
@@ -353,6 +429,21 @@ func (r *mdRenderer) writeTextDirectiveForm(b *strings.Builder, name string, att
 		writeDirectiveAttrs(&ab, attrs)
 		masked := strings.ReplaceAll(ab.String(), " ", string(wrapMask))
 		b.WriteString(strings.ReplaceAll(masked, "\t", string(wrapMaskTab)))
+		last = '}'
+	}
+	// A form that stopped short of an attribute block stays open to whatever
+	// follows it, and remark's hex-encoding repair cannot reach back into a
+	// directive without renaming it. The empty attribute block closes the
+	// form: it is semantically inert (`:name{}` and `:name` parse to the same
+	// node for every registered kind), it consumes the '{' that a following
+	// brace would otherwise donate, and it ends the form in '}', which is
+	// punctuation and so satisfies left-flanking. See needsPunctTrail.
+	//
+	// The bare form is exposed to every hazard — its tail is a name rune,
+	// word class for every dialect name. The labeled form already ends in
+	// ']', so only a following '{' can still reach it.
+	if len(attrs) == 0 && (st.directiveHazard == '{' || (last == 0 && st.directiveHazard != 0)) {
+		b.WriteString("{}")
 		last = '}'
 	}
 	if last == 0 {
@@ -391,13 +482,14 @@ func (r *mdRenderer) writeWrapped(b *strings.Builder, nodes []ast.Node, i int, m
 		after = st.afterLead
 	}
 	child := inlineContext{
-		escape:      st.escape,
-		colons:      st.colons,
-		pipes:       st.pipes,
-		prevRune:    rune(marker[len(marker)-1]),
-		encodeLead:  openProblem,
-		encodeTrail: closeProblem,
-		afterLead:   after,
+		escape:         st.escape,
+		colons:         st.colons,
+		pipes:          st.pipes,
+		prevRune:       rune(marker[len(marker)-1]),
+		encodeLead:     openProblem,
+		encodeTrail:    closeProblem,
+		afterLead:      after,
+		directiveLabel: st.directiveLabel,
 	}
 	var inner strings.Builder
 	r.writeInlines(&inner, ast.Children(node), &child)

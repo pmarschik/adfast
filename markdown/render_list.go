@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -70,8 +71,10 @@ func (r *mdRenderer) renderList(b *strings.Builder, node *ast.List, indent, bull
 			child := item.Children[i]
 			if i == 0 {
 				r.renderItemFirstBlock(b, child, indent, prefix, childIndent, depth)
-				if l, nested := nestedPlainList(child); nested {
-					alt.prime(l.Ordered)
+				if l, isList := child.(*ast.List); isList {
+					// Task lists join the chain too (see
+					// renderItemFollowBlock); they are never ordered.
+					alt.prime(l.Ordered && !isTaskList(l))
 				}
 				continue
 			}
@@ -137,11 +140,21 @@ func (r *mdRenderer) renderItemFollowBlock(b *strings.Builder, item *ast.ListIte
 		r.renderList(b, nested, childIndent, bullet, delim)
 		return
 	}
-	alt.reset()
 	var inner strings.Builder
 	saved := r.prefixWidth
 	r.prefixWidth += len(childIndent)
-	r.renderBlock(&inner, child, depth)
+	// A nested TASK list renders through the indented path (its checkboxes
+	// are paragraph content, so it carries no indent of its own), but it
+	// still shares the bullet-alternation chain with the plain lists around
+	// it — same marker at the same column merges into one list on re-parse,
+	// and one checkbox anywhere makes the whole list a task list.
+	if l, ok := child.(*ast.List); ok && isTaskList(l) {
+		bullet, _ := alt.next(false)
+		r.renderTaskList(&inner, l, bullet)
+	} else {
+		alt.reset()
+		r.renderBlock(&inner, child, depth)
+	}
 	r.prefixWidth = saved
 	rendered := strings.TrimRight(inner.String(), "\n")
 	for line := range strings.SplitSeq(rendered, "\n") {
@@ -248,7 +261,67 @@ func followBlockNeedsGap(item *ast.ListItem, i int, loose, perItemSpread bool) b
 	if perItemSpread {
 		gap = ast.GapBefore(child)
 	}
+	if blockRunsToBlankLine(item.Children[i-1]) && blockIsAbsorbable(child) {
+		gap = true
+	}
 	return gap
+}
+
+// blockIsAbsorbable reports whether a block's opening line can be swallowed
+// by a run-on predecessor. Only a paragraph and a table can: a paragraph
+// line is read as another table row or as a lazy continuation, and a GFM
+// table cannot interrupt a paragraph, so its header row is absorbed the
+// same way. Every other block opens with a marker that breaks the run.
+func blockIsAbsorbable(child ast.Node) bool {
+	switch child.(type) {
+	case *ast.Paragraph, *ast.Table:
+		return true
+	}
+	return false
+}
+
+// blockRunsToBlankLine reports whether a list item's block keeps absorbing
+// the lines that follow it, so the next block must be blank-separated
+// whatever the item's spread says.
+//
+//   - A paragraph runs to the first blank line too, and a GFM table cannot
+//     interrupt it: written adjacently, the paragraph's last line becomes
+//     the table's header row and the table's own header becomes a body row
+//     ("0\n| -- |\n| -- |\n| 0 |"). A tight item would otherwise attach
+//     them, since neither the item's spread nor the paragraph-pair rule
+//     covers this pairing.
+//   - A GFM table runs to the first blank line: "| 0 |\n| - |\n0"
+//     re-parses as a two-row table.
+//   - A nested list whose own last block runs on hands the hazard up: the
+//     next block lands on the OUTER item's content column, which is a lazy
+//     continuation line for a paragraph deeper in. "- - x\n  y" re-parses
+//     as one paragraph "x y", dropping the sibling paragraph outright. A
+//     list ending in an empty item ("- 0.") absorbs nothing, and forcing a
+//     blank there would eject the next block from the item.
+func blockRunsToBlankLine(prev ast.Node) bool {
+	switch n := prev.(type) {
+	case *ast.Paragraph, *ast.Table:
+		return true
+	case *ast.List:
+		return listTailAbsorbsNextLine(n)
+	}
+	return false
+}
+
+// listTailAbsorbsNextLine reports whether the last block of a list's last
+// item continues onto the line after it.
+func listTailAbsorbsNextLine(list *ast.List) bool {
+	for _, v := range slices.Backward(list.Children) {
+		item, ok := v.(*ast.ListItem)
+		if !ok {
+			continue
+		}
+		if len(item.Children) == 0 {
+			return false
+		}
+		return blockRunsToBlankLine(item.Children[len(item.Children)-1])
+	}
+	return false
 }
 
 func (r *mdRenderer) renderTaskList(b *strings.Builder, node *ast.List, bullet string) {

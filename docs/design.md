@@ -104,6 +104,127 @@ continuously grown fuzz corpus; inputs where the reference pipeline is
 itself unstable are excluded as documented skip classes (each with a
 probe input and analysis next to the fuzz target).
 
+### Deliberate divergences from remark-stringify
+
+Parity with remark is the default, but not when remark's own output is
+unstable or lossy for a construct adfast has to preserve. Each of these
+is pinned by a named regression test:
+
+- **A text directive that stays open gets an empty attribute block.**
+  The bare `:name` form ends in a name rune and the labelled `:name[l]`
+  form ends where a `{…}` block would start, so whatever follows either
+  fuses into the directive token or (for an emphasis marker) cannot
+  flank. remark repairs a non-flankable marker by hex-encoding a rune
+  next to it, which cannot reach into a directive name without renaming
+  the directive. `:name{}` is semantically inert for every registered
+  kind, terminates the token, and ends the form in punctuation —
+  `*:media!*` renders `:media{}_!_` rather than remark's unstable
+  `:media_!_`. The formatter needs the block in more places than the
+  renderer does: it adds no escapes of its own, writing back the source
+  form the parse captured, so a `[` or `_` the source left bare fuses
+  onto the name where a re-derived escape would have separated it. See
+  `markdown.needsPunctTrail`, `flanking_directive_test.go` and
+  `format_contract_test.go`.
+- **A run-on block inside a list item is blank-separated.** A GFM table
+  runs to the first blank line, a paragraph does too (and a table cannot
+  interrupt one, so an attached table donates its header row to the
+  paragraph and pushes its own header into the body), and a nested list
+  ending in a paragraph leaves the next block on the outer item's content
+  column as a lazy continuation. remark emits no blank in any of these
+  cases and silently merges the blocks (`- - x` + `y` becomes one
+  paragraph `x y`); adfast forces the blank when the following block is a
+  paragraph or table — the only two that can be absorbed. See
+  `markdown.blockRunsToBlankLine` and `list_nesting_test.go`. The one
+  re-pinned entry in `testdata/directive_fixtures.json`
+  (`- before … after list`) records this against the reference corpus.
+- **A backslash in a directive label is escaped where it could start an
+  escape sequence.** remark writes label text verbatim, so the alt text
+  `\!0` round-trips as `!0` — the backslash is consumed on re-parse. A
+  trailing backslash is worse: it escapes the `]` that closes the label.
+  Both are escaped; a backslash before a non-punctuation byte stays
+  verbatim, keeping remark parity where parity is safe. See
+  `markdown.escapeDirectiveLabel` and `flanking_directive_test.go`.
+- **A colon in a directive label is escaped whenever it could open a
+  nested text directive.** Label content is parsed as inline markdown and
+  read back with `ast.PlainText`, which has no text for a directive node,
+  so a nested directive does not degrade — the label content disappears
+  (`:placeholder[:0:0]` rendered `:placeholder[:0]`, which re-parsed to an
+  empty document). The prose escaper only protects letter-led names and
+  only after the first character, for remark parity; inside a label the
+  rule covers digit-led names (goldmark-directive parses those) and the
+  label's first character too. A colon that cannot start a name, or one
+  following another colon, still stays verbatim. See
+  `markdown.writeColonEscapePrefix` and `flanking_directive_test.go`.
+- **Two adjacent code spans are written as one.** Markdown cannot
+  separate them: the closing fence of the first and the opening fence of
+  the second are one backtick run to the parser, and no fence length or
+  padding splits the run. For two adjacent code-marked text nodes holding
+  "0" each, remark writes the six bytes of a one-backtick fence around
+  "0", two backticks, "0" and a one-backtick fence — which re-parse as
+  the single span holding "0", two backticks, "0". Those are the bytes
+  remark writes for that one span too, so its output is ambiguous as well
+  as lossy. adfast joins the content instead (one span holding "00"),
+  the only representable form and the one ADF agrees with (adjacent
+  content under equal marks is one run). The adjacency is reachable
+  because the code mark is exclusive: an emphasis wrapping nothing but a
+  code span drops in normalization and leaves its span beside the
+  neighbor. See `markdown.joinAdjacentCodeSpans` and
+  `format_contract_test.go`; the re-pinned two-code-node entry in
+  `testdata/directive_fixtures.json` records this against the reference
+  corpus.
+- **A text-directive label that opens on the 4-column indent starts with
+  a character reference.** The label of a text directive is parsed as
+  block content, so a leading whitespace run reaching four columns (four
+  spaces, or a tab, which advances to the next stop) is an indented code
+  block: nothing inside is parsed, escapes stay literal, and each format
+  escapes the surviving backslash again (`:u[    \*]` grew a backslash
+  per pass). Writing the run's first byte as `&#x20;`/`&#x9;` keeps the
+  label off the indent — the reference is one column wide and decodes
+  back to the byte. Leaf and container labels need no repair: they are
+  read back through `ast.PlainText` over inline content, which resolves
+  the escape. See `markdown.escapeLabelIndent` and
+  `format_contract_test.go`.
+- **A whitespace-only code span is written without a pad.** A code span
+  whose content begins and ends with a space normally needs a pad space
+  at each end, because the parser trims one from each edge. goldmark
+  skips that trim when the content is blank — and its blank test counts
+  a tab and a carriage return as whitespace, where CommonMark's rule
+  asks only whether the content is all U+0020. So `` ` \t ` `` keeps its
+  spaces on re-parse, and the padded form remark would write grows a
+  space per format pass. adfast pads against the parser it round-trips
+  against. See `markdown.codeSpanTrims` and `format_contract_test.go`.
+- **The formatter escapes an '@' that its own output would linkify.**
+  Prettier's pre-CommonMark parser has no GFM autolink literals, so it
+  leaves every '@' bare and the formatter follows it — but adfast
+  re-parses with goldmark's linkify extension. Where the source kept the
+  address apart, the formatter can write it contiguously (`0@A:u.A` — the
+  empty `:u` normalizes away and leaves "0@A" beside ".A"), and the
+  re-parse turns the run into a link the source never had. adfast
+  escapes there, mirroring goldmark's linkify conditions rather than
+  remark's one-character neighborhood: a literal starts at a line head or
+  on one of the trigger bytes `" *_~("`, never on punctuation, and needs
+  a dot in its domain. Two positions are answered conservatively, where
+  the escape only ever keeps plain text plain: a local part that runs out
+  of the text node into the markup before it (an emphasis closer is an
+  underscore, an address byte to the scan). The equivalent URL/`www`
+  fusion has no repair — `relinkifyTexts` re-linkifies a decoded text
+  value whatever escapes it was written with, so an unlinked URL literal
+  is inexpressible in the dialect and stays a documented fuzz skip class.
+  See `markdown.linkifiesAsEmail`, `convert.joinTextAtoms` and
+  `format_contract_test.go`.
+- **A re-linked URL literal ends where the parser would end it.**
+  goldmark's linkify skips a literal while inside a potential link label
+  (`[ http://…`), and an escape can split one out of the parse
+  (`http:\//0.a#!`); remark links both, and so does adfast's own re-parse
+  of the rendered output — so `relinkifyTexts` links them at parse time
+  to keep the round trip stable. That repair has to land on the parser's
+  boundary rather than its regexp's: goldmark strips a trailing `.`, an
+  unbalanced `)` run and an entity-closing `;` from the match, then a
+  trailing run of `?!.,:*_~`, so `http://0.a#!` links only through the
+  `#`. Without the trim the parse claimed a longer link than the render
+  could write back, and the format changed the href. See
+  `markdown.trimURLLiteralEnd` and `format_contract_test.go`.
+
 The prettier md → md formatter is the composition
 `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`
 — a pure md → ast → md pass with no ADF leg: `FromMarkdown` produces the
@@ -141,6 +262,18 @@ The `To*` primitives are what canonicalize on the way out:
   pivot AST has no dedicated node for — `::colwidths` resolving onto the
   following table, `::decisions` marking the following bullet list — are
   interpreted here structurally.
+- `ToADF` then always applies `adf.NormalizeTextNewlines`, the
+  spec-level whitespace normalization: inside a non-code text node a
+  newline run (with its surrounding spaces and tabs) and a space run both
+  collapse to one space. The same collapse applies **across the junction
+  of two adjacent text nodes with equal marks**, because markdown writes
+  those nodes contiguously — the run would only exist in the ADF, and
+  re-parsing the render merges the nodes and shortens it. Such junctions
+  are what an inline node that converts to nothing leaves behind: an
+  empty link (`x []() y`), or a registered text directive with no content
+  (`:u` in `*0aaa[0 :u ]*`). Without the junction rule the md → adf → md
+  round trip is not idempotent, so this is a correctness requirement, not
+  a cosmetic one.
 - `ToMarkdown`'s prettier-format mode runs `convert.Normalize` before
   rendering. Because the renderer needs the _nested_ AST while ADF is
   flat, `Normalize` performs the inverse of the encode flatten: it

@@ -145,21 +145,21 @@ func hasAdjacentCodeSpans(nodes []adf.Node) bool {
 var linkDigitDirectiveRe = regexp.MustCompile(`:\d|^:[A-Za-z]`)
 
 // hasDigitDirectiveInLink reports a link-marked text containing ":<digit>"
-// or starting with ":<letter>". Label colon-escaping only protects
-// letter-led names AFTER the first character; a directive token in a
+// or starting with ":<letter>". A link label is written with remark's
+// label escaping, which leaves colons alone, so a directive token in a
 // rendered label re-parses as a text directive and splits or empties the
 // link each round; remark degrades identically (probes: [0:0:0](),
 // [:u:A]()).
+//
+// The directive-form wrappers (:u/:sub/:color/:bg/:fontSize/:annotation)
+// used to be skipped here too. They are fixed rather than skipped: their
+// labels escape every colon that could open a nested text directive (see
+// markdown.writeColonEscapePrefix). Probes: ":u[0:0:0]", ":sup[:a:b]".
 func hasDigitDirectiveInLink(nodes []adf.Node) bool {
 	for i := range nodes {
 		if text, ok := nodes[i].(*adf.Text); ok && linkDigitDirectiveRe.MatchString(text.Text) {
 			for _, m := range text.Marks {
-				switch m.Kind() {
-				case "link", "underline", "subsup", "textColor", "backgroundColor",
-					"fontSize", "annotation":
-					// All of these render as [label]-carrying wrappers
-					// (links or :u/:sub/:color/:bg/:fontSize/:annotation
-					// directives).
+				if m.Kind() == "link" {
 					return true
 				}
 			}
@@ -560,53 +560,6 @@ func hasLazyChainContinuation(md string) bool {
 			if len(cont)-len(trimmed) < len(prefix) {
 				return true
 			}
-		}
-	}
-	return false
-}
-
-// hasInteriorDoubleSpace reports a run of two or more spaces inside a
-// line's content (indentation, table padding, fenced code, and
-// trailing-space hard breaks excluded).
-func hasInteriorDoubleSpace(md string) bool {
-	inFence := false
-	for line := range strings.SplitSeq(md, "\n") {
-		trimmedLead := strings.TrimLeft(line, " \t")
-		if strings.HasPrefix(trimmedLead, "```") || strings.HasPrefix(trimmedLead, "~~~") {
-			inFence = !inFence
-			continue
-		}
-		// Table rows (the only pipe lines with legitimate padding) always
-		// start with "| " in rendered output; pipes elsewhere are text.
-		if inFence || strings.HasPrefix(trimmedLead, "| ") {
-			continue
-		}
-		content := strings.TrimRight(trimmedLead, " ")
-		if strings.Contains(content, "  ") {
-			return true
-		}
-	}
-	return false
-}
-
-// hasSpaceRun reports a run of two or more spaces in any line's content
-// (indentation, fenced code, and table padding excluded; trailing runs
-// count — they only arise from boundary-encoded spaces here).
-func hasSpaceRun(md string) bool {
-	inFence := false
-	for line := range strings.SplitSeq(md, "\n") {
-		trimmedLead := strings.TrimLeft(line, " \t")
-		if strings.HasPrefix(trimmedLead, "```") || strings.HasPrefix(trimmedLead, "~~~") {
-			inFence = !inFence
-			continue
-		}
-		// Table rows (the only pipe lines with legitimate padding) always
-		// start with "| " in rendered output; pipes elsewhere are text.
-		if inFence || strings.HasPrefix(trimmedLead, "| ") {
-			continue
-		}
-		if strings.Contains(trimmedLead, "  ") {
-			return true
 		}
 	}
 	return false
@@ -1055,23 +1008,13 @@ func skipRenderedTokenClasses(first string) (reason string, skip bool) {
 	if digitDirectiveTokenRe.MatchString(first) {
 		return "digit-led directive token in text; the reference pipeline is equally unstable", true
 	}
-	// Dropped empty links leave interior double spaces ("x []() y"
-	// renders "x  y"), which collapse on re-parse; remark renders the
-	// identical bytes and is equally unstable.
-	if hasInteriorDoubleSpace(first) {
-		return "interior double space from dropped construct; remark is equally unstable", true
-	}
-	// The same class with one space boundary-encoded ("0 &#x20;"):
-	// the decoded run collapses on re-parse just the same.
-	if decoded := strings.ReplaceAll(first, "&#x20;", " "); decoded != first && hasSpaceRun(decoded) {
-		return "encoded space adjoining a space; remark is equally unstable", true
-	}
-	// The same at a line start ("&#x20; 0"): the decoded lead space
-	// plus the following space collapse on re-parse; remark renders
-	// the identical bytes (probe: "[]() []() 0").
-	if strings.Contains(first, "&#x20; ") || strings.Contains(first, " &#x20;") || strings.Contains(first, "&#x20;&#x20;") {
-		return "encoded space adjoining a space; remark is equally unstable", true
-	}
+	// The three interior-space skip classes that used to live here —
+	// dropped empty links leaving "x  y", the same run with one space
+	// boundary-encoded, and the same at a line start — are fixed rather
+	// than skipped: adf.NormalizeTextNewlines now collapses a space run
+	// across the junction of two adjacent same-mark text nodes, which is
+	// exactly what a dropped construct leaves behind. Probes: "x []() y",
+	// "[]() []() 0", "*0aaa[0 :u ]*".
 	// A link destination that is (or starts with) a literal "<" renders
 	// as "](<...)" — an unterminated angle destination that fails to
 	// re-parse as a link; remark renders the identical bytes and is

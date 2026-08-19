@@ -61,6 +61,143 @@ func canCloseMarker(marker byte, prev, next rune) bool {
 	return rightFlanking && (!leftFlanking || flankPunct(next))
 }
 
+// needsPunctTrail returns the rune that would fuse onto a text directive
+// rendered at nodes[i], or 0 when nodes[i+1] is harmless there.
+// writeTextDirectiveForm answers a hazard by emitting the semantically
+// inert `{}` — `:name{}` and `:name` decode to the same node for every
+// registered kind — which both terminates the directive token and ends
+// the form in punctuation.
+//
+// This is a DELIBERATE divergence from mdast-util-directive, which emits
+// the bare form unconditionally and is unstable on every input below.
+//
+// Two hazards, both of which leave the round trip non-idempotent:
+//
+//   - Token fusion. The bare form ends in a name rune, and the name
+//     grammar keeps running: `:media` before "0" renders ":media0", which
+//     re-parses as the (unregistered) directive "media0" and degrades to
+//     escaped text. A text node backslash-escapes '_', '[' and '{', so
+//     only the unescapable continuations are hazards there; syntax runes
+//     from other kinds — a link's '[' — are not escaped at all. A '{'
+//     fuses onto the LABELED form too (it is read as that directive's
+//     attribute block), which is why the hazard rune is reported rather
+//     than a bare yes/no.
+//
+//   - Emphasis flanking. remark repairs a non-flankable marker by
+//     hex-encoding one of the two runes touching it (writeWrapped's
+//     encodeLead, which leaves a '&#xNN;' reference starting with '&'),
+//     or by encoding a preceding TEXT node's tail. Neither reaches a
+//     preceding directive, whose tail is its name — encoding that would
+//     rename the directive. `*:media!*` renders ":media_!_", where the
+//     '_' cannot open after "a", so it re-parses as literal text.
+func (r *mdRenderer) needsPunctTrail(nodes []ast.Node, i int, st *inlineContext) rune {
+	if i+1 >= len(nodes) {
+		return 0
+	}
+	next := nodes[i+1]
+	if marker := emphasisMarkerByte(next); marker != 0 {
+		if r.markerNeedsPunctBefore(marker, next, st) {
+			return rune(marker)
+		}
+		return 0
+	}
+	_, isText := next.(*ast.Text)
+	lead := nodeLeadRune(next)
+	// The formatter adds no escapes of its own — it writes the source
+	// form the parse captured (ast.Text.Raw, which normalization has
+	// already moved onto Value here) — so a '[' or '_' the source left
+	// bare stays bare and fuses onto the name (probe: ":media[\n]"
+	// formatted to ":media[ ]", whose label swallowed the text).
+	escapable := isText && st.escape && !r.cfg.prettierText
+	if fusesOntoDirectiveName(lead, escapable) {
+		return lead
+	}
+	return 0
+}
+
+// markerNeedsPunctBefore asks whether an emphasis marker's opener is
+// unsalvageable at a word-class predecessor — no encodeLead assignment
+// makes it flank — while a punctuation predecessor would work. writeWrapped
+// still applies encodeLead on top once the predecessor changes.
+func (r *mdRenderer) markerNeedsPunctBefore(marker byte, next ast.Node, st *inlineContext) bool {
+	lead := r.renderedChildLead(next, st)
+	leads := []rune{lead}
+	if isEncodableRune(lead) {
+		leads = append(leads, '&') // what encodeLead would leave in its place
+	}
+	worksSomewhere := false
+	for _, l := range leads {
+		if canOpenMarker(marker, 'a', l) {
+			return false // a word-class predecessor is already fine
+		}
+		worksSomewhere = worksSomewhere || canOpenMarker(marker, '.', l)
+	}
+	return worksSomewhere
+}
+
+// encodeBackslashBefore rewrites a literal backslash at the end of b into a
+// character reference, so that the ':' written next opens a directive.
+//
+// goldmark-directive decides whether a colon may open a text directive by
+// looking at the preceding SOURCE byte, without resolving escapes: a '\'
+// there suppresses the directive whether it is the escape marker (`\:u`)
+// or an escaped literal backslash (`\\:u`). micromark resolves the escape
+// first and opens the directive, so this is a parser divergence, not a
+// dialect rule — the round trip breaks on it, since the directive we just
+// wrote would come back as text.
+//
+// A trailing '\' in the output is always a literal: escapes are written as
+// `\X` with X != '\', and the hard-break backslash is followed by '\n'.
+// The character reference decodes to the same backslash and ends in ';',
+// which lets the directive open. This is the repair remark already applies
+// to a '\~' before a strikethrough (see writeTextInline).
+func encodeBackslashBefore(b *strings.Builder) {
+	s := b.String()
+	if !strings.HasSuffix(s, `\`) {
+		return
+	}
+	cut := 1
+	if strings.HasSuffix(s, `\\`) {
+		cut = 2
+	}
+	b.Reset()
+	b.WriteString(s[:len(s)-cut])
+	b.WriteString(hexRef('\\'))
+}
+
+// fusesOntoDirectiveName reports whether rune r, emitted directly after a
+// bare `:name`, is read as part of that directive token on re-parse.
+// escapable says the rune comes from a text node, which backslash-escapes
+// the punctuation members of the set (goldmark-directive's name grammar is
+// alphanumerics plus '-'/'_' runs; '[' opens a label and '{' an attribute
+// block).
+func fusesOntoDirectiveName(r rune, escapable bool) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return true
+	case r == '-':
+		// A backslash before '-' is dropped by the renderer, so a text
+		// node cannot separate this one either.
+		return true
+	case r == '_', r == '[':
+		return !escapable
+	case r == '{':
+		// Unlike '_' and '[', a brace is not in remark's escape set, so a
+		// text node emits it raw: ":media" before "{ }" renders
+		// ":media{ }", whose brace block is read as the directive's
+		// (empty) attributes and the text is lost.
+		return true
+	case r == ':':
+		// goldmark-directive does not open a bare text directive whose
+		// name butts straight into a following colon, so ":media:u[x]"
+		// and ":media:" both lose the first directive. The colon escape
+		// only covers a colon that leads into a name (`\:x`), so this one
+		// is a hazard whatever the neighbor is.
+		return true
+	}
+	return false
+}
+
 func lastRuneOf(s string) rune {
 	r := rune(0)
 	for _, c := range s {
@@ -115,7 +252,7 @@ func nodeLeadRune(node ast.Node) rune {
 // sees. Rendering into a scratch context has no side effects.
 func (r *mdRenderer) renderedChildLead(node ast.Node, st *inlineContext) rune {
 	var tmp strings.Builder
-	child := inlineContext{escape: st.escape, colons: st.colons, pipes: st.pipes, prevRune: '_'}
+	child := inlineContext{escape: st.escape, colons: st.colons, pipes: st.pipes, prevRune: '_', directiveLabel: st.directiveLabel}
 	r.writeInlines(&tmp, ast.Children(node), &child)
 	return firstRuneOf(tmp.String())
 }
@@ -123,7 +260,7 @@ func (r *mdRenderer) renderedChildLead(node ast.Node, st *inlineContext) rune {
 // renderedChildTrail is renderedChildLead's counterpart for the last rune.
 func (r *mdRenderer) renderedChildTrail(node ast.Node, st *inlineContext) rune {
 	var tmp strings.Builder
-	child := inlineContext{escape: st.escape, colons: st.colons, pipes: st.pipes, prevRune: '_'}
+	child := inlineContext{escape: st.escape, colons: st.colons, pipes: st.pipes, prevRune: '_', directiveLabel: st.directiveLabel}
 	r.writeInlines(&tmp, ast.Children(node), &child)
 	return lastRuneOf(tmp.String())
 }
@@ -344,7 +481,8 @@ func peekLead(node ast.Node) byte {
 
 // formatCodeSpan wraps text in the shortest backtick fence that does not
 // appear as a run inside it, padding with a space when the content begins or
-// ends with a backtick or space — mdast-util-to-markdown's inline-code rules
+// ends with a backtick, or when writing it verbatim would lose its edge
+// bytes to the parser's trim — mdast-util-to-markdown's inline-code rules
 // (so `0“0` round-trips instead of merging with a neighboring span).
 func formatCodeSpan(s string) string {
 	runs := map[int]bool{}
@@ -366,9 +504,34 @@ func formatCodeSpan(s string) string {
 	}
 	fence := strings.Repeat("`", n)
 	pad := ""
-	if s != "" && (s[0] == '`' || s[len(s)-1] == '`' ||
-		(s[0] == ' ' && s[len(s)-1] == ' ' && strings.Trim(s, " ") != "")) {
+	if s != "" && (s[0] == '`' || s[len(s)-1] == '`' || codeSpanTrims(s)) {
 		pad = " "
 	}
 	return fence + pad + s + pad + fence
+}
+
+// codeSpanTrims reports whether a code span holding s verbatim loses one
+// byte from each end on re-parse, so the content needs a pad byte there
+// to survive.
+//
+// goldmark trims when both edge bytes are a space or a newline and the
+// content is not blank — and its blank test counts a tab and a carriage
+// return as whitespace, which CommonMark's "consists entirely of space
+// characters" does not. A span holding " \t " therefore keeps its spaces
+// on re-parse, and padding it would grow a space per format pass instead
+// of round-tripping (probe: "` \t `0", whose format grew one).
+func codeSpanTrims(s string) bool {
+	return isCodeSpanEdgeSpace(s[0]) && isCodeSpanEdgeSpace(s[len(s)-1]) && !isBlankRun(s)
+}
+
+// isCodeSpanEdgeSpace reports whether c is one of the two bytes goldmark
+// trims from a code span's edges (parser.isSpaceOrNewline).
+func isCodeSpanEdgeSpace(c byte) bool {
+	return c == ' ' || c == '\n'
+}
+
+// isBlankRun reports whether s is entirely whitespace by goldmark's
+// reckoning (util.IsBlank: space, tab, newline, carriage return).
+func isBlankRun(s string) bool {
+	return strings.Trim(s, " \t\n\r") == ""
 }
