@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#MISE description="Build the wasm/ module for GOOS=js GOARCH=wasm"
+#MISE dir="{{config_root}}/wasm"
+#MISE sources=["wasm/*.go", "wasm/go.mod"]
+#MISE outputs=["wasm/adfast.wasm"]
+set -euo pipefail
+GOOS=js GOARCH=wasm go build -o adfast.wasm .
+ls -lh adfast.wasm

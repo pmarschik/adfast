@@ -48,3 +48,8 @@ AGENTS.local.md
 /full
 /example/full/full
 /example/minimal/minimal
+
+# WASM build outputs: adfast.wasm is built by `mise run wasm:build` and shipped
+# by consumers; /wasm/wasm is what a bare `go build .` leaves in that directory.
+/wasm/*.wasm
+/wasm/wasm

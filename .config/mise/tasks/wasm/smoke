@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Drive the built .wasm through Node and the vendored wasm_exec.js"
+#MISE dir="{{config_root}}/wasm"
+#MISE depends=["wasm:build"]
+set -euo pipefail
+node smoke.mjs
