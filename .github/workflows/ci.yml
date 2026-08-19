@@ -51,6 +51,15 @@ jobs:
           go test ./...
           go test -race ./...
 
+      # api.go carries every decision the wasm module makes and has no
+      # build tag, so it tests like any other package here. The js-tagged
+      # glue is covered by the `wasm` job's Node smoke test instead.
+      - name: Test wasm module
+        working-directory: wasm
+        run: |
+          go test ./...
+          go test -race ./...
+
       - name: Coverage floor (75%)
         run: |
           go test -coverprofile=coverage.out -coverpkg=./... ./...
@@ -63,6 +72,46 @@ jobs:
 
       - name: Fuzz smoke (format contract)
         run: go test -run=^$ -fuzz=FuzzFormatSemanticsPreserved -fuzztime=30s .
+
+  # The js/wasm build and its Node smoke test. This job is the ONLY thing
+  # that exercises wasm/main.go: a `js && wasm`-tagged file never compiles
+  # during `go test ./...` on the host, so the js.FuncOf glue would
+  # otherwise ship untested.
+  wasm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          # Pinned to the toolchain wasm/wasm_exec.js was vendored from —
+          # that file is coupled to the runtime that built the binary. Keep
+          # in sync with .config/mise/config.toml and wasm/README.md; the
+          # drift check below fails loudly if they ever separate.
+          go-version: "1.26.4"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Vendored wasm_exec.js matches the toolchain
+        run: |
+          if ! diff -u "$(go env GOROOT)/lib/wasm/wasm_exec.js" wasm/wasm_exec.js; then
+            echo "::error::wasm/wasm_exec.js is out of step with this Go toolchain."
+            echo "Re-vendor it and update the version table in wasm/README.md:"
+            echo '  cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" wasm/'
+            exit 1
+          fi
+
+      - name: Build (GOOS=js GOARCH=wasm)
+        working-directory: wasm
+        run: |
+          GOOS=js GOARCH=wasm go build -o adfast.wasm .
+          ls -l adfast.wasm
+
+      - name: Node smoke test
+        working-directory: wasm
+        run: node smoke.mjs
 
   lint:
     runs-on: ubuntu-latest
