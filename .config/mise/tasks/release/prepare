@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-#MISE description="Bump version and update CHANGELOG.md — review before running release:push"
-#MISE sources=["CHANGELOG.md"]
-#MISE outputs=["CHANGELOG.md"]
+#MISE description="Prepare the release for review before running release:push"
+#MISE sources=["CHANGELOG.md", "**/go.mod", "go.work"]
+#MISE outputs=["CHANGELOG.md", "**/go.mod", "go.work"]
 #USAGE flag "-f --force"          help="Skip all pre-flight checks"
 #USAGE flag "--skip-clean"        help="Skip dirty working tree check"
 #USAGE flag "--skip-cog"          help="Skip cog conventional commit check"
@@ -25,8 +25,19 @@ CLIFF="git cliff --config .config/cliff.toml"
 # ── detect VCS + dirty check ──────────────────────────────────────────────────
 detect_vcs
 info "VCS: ${VCS}"
+CLIFF_REV=()
+[[ -n "${JJ_HEAD}" ]] && CLIFF_REV=("${JJ_HEAD}")
 
-if [[ "${FORCE}" == "false" && "${SKIP_CLEAN}" == "false" ]]; then
+# Re-running prepare on a release commit re-does the same release rather than
+# bumping past it: under jj the commit is already described and tagged, and
+# asking git cliff again would answer with the version after this one.
+version=""
+if [[ "${VCS}" == "jj" ]]; then
+  version=$(release_version_at @)
+  [[ -n "${version}" ]] && info "Re-preparing ${version} (already on @)"
+fi
+
+if [[ -z "${version}" && "${FORCE}" == "false" && "${SKIP_CLEAN}" == "false" ]]; then
   if [[ "${VCS}" == "jj" ]]; then
     dirty=$(jj diff -r @ --summary 2>/dev/null | grep -v '^$' || true)
     if [[ -n "${dirty}" ]]; then
@@ -39,7 +50,7 @@ if [[ "${FORCE}" == "false" && "${SKIP_CLEAN}" == "false" ]]; then
     dirty=$(git status --porcelain | grep -v '^??' || true)
     if [[ -n "${dirty}" ]]; then
       warn "Working tree has uncommitted changes:"
-      echo "${dirty}" | sed 's/^/       /'
+      awk '{print "       " $0}' <<< "${dirty}"
       echo ""
       die "Commit or stash changes first, or pass --skip-clean to skip this check."
     fi
@@ -55,9 +66,17 @@ if [[ "${FORCE}" == "false" && "${SKIP_COG}" == "false" ]]; then
 fi
 
 # ── bump + changelog ──────────────────────────────────────────────────────────
-raw_version=$(${CLIFF} --bumped-version ${JJ_HEAD} 2>/dev/null || echo "0.1.0")
-version="v${raw_version#v}"  # ensure v prefix
-info "Bumped version: ${version}"
+if [[ -z "${version}" ]]; then
+  raw_version=$(${CLIFF} --bumped-version "${CLIFF_REV[@]}" 2>/dev/null || echo "0.1.0")
+  version="v${raw_version#v}"  # ensure v prefix
+  info "Bumped version: ${version}"
+fi
+
+# git cliff resolves the bump from the latest tag; a submodule tag winning that
+# race yields something like "wasm/v0.6.1", and every go.mod would be pinned to
+# it. Cheap to check, expensive to undo.
+[[ "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]] \
+  || die "git cliff resolved '${raw_version:-${version}}' — check tag_pattern in .config/cliff.toml"
 
 CLIFF_EXTRA=()
 if [[ -n "${HIGHLIGHTS}" ]]; then
@@ -65,7 +84,7 @@ if [[ -n "${HIGHLIGHTS}" ]]; then
   info "Highlights: ${HIGHLIGHTS}"
 fi
 
-${CLIFF} --tag "${version}" ${JJ_HEAD} "${CLIFF_EXTRA[@]}" -o CHANGELOG.md
+${CLIFF} --tag "${version}" "${CLIFF_REV[@]}" "${CLIFF_EXTRA[@]}" -o CHANGELOG.md
 success "CHANGELOG.md updated"
 
 info "Formatting CHANGELOG.md…"
@@ -116,6 +135,20 @@ if [[ -f go.work ]]; then
     fi
   done
   success "go.work updated"
+fi
+
+# ── jj: describe, tag and move the bookmark now ───────────────────────────────
+# All three are local and reversible under jj (jj undo, jj describe again,
+# jj tag set --allow-move), so deferring them to push buys nothing and costs the
+# review: this way what gets reviewed is the actual release commit. Amending it
+# is fine — push re-points the tags onto whatever @ ends up being. Under git the
+# same steps stay in push, where an unwanted commit costs a reset.
+if [[ "${VCS}" == "jj" ]]; then
+  echo ""
+  jj describe -m "chore(release): ${version}"
+  JJ_HEAD=$(jj log -r @ --no-graph --template 'commit_id')
+  create_release_tags "${version}" "${JJ_HEAD}"
+  advance_main_bookmark "${JJ_HEAD}"
 fi
 
 echo ""

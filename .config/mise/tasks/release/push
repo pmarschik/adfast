@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Commit, tag, push and tidy go.sum — the whole release after reviewing release:prepare output"
+#MISE description="Publish the prepared release and tidy go.sum after verification"
 set -euo pipefail
 # shellcheck source=_lib.sh
 source "$(dirname "$0")/_lib.sh"
@@ -11,25 +11,55 @@ echo ""
 # ── detect VCS ───────────────────────────────────────────────────────────────
 detect_vcs
 info "VCS: ${VCS}"
+discover_modules
 
 # ── defensive checks ─────────────────────────────────────────────────────────
 if [[ "${VCS}" == "git" ]]; then
   branch=$(git branch --show-current)
   [[ "${branch}" == "main" || "${branch}" == "master" ]] \
     || die "must be on main/master branch (current: ${branch})"
-  dirty=$(git status --porcelain | grep -v '^\?\?' | grep -v 'CHANGELOG.md' || true)
-  [[ -z "${dirty}" ]] \
-    || die "unexpected uncommitted changes — only CHANGELOG.md expected:\n${dirty}"
+
+  unexpected=()
+  has_changelog=false
+  while IFS= read -r path; do
+    [[ -z "${path}" ]] && continue
+    [[ "${path}" == "CHANGELOG.md" ]] && has_changelog=true
+    is_release_prepare_path "${path}" || unexpected+=("${path}")
+  done < <(git diff --name-only HEAD --)
+
+  [[ ${#unexpected[@]} -eq 0 ]] \
+    || die "unexpected uncommitted changes — only release:prepare outputs expected:\n${unexpected[*]}"
+  [[ "${has_changelog}" == "true" ]] \
+    || die "CHANGELOG.md has no pending changes — run 'mise run release:prepare' first"
 fi
 
-[[ -n "$(git diff HEAD -- CHANGELOG.md 2>/dev/null || git status --porcelain CHANGELOG.md)" ]] \
-  || die "CHANGELOG.md has no pending changes — run 'mise run release:prepare' first"
-
 # ── resolve version ──────────────────────────────────────────────────────────
-raw_version=$(git cliff --config .config/cliff.toml --bumped-version ${JJ_HEAD} 2>/dev/null \
-  || die "could not determine version from git cliff")
-version="v${raw_version#v}"  # ensure v prefix
+# Under jj the release is already committed and tagged by release:prepare, so
+# the version comes from that commit; git cliff would answer with the next one.
+if [[ "${VCS}" == "jj" ]]; then
+  RELEASE_REV="@"
+  version=$(release_version_at @)
+  if [[ -z "${version}" && -z "$(jj diff -r @ --summary 2>/dev/null)" ]]; then
+    version=$(release_version_at @-)
+    if [[ -n "${version}" ]]; then
+      RELEASE_REV="@-"
+      info "Using prepared release at @- (empty working-copy child at @)"
+    fi
+  fi
+  [[ -n "${version}" ]] \
+    || die "neither @ nor the parent of an empty @ is a release commit — run 'mise run release:prepare' first"
+else
+  raw_version=$(git cliff --config .config/cliff.toml --bumped-version 2>/dev/null) \
+    || die "could not determine version from git cliff"
+  version="v${raw_version#v}"  # ensure v prefix
+fi
 info "Version: ${bold}${version}${reset}"
+
+# git cliff resolves the bump from the latest tag; a submodule tag winning that
+# race yields something like "wasm/v0.6.1", and every go.mod would be pinned to
+# it. Cheap to check, expensive to undo.
+[[ "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]] \
+  || die "git cliff resolved '${raw_version:-${version}}' — check tag_pattern in .config/cliff.toml"
 
 # ── extract highlights ────────────────────────────────────────────────────────
 HIGHLIGHTS=$(awk '/^## \[/{found=1; next} found && /^###/{exit} found && NF{print}' CHANGELOG.md | sed 's/^[[:space:]]*//')
@@ -37,38 +67,30 @@ HIGHLIGHTS=$(awk '/^## \[/{found=1; next} found && /^###/{exit} found && NF{prin
 echo ""
 
 # ── confirm ──────────────────────────────────────────────────────────────────
-confirm "Commit, tag ${version}, push, and tidy go.sum?" \
+confirm "Push ${version} and tidy go.sum?" \
   || { warn "Aborted."; echo ""; exit 0; }
 echo ""
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STEP 1 — commit + tag
+# STEP 1 — commit + tag (jj did both in release:prepare)
 # ═══════════════════════════════════════════════════════════════════════════════
-if [[ "${VCS}" == "jj" ]]; then
-  jj describe -m "chore(release): ${version}"
-else
-  git add CHANGELOG.md
+if [[ "${VCS}" == "git" ]]; then
+  stage_release_prepare_changes
   git commit -m "chore(release): ${version}"
-fi
-success "Committed: chore(release): ${version}"
-
-discover_modules
-
-if [[ "${VCS}" == "jj" ]]; then
-  RELEASE_COMMIT=$(jj log -r @ --no-graph --template 'commit_id')
-  jj tag set "${version}"
+  success "Committed: chore(release): ${version}"
+  create_release_tags "${version}" "$(git rev-parse HEAD)"
 else
-  RELEASE_COMMIT=$(git rev-parse HEAD)
-  git tag --no-sign -a "${version}" -m "${HIGHLIGHTS:-${version}}"
-fi
-success "Tagged root: ${version}"
+  RELEASE_COMMIT=$(jj log -r "${RELEASE_REV}" --no-graph --template 'commit_id')
+  verify_jj_prepared_release "${version}" "${RELEASE_COMMIT}"
+  success "Prepared release state verified"
 
-for mod in "${MONOREPO_MODULES[@]}"; do
-  [[ "$mod" == "${ROOT_MODULE}" ]] && continue
-  subpath="${mod#${ROOT_MODULE}/}"
-  git tag --no-sign "${subpath}/${version}" "${RELEASE_COMMIT}"
-done
-success "Tagged sub-modules: ${version}"
+  # Keep post-release go.sum changes off the tagged release commit. A normal jj
+  # workflow already has an empty child; create one when prepare left @ itself
+  # as the release commit.
+  if [[ "${RELEASE_REV}" == "@" ]]; then
+    jj new "${RELEASE_COMMIT}"
+  fi
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 2 — push (requires hardware key touch)
@@ -76,11 +98,9 @@ success "Tagged sub-modules: ${version}"
 echo ""
 info "Pushing… (hardware key touch required)"
 
-# The branch goes alone: `jj git push --all` pushes bookmarks AND tags (jj has
-# pushed tags since 0.36), which would send all six tags in one push and undo
-# the staging below. --bookmark keeps the tags out of it.
+# The branch goes alone so the staged tag pushes below stay separate.
+# --bookmark keeps every local tag out of this push.
 if [[ "${VCS}" == "jj" ]]; then
-  advance_main_bookmark "${version}"
   jj git push --bookmark main
 else
   HK=0 git push origin HEAD
@@ -99,7 +119,14 @@ success "Root tag pushed"
 
 info "Pushing sub-module tags…"
 if [[ "${VCS}" == "jj" ]]; then
-  jj git push --all
+  expected_release_tags "${version}"
+  SUBMODULE_TAG_ARGS=()
+  for name in "${RELEASE_TAGS[@]:1}"; do
+    SUBMODULE_TAG_ARGS+=(--tag "${name}")
+  done
+  if [[ ${#SUBMODULE_TAG_ARGS[@]} -gt 0 ]]; then
+    jj git push "${SUBMODULE_TAG_ARGS[@]}"
+  fi
 else
   HK=0 git push --tags
 fi

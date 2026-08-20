@@ -20,6 +20,7 @@ detect_vcs() {
     JJ_HEAD=$(jj log -r @ --no-graph --template 'commit_id' 2>/dev/null || true)
   elif git rev-parse --git-dir &>/dev/null; then
     VCS=git
+    # shellcheck disable=SC2034 # consumed by scripts after sourcing _lib.sh
     JJ_HEAD=""
   else
     die "not in a git or jj repository"
@@ -45,6 +46,86 @@ advance_main_bookmark() {
   success "main → ${rev}"
 }
 
+# Echo the version a `chore(release): vX.Y.Z` commit was prepared for, empty if
+# $1 (default @) is not one. jj only: release:prepare commits and tags there, so
+# the description — not git cliff, which would bump past it — is what push reads.
+release_version_at() {
+  jj log -r "${1:-@}" --no-graph --template 'description' 2>/dev/null \
+    | sed -n '1s/^chore(release): \(v[0-9].*\)$/\1/p'
+}
+
+expected_release_tags() {
+  local version="$1" mod
+  RELEASE_TAGS=("${version}")
+  for mod in "${MONOREPO_MODULES[@]}"; do
+    [[ "$mod" == "${ROOT_MODULE}" ]] && continue
+    RELEASE_TAGS+=("${mod#"${ROOT_MODULE}"/}/${version}")
+  done
+}
+
+# Tag ${2} with vX.Y.Z for the root module and <subdir>/vX.Y.Z for every other
+# workspace module. Re-runnable: tags of the same name move onto ${2}. That
+# matters in jj, where reviewing a prepared release and amending it produces a
+# new commit id while the tags stay behind on the old one.
+# Needs discover_modules to have run.
+create_release_tags() {
+  local version="$1" commit="$2" name
+  expected_release_tags "${version}"
+
+  if [[ "${VCS}" == "jj" ]]; then
+    jj tag set "${RELEASE_TAGS[@]}" -r "${commit}" --allow-move
+  else
+    git tag --no-sign -f -a "${version}" -m "${HIGHLIGHTS:-${version}}" "${commit}"
+    for name in "${RELEASE_TAGS[@]:1}"; do
+      git tag --no-sign -f "${name}" "${commit}"
+    done
+  fi
+  success "Tagged: ${RELEASE_TAGS[*]}"
+}
+
+# Verify that release:prepare has already put the jj release state where push
+# will publish it. push should not silently move local release tags; rerun
+# prepare after amending the reviewed release commit.
+verify_jj_prepared_release() {
+  local version="$1" commit="$2" main_commit tag_commit name failed=()
+
+  main_commit=$(jj log -r main --no-graph --template 'commit_id' 2>/dev/null || true)
+  [[ "${main_commit}" == "${commit}" ]] \
+    || die "main is not on the prepared release commit — run 'mise run release:prepare' again"
+
+  expected_release_tags "${version}"
+  for name in "${RELEASE_TAGS[@]}"; do
+    tag_commit=$(jj log -r "${name}" --no-graph --template 'commit_id' 2>/dev/null || true)
+    [[ "${tag_commit}" == "${commit}" ]] || failed+=("${name}")
+  done
+
+  [[ ${#failed[@]} -eq 0 ]] \
+    || die "release tags are not on the prepared release commit (${failed[*]}) — run 'mise run release:prepare' again"
+}
+
+is_release_prepare_path() {
+  case "$1" in
+    CHANGELOG.md|go.mod|go.work|*/go.mod) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+release_prepare_paths() {
+  local dir modfile
+  RELEASE_PREPARE_PATHS=(CHANGELOG.md go.mod)
+  [[ -f go.work ]] && RELEASE_PREPARE_PATHS+=(go.work)
+  for dir in "${MODULE_DIRS[@]}"; do
+    [[ "$dir" == "." ]] && continue
+    modfile="${dir}/go.mod"
+    [[ -f "${modfile}" ]] && RELEASE_PREPARE_PATHS+=("${modfile}")
+  done
+}
+
+stage_release_prepare_changes() {
+  release_prepare_paths
+  git add "${RELEASE_PREPARE_PATHS[@]}"
+}
+
 # Block until the module proxy serves ROOT_MODULE@$1, or return 1 after $2
 # seconds (default 120). Callers decide whether a timeout is fatal.
 wait_for_proxy() {
@@ -67,9 +148,9 @@ tidy_go_sums() {
 
   info "Tidying go.sum files…"
   for dir in "${MODULE_DIRS[@]}"; do
-    pushd "$dir" > /dev/null
+    pushd "$dir" > /dev/null || return
     GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod tidy
-    popd > /dev/null
+    popd > /dev/null || return
   done
   success "go.sum files updated"
 }

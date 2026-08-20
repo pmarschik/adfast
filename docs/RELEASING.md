@@ -16,16 +16,36 @@ there is enough for it to be pinned and tagged — no task edits needed.
 
 ```sh
 mise run release:prepare   # bump version, regenerate CHANGELOG.md, pin go.mod versions
-# review CHANGELOG.md and the go.mod changes
-mise run release:push      # commit, tag, push, update release notes, tidy go.sum
+# review the prepared release commit, changelog, go.mod pins, bookmark, and tags
+mise run release:rollback  # optional: undo local prepare output before anything is pushed
+mise run release:push      # push, update release notes, tidy go.sum
 ```
 
-`release:prepare` only edits files, so a bad bump is undone locally;
-`release:push` does everything that touches the remote and asks for
-confirmation first. It needs two hardware key touches — one for the
-release, one for the `go.sum` commit that follows it. Tag pushes trigger
-`.github/workflows/release.yml`, which runs goreleaser with
-`--release-notes CHANGELOG.md` against `.config/goreleaser.yaml`.
+With jj, `release:prepare` creates the local release shape to review: it
+updates the files, describes `@` as `chore(release): vX.Y.Z`, moves the
+`main` bookmark to that commit, and creates the root and submodule tags
+on it. If you amend the prepared release, rerun `release:prepare` so the
+tags are moved onto the amended commit before pushing. With git, those
+local commit/tag steps stay deferred to `release:push`, where backing out
+a mistaken release commit is more expensive.
+
+Before anything is pushed, `release:rollback` undoes the local prepare
+state. With jj it deletes the prepared tags that still point at `@`,
+moves `main` back to `@-` if `main` still points at the prepared release
+commit, restores the release files from `@-`, and clears the `@`
+description. With git it restores the files that `release:prepare`
+changed; there are no local release commit or tags yet.
+
+`release:push` is the remote gate and asks for confirmation first. It
+accepts the prepared jj release at `@`, or at `@-` when `@` is an empty
+working-copy child, and verifies its bookmark and tags before pushing. If
+the release is still at `@`, the task creates an empty child before writing
+the post-release `go.sum` changes. In git it commits and tags the
+already-reviewed prepare output first. It needs two hardware key
+touches — one for the release, one for the `go.sum` commit that follows
+it. Tag pushes trigger `.github/workflows/release.yml`, which runs
+goreleaser with `--release-notes CHANGELOG.md` against
+`.config/goreleaser.yaml`.
 
 ## Multi-module release order
 
@@ -42,16 +62,17 @@ Go modules in one repository resolve independently, so the order matters:
    module. `wasm/go.mod` is the one module that requires more than the
    root: it also pins `github.com/pmarschik/adfast/jira vX.Y.Z` and
    `github.com/pmarschik/adfast/confluence vX.Y.Z`, so it must be
-   consumable only after those two are tagged.
+   consumable only after those two are tagged. Under jj, `release:prepare`
+   creates these tags locally for review; under git, `release:push`
+   creates them just before the remote push.
 3. **Tag the submodules**: `jira/vX.Y.Z`, `confluence/vX.Y.Z`,
    `skill/vX.Y.Z`, `frontmatter/vX.Y.Z`, and — after those —
-   `wasm/vX.Y.Z`, all on the same commit. `release:push` creates the tags
-   and pushes the root tag first (GitHub suppresses workflow
-   events when more than three tags arrive at once, so the root tag goes
-   alone to reliably trigger Actions; the submodule tags follow in a
-   second push, which carries `jira/` and `confluence/` alongside
-   `wasm/`, so `wasm/vX.Y.Z` is never resolvable before its
-   requirements).
+   `wasm/vX.Y.Z`, all on the same commit. The root tag is pushed first
+   (GitHub suppresses workflow events when more than three tags arrive at
+   once, so the root tag goes alone to reliably trigger Actions); the
+   submodule tags follow in a second push, which carries `jira/` and
+   `confluence/` alongside `wasm/`, so `wasm/vX.Y.Z` is never resolvable
+   before its requirements.
 
 ## The unpublished-version window
 
@@ -80,18 +101,27 @@ consequences:
   together with the go.mod requires (and adds a line for a module that
   has newly become a sibling requirement); a stale or missing pin here
   breaks every build between `prepare` and `push` with "unknown revision
-  vX.Y.Z".
+  vX.Y.Z". With jj, those pins are part of the described release commit
+  you review before pushing.
 
 ## How release:push pushes
 
 The pushes are staged, and the order is load-bearing: the `main`
 bookmark first, then the root tag **alone**, then the submodule tags.
-`jj git push --all` pushes bookmarks **and** tags (jj has pushed tags
-since 0.36), so pushing everything in one go sends six tags at once,
-and GitHub suppresses the push event that
-`.github/workflows/release.yml` listens for — which is exactly how
-v0.5.0 and v0.6.0 shipped without goreleaser artifacts. Hence
-`--bookmark main`, then `--tag vX.Y.Z`, then `--all`.
+With jj, the bookmark and tags already exist locally from
+`release:prepare`; `release:push` verifies they still point at the
+prepared release commit and then only publishes them. With git,
+`release:push` creates the release commit and tags immediately before
+the staged push.
+
+`jj git push --all` would also publish unrelated local bookmarks or tags.
+The task instead uses `--bookmark main`, then `--tag vX.Y.Z`, then one
+push with an explicit `--tag` argument for each prepared submodule tag.
+Explicit tag pushes also start tracking newly created remote tags. The
+root tag stays in its own push because GitHub suppresses the push event
+that `.github/workflows/release.yml` listens for when more than three tags
+arrive at once — which is exactly how v0.5.0 and v0.6.0 shipped without
+goreleaser artifacts.
 
 Afterwards it waits for the proxy, re-tidies `go.sum`, and pushes that
 as `chore: update go.sum after vX.Y.Z` — the tags stay on the release
@@ -99,6 +129,10 @@ commit, only the branch moves on.
 
 ## Recovery steps
 
+- `mise run release:rollback` — before `release:push`, undo the local
+  prepare output. In jj this removes the local prepared tags/bookmark
+  position/message as well as the file changes; in git it restores only
+  the file changes because commit/tag creation is deferred to push.
 - `mise run release:post-tidy` — if the proxy was still catching up when
   `release:push` reached the tidy, run this once the version resolves:
   re-tidy every module's `go.sum` with `GOWORK=off` (cross-module

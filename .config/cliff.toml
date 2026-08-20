@@ -52,3 +52,10 @@ commit_parsers = [
     { message = "^revert", group = "<!-- 9 -->◀️ Revert" },
     { message = ".*", group = "<!-- 10 -->💼 Other" },
 ]
+
+# Only the root module's tags are releases. The submodule tags
+# (jira/vX.Y.Z, wasm/vX.Y.Z, …) sit on the same commit and would
+# otherwise be picked as "the latest tag": --bumped-version answered
+# `wasm/v0.6.1` once wasm/ existed, because that name sorts after
+# `v0.6.0`, and the release tasks pinned every go.mod to it.
+tag_pattern = "^v[0-9]"
