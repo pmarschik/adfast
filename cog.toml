@@ -14,6 +14,7 @@
 # - confluence confluence/ addon module
 # - skill      skill/ agent-skill module
 # - docs       README, docs
+# - deps       dependency bumps (the scope renovate writes)
 # - build      local tooling, mise, scripts, developer setup
 # - ci         GitHub Actions and CI automation
 # - release    release flow, changelog, versioning
@@ -30,6 +31,7 @@ scopes = [
   "confluence",
   "skill",
   "docs",
+  "deps",
   "build",
   "ci",
   "release",
