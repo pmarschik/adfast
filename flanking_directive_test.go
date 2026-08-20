@@ -86,12 +86,18 @@ func TestBareDirectiveBeforeEmphasisGetsPunctuationTail(t *testing.T) {
 	}
 }
 
-// goldmark-directive decides whether ':' may open a text directive from the
-// preceding SOURCE byte, without resolving escapes, so an escaped literal
-// backslash suppresses the directive the same way the escape marker does.
-// The renderer encodes that backslash instead. See
-// markdown.encodeBackslashBefore.
-func TestBackslashBeforeDirectiveIsEncoded(t *testing.T) {
+// A literal backslash written directly before a text directive is a
+// re-parse hazard the RENDERER used to repair: goldmark-directive decided
+// whether ':' may open a directive from the single preceding source byte,
+// so an escaped literal backslash (`\\:u`) suppressed it exactly like the
+// escape marker (`\:u`) does, and the directive came back as text.
+//
+// goldmark-directive v0.3.1 counts the backslash run and suppresses only on
+// odd parity (micromark's rule), so the escaped pair the renderer already
+// writes is enough and the character-reference repair is gone. This test
+// stays as the pin on that dependency: it asserts the escaped form, its
+// idempotence, and that the directive survives the re-parse.
+func TestBackslashBeforeDirectiveKeepsIt(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -103,12 +109,12 @@ func TestBackslashBeforeDirectiveIsEncoded(t *testing.T) {
 			// text ending in a backslash, right before a real ":u".
 			name: "degraded directive leaves a trailing backslash",
 			md:   ":00[0\\]:u[0]",
-			want: ":000&#x5C;:u[0]\n",
+			want: ":000\\\\:u[0]\n",
 		},
 		{
 			name: "label content ending in a backslash",
 			md:   ":zz[\\\\]:u[0]",
-			want: "\\:zz&#x5C;:u[0]\n",
+			want: "\\:zz\\\\:u[0]\n",
 		},
 		{
 			// Nothing to repair when the directive does not touch the

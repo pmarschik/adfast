@@ -135,36 +135,6 @@ func (r *mdRenderer) markerNeedsPunctBefore(marker byte, next ast.Node, st *inli
 	return worksSomewhere
 }
 
-// encodeBackslashBefore rewrites a literal backslash at the end of b into a
-// character reference, so that the ':' written next opens a directive.
-//
-// goldmark-directive decides whether a colon may open a text directive by
-// looking at the preceding SOURCE byte, without resolving escapes: a '\'
-// there suppresses the directive whether it is the escape marker (`\:u`)
-// or an escaped literal backslash (`\\:u`). micromark resolves the escape
-// first and opens the directive, so this is a parser divergence, not a
-// dialect rule — the round trip breaks on it, since the directive we just
-// wrote would come back as text.
-//
-// A trailing '\' in the output is always a literal: escapes are written as
-// `\X` with X != '\', and the hard-break backslash is followed by '\n'.
-// The character reference decodes to the same backslash and ends in ';',
-// which lets the directive open. This is the repair remark already applies
-// to a '\~' before a strikethrough (see writeTextInline).
-func encodeBackslashBefore(b *strings.Builder) {
-	s := b.String()
-	if !strings.HasSuffix(s, `\`) {
-		return
-	}
-	cut := 1
-	if strings.HasSuffix(s, `\\`) {
-		cut = 2
-	}
-	b.Reset()
-	b.WriteString(s[:len(s)-cut])
-	b.WriteString(hexRef('\\'))
-}
-
 // fusesOntoDirectiveName reports whether rune r, emitted directly after a
 // bare `:name`, is read as part of that directive token on re-parse.
 // escapable says the rune comes from a text node, which backslash-escapes

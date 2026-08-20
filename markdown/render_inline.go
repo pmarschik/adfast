@@ -408,7 +408,6 @@ func (r *mdRenderer) writeTextDirective(b *strings.Builder, node *ast.TextDirect
 // there would break the re-parse — a deliberate, documented divergence
 // from remark's wrapping.
 func (r *mdRenderer) writeTextDirectiveForm(b *strings.Builder, name string, attrs map[string]string, children []ast.Node, st *inlineContext) {
-	encodeBackslashBefore(b)
 	b.WriteString(":")
 	b.WriteString(name)
 	last := byte(0)

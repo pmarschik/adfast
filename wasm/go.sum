@@ -4,7 +4,7 @@ github.com/pmarschik/adfast/confluence v0.5.0 h1:8ua0jDZItpxuvJv8qD+2VsLTLXNqhYI
 github.com/pmarschik/adfast/confluence v0.5.0/go.mod h1:3yhFPC/vDrVobB5Bk7gt7s/JbwLRWYuEUv1FCQvO8lo=
 github.com/pmarschik/adfast/jira v0.5.0 h1:5LIgXelVaznYY5zPKxiAS759G8qNSxqYPlKT41m+JwM=
 github.com/pmarschik/adfast/jira v0.5.0/go.mod h1:XmmJXLWwdVuAoONE/GfOSNxXtuK9xlkuSqe1GR481cA=
-github.com/pmarschik/goldmark-directive v0.3.0 h1:dw1OvPtaupRFqyS5y5VcpvjG8xcA29Jc9mIJCIcyLfE=
-github.com/pmarschik/goldmark-directive v0.3.0/go.mod h1:LO0rwcECJKKw8WgmK+z6WEwhxQrCbGEGvamcQLAZOvw=
+github.com/pmarschik/goldmark-directive v0.3.1 h1:JaWReM1oWTGhpCDT8lTPsB4a7MPKGsum/Zn7WjgQeDk=
+github.com/pmarschik/goldmark-directive v0.3.1/go.mod h1:LO0rwcECJKKw8WgmK+z6WEwhxQrCbGEGvamcQLAZOvw=
 github.com/yuin/goldmark v1.8.2 h1:kEGpgqJXdgbkhcOgBxkC0X0PmoPG1ZyoZ117rDVp4zE=
 github.com/yuin/goldmark v1.8.2/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=

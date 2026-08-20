@@ -1,5 +1,5 @@
-github.com/pmarschik/goldmark-directive v0.3.0 h1:dw1OvPtaupRFqyS5y5VcpvjG8xcA29Jc9mIJCIcyLfE=
-github.com/pmarschik/goldmark-directive v0.3.0/go.mod h1:LO0rwcECJKKw8WgmK+z6WEwhxQrCbGEGvamcQLAZOvw=
+github.com/pmarschik/goldmark-directive v0.3.1 h1:JaWReM1oWTGhpCDT8lTPsB4a7MPKGsum/Zn7WjgQeDk=
+github.com/pmarschik/goldmark-directive v0.3.1/go.mod h1:LO0rwcECJKKw8WgmK+z6WEwhxQrCbGEGvamcQLAZOvw=
 github.com/yuin/goldmark v1.8.2 h1:kEGpgqJXdgbkhcOgBxkC0X0PmoPG1ZyoZ117rDVp4zE=
 github.com/yuin/goldmark v1.8.2/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
 golang.org/x/image v0.44.0 h1:+tDekMZED9+LrtB3G5xzRggpVh9CARjZqROla3R3R+I=
