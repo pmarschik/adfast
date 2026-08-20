@@ -39,6 +39,15 @@ type SmartLinks struct {
 	URLForKey func(key string) (url string, ok bool)
 }
 
+// LinkResolver rewrites ordinary labeled-link destinations at the product
+// boundary. Encode maps a Markdown href to the href stored in ADF; Decode maps
+// that ADF href back to the stable Markdown form. The zero value is inert and
+// either direction may be omitted.
+type LinkResolver struct {
+	Encode func(href string) (resolved string, ok bool)
+	Decode func(href string) (resolved string, ok bool)
+}
+
 // ImageDimsResolver resolves a local image path (relative to the markdown
 // file) to its intrinsic pixel dimensions.
 type ImageDimsResolver func(path string) (width, height int, ok bool)
@@ -63,6 +72,7 @@ type MediaAsset = extension.MediaAsset
 
 type config struct {
 	smartLinks            SmartLinks
+	linkResolver          LinkResolver
 	resolveImageDims      ImageDimsResolver
 	resolveAssetID        AssetIDResolver
 	diagnostics           func(Diagnostic)
@@ -89,6 +99,13 @@ type Option func(*config)
 // derived by sl.KeyFromURL instead of the full URL.
 func WithSmartLinks(sl SmartLinks) Option {
 	return func(c *config) { c.smartLinks = sl }
+}
+
+// WithLinkResolver rewrites ordinary link-mark hrefs in both conversion
+// directions (see LinkResolver). Smart-link cards and media nodes are not
+// affected.
+func WithLinkResolver(r LinkResolver) Option {
+	return func(c *config) { c.linkResolver = r }
 }
 
 // WithPreserveListTightness stores the source list tightness on ADF list

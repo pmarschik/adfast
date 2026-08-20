@@ -187,8 +187,13 @@ Automatic link handling makes **no assumptions about the host product**:
 `WithSmartLinks(convert.SmartLinks{KeyFromURL, URLForKey})` teaches the
 conversion a URL scheme once for both directions (links whose text equals
 the derived key encode as inlineCards; bare `::linkCard[KEY]` labels
-expand; cards render back to the short key), and `WithDocTransforms`
-hooks document-level rewrites. The [`jira/`](jira/) submodule bundles the
+expand; cards render back to the short key).
+`WithLinkResolver(convert.LinkResolver{Encode, Decode})` rewrites ordinary
+labelled-link destinations at the ADF boundary: `Encode` maps a Markdown
+href to its product-facing form and `Decode` restores the stable Markdown
+href. Resolver misses preserve the original destination; cards and media
+are unaffected. `WithDocTransforms` hooks document-level rewrites. The
+[`jira/`](jira/) submodule bundles the
 Jira conventions — `jira.MarkdownOptions`/`jira.RenderOptions` each return
 a `[]adfast.Option` slice; pass the encode-side bundle to both halves of
 the md→adf composition and the decode-side bundle to both halves of the

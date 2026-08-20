@@ -22,6 +22,7 @@ type Option func(*options)
 // options is the union of everything the four primitives read.
 type options struct {
 	smartLinks          convert.SmartLinks
+	linkResolver        convert.LinkResolver
 	mediaAssets         map[string]convert.MediaAsset
 	resolveMediaAsset   convert.MediaAssetResolver
 	frontmatter         FrontmatterProvider
@@ -57,6 +58,9 @@ func (o *options) convertOptions() []convert.Option {
 	var out []convert.Option
 	if o.smartLinks.KeyFromURL != nil || o.smartLinks.URLForKey != nil {
 		out = append(out, convert.WithSmartLinks(o.smartLinks))
+	}
+	if o.linkResolver.Encode != nil || o.linkResolver.Decode != nil {
+		out = append(out, convert.WithLinkResolver(o.linkResolver))
 	}
 	if len(o.codeLanguages) > 0 {
 		out = append(out, convert.WithCodeLanguages(o.codeLanguages))
@@ -114,6 +118,14 @@ func WithExtensions(regs ...extension.Registration) Option {
 // serves every direction.
 func WithSmartLinks(sl convert.SmartLinks) Option {
 	return func(o *options) { o.smartLinks = sl }
+}
+
+// WithLinkResolver rewrites ordinary labeled-link destinations between their
+// Markdown and ADF forms (see convert.LinkResolver). Read by ToADF, FromADF,
+// and the prettier-format mode of ToMarkdown. Smart-link cards and media are
+// unaffected.
+func WithLinkResolver(r convert.LinkResolver) Option {
+	return func(o *options) { o.linkResolver = r }
 }
 
 // WithCodeLanguages declares the code-block languages the host product

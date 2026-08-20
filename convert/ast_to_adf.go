@@ -29,6 +29,7 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 		preserveTight:       cfg.preserveListTightness,
 		preserveLocalImages: cfg.preserveLocalImages,
 		smartLinks:          cfg.smartLinks,
+		linkResolver:        cfg.linkResolver,
 		resolveImageDims:    cfg.resolveImageDims,
 		resolveAssetID:      cfg.resolveAssetID,
 		diagnostics:         cfg.diagnostics,
@@ -47,6 +48,7 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 
 type astConverter struct {
 	smartLinks          SmartLinks
+	linkResolver        LinkResolver
 	resolveImageDims    ImageDimsResolver
 	resolveAssetID      AssetIDResolver
 	diagnostics         func(Diagnostic)
@@ -1050,6 +1052,11 @@ func (c *astConverter) flattenLink(node *ast.Link, ctx markCtx) []adf.Node {
 	if c.smartLinks.KeyFromURL != nil {
 		if key, ok := c.smartLinks.KeyFromURL(href); ok && ast.PlainText(node.Children) == key {
 			return []adf.Node{&adf.InlineCard{URL: new(href)}}
+		}
+	}
+	if c.linkResolver.Encode != nil {
+		if resolved, ok := c.linkResolver.Encode(href); ok {
+			href = resolved
 		}
 	}
 	next := ctx

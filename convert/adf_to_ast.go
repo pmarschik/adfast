@@ -94,6 +94,7 @@ func smartLinkLabel(rc renderCtx, url string) string {
 // renderCtx carries per-conversion configuration through the ADF→AST walk.
 type renderCtx struct {
 	smartLinks          SmartLinks
+	linkResolver        LinkResolver
 	assets              mediaAssets
 	diagnostics         func(Diagnostic)
 	blockHooks          []func(adf.Node, extension.DecodeContext) (ast.Node, bool)
@@ -243,7 +244,8 @@ func FromADF(doc adf.Doc, opts ...Option) ast.Node {
 		panic(err)
 	}
 	rc := renderCtx{
-		assets: newMediaAssets(cfg), smartLinks: cfg.smartLinks, diagnostics: cfg.diagnostics,
+		assets: newMediaAssets(cfg), smartLinks: cfg.smartLinks, linkResolver: cfg.linkResolver,
+		diagnostics:         cfg.diagnostics,
 		preserveLocalImages: cfg.preserveLocalImages, incrementLists: cfg.incrementListMarkers,
 	}
 	// User registrations first: their decode hooks win over the dialect.
@@ -909,7 +911,13 @@ func (v *adfInlineVisitor) VisitText(n *adf.Text) []flatInline {
 		// convertTextInline / coreConsumedMark). Report the drop.
 		v.rc.diagnostics(Diagnostic{Code: CodeFontSizeDropped, Message: fontSizeDroppedMessage})
 	}
-	return []flatInline{convertTextInline(n)}
+	item := convertTextInline(n)
+	if item.isLink && v.rc.linkResolver.Decode != nil {
+		if resolved, ok := v.rc.linkResolver.Decode(item.href); ok {
+			item.href = resolved
+		}
+	}
+	return []flatInline{item}
 }
 
 // VisitHardBreak implements adf.Visitor.

@@ -73,3 +73,20 @@ func ExampleToADF_diagnostics() {
 	// Output:
 	// [colwidths-orphan]
 }
+
+// Ordinary labeled links can use a product-facing href in ADF while keeping
+// a stable author-facing destination in Markdown.
+func ExampleWithLinkResolver() {
+	resolver := adfast.WithLinkResolver(convert.LinkResolver{
+		Encode: func(href string) (string, bool) {
+			return "/download/attachments/42/report.pdf", href == "report.pdf"
+		},
+		Decode: func(href string) (string, bool) {
+			return "report.pdf", href == "/download/attachments/42/report.pdf"
+		},
+	})
+	doc := adfast.ToADF(adfast.FromMarkdown("[Report](report.pdf)"), resolver)
+	fmt.Print(adfast.ToMarkdown(adfast.FromADF(doc, resolver)))
+	// Output:
+	// [Report](report.pdf)
+}
