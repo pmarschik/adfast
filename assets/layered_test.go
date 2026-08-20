@@ -83,7 +83,8 @@ func TestLayered_AssociateLandsInOwningLayer(t *testing.T) {
 				t.Errorf("batch = %+v", batch)
 			}
 			return []UploadResult{{Path: batch[0].Path, MediaID: uuidC}}, nil
-		})); err != nil {
+		},
+	)); err != nil {
 		t.Fatal(err)
 	}
 	if id, ok := shared.Lookup("", "../assets/chart.png"); !ok || id != uuidC {

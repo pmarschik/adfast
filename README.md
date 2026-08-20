@@ -22,7 +22,7 @@ go get github.com/pmarschik/adfast/skill       # the dialect as an embeddable ag
 go get github.com/pmarschik/adfast/frontmatter # optional YAML frontmatter parse/render/patch
 ```
 
-Requires Go 1.25+. Note that [`jira/`](jira/), [`confluence/`](confluence/),
+Requires Go 1.27+. Note that [`jira/`](jira/), [`confluence/`](confluence/),
 [`skill/`](skill/), and [`frontmatter/`](frontmatter/) are **separate Go
 modules** (product-specific addons ship as submodules so consumers only pull
 what they use).

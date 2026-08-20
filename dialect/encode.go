@@ -21,10 +21,6 @@ import (
 // documents.
 const ColwidthsPlaceholder = adf.ColwidthsHintType
 
-// strPtr returns a pointer to v (presence-sensitive ADF attributes are
-// pointer fields).
-func strPtr(v string) *string { return &v }
-
 // EncodeADF implements extension.Node. Directive attributes have no ADF
 // equivalent on panels.
 func (n *Panel) EncodeADF(ctx extension.EncodeContext) []adf.Node {
@@ -44,7 +40,7 @@ func (n *Expand) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 		children = children[1:]
 	}
 	return []adf.Node{&adf.Expand{
-		Title:   strPtr(title),
+		Title:   new(title),
 		Content: ctx.EncodeBlocks(children),
 	}}
 }
@@ -87,10 +83,10 @@ func mediaFromAttrs(attrs map[string]string, alt string) *adf.Media {
 		media.Alt = alt
 	}
 	if v, ok := attrs["collection"]; ok {
-		media.Collection = strPtr(v)
+		media.Collection = new(v)
 	} else if media.Type == "file" {
 		// Re-add the empty collection omitted on decode for file media.
-		media.Collection = strPtr("")
+		media.Collection = new("")
 	}
 	if v, ok := attrs["height"]; ok {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
@@ -98,7 +94,7 @@ func mediaFromAttrs(attrs map[string]string, alt string) *adf.Media {
 		}
 	}
 	if v := attrs["occurrenceKey"]; v != "" {
-		media.OccurrenceKey = strPtr(v)
+		media.OccurrenceKey = new(v)
 	}
 	if v := attrs["url"]; v != "" {
 		media.URL = v
@@ -134,10 +130,10 @@ func borderMarkFromAttrs(attrs map[string]string) adf.Mark {
 func mediaSingleFromAttrs(attrs map[string]string, media *adf.Media) *adf.MediaSingle {
 	single := &adf.MediaSingle{Content: []adf.Node{media}}
 	if v := attrs["layout"]; v != "" {
-		single.Layout = strPtr(v)
+		single.Layout = new(v)
 	} else if media.Type == "file" {
 		// Re-infer the file-media default layout omitted on decode.
-		single.Layout = strPtr("align-start")
+		single.Layout = new("align-start")
 	}
 	if v, ok := attrs["layoutWidth"]; ok {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
@@ -145,7 +141,7 @@ func mediaSingleFromAttrs(attrs map[string]string, media *adf.Media) *adf.MediaS
 		}
 	}
 	if v := attrs["widthType"]; v != "" {
-		single.WidthType = strPtr(v)
+		single.WidthType = new(v)
 	}
 	return single
 }
@@ -243,7 +239,7 @@ func (n *Mention) EncodeADF(_ extension.EncodeContext) []adf.Node {
 	}
 	return []adf.Node{&adf.Mention{
 		ID:          n.Attrs["id"],
-		Text:        strPtr("@" + label),
+		Text:        new("@" + label),
 		AccessLevel: n.Attrs["accessLevel"],
 	}}
 }
@@ -259,7 +255,7 @@ func (n *Status) EncodeADF(_ extension.EncodeContext) []adf.Node {
 		color = "neutral"
 	}
 	return []adf.Node{&adf.Status{
-		Text:  strPtr(label),
+		Text:  new(label),
 		Color: color,
 		Style: n.Attrs["style"],
 	}}
@@ -275,7 +271,7 @@ func (n *MediaInline) EncodeADF(_ extension.EncodeContext) []adf.Node {
 		mi.ID = id
 	}
 	if v, ok := n.Attrs["collection"]; ok {
-		mi.Collection = strPtr(v)
+		mi.Collection = new(v)
 	}
 	if label := strings.TrimSpace(ast.PlainText(n.Children)); label != "" {
 		mi.Alt = label

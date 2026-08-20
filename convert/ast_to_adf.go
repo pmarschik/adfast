@@ -11,10 +11,6 @@ import (
 	"github.com/pmarschik/adfast/extension"
 )
 
-// ptr returns a pointer to v (presence-sensitive ADF attributes are
-// pointer fields).
-func ptr[T any](v T) *T { return &v }
-
 // ToADF converts an AST root node to an ADF document. This is the
 // AST→AST half of FromMarkdown, mirroring remark's mdast-to-ADF shape:
 // the AST nests strong/emphasis/delete wrappers, while ADF stores flat
@@ -139,7 +135,7 @@ func (*astConverter) buildMarks(ctx markCtx) []adf.Mark {
 		marks = append(marks, &adf.Annotation{ID: a.ID, AnnotationType: a.AnnotationType})
 	}
 	if ctx.hasLink {
-		marks = append(marks, &adf.Link{Href: ptr(ctx.link)})
+		marks = append(marks, &adf.Link{Href: new(ctx.link)})
 	}
 	if len(marks) == 0 {
 		return nil
@@ -546,7 +542,7 @@ func (c *astConverter) convertParagraph(node *ast.Paragraph) adf.Node {
 			title = img.Title
 		}
 		return withImageCaption(&adf.MediaSingle{
-			Layout:  ptr("center"),
+			Layout:  new("center"),
 			Content: []adf.Node{media},
 		}, title)
 	}
@@ -611,7 +607,7 @@ func (c *astConverter) convertList(node *ast.List) adf.Node {
 	if node.Ordered {
 		// Start 0 is a genuine "0)" list (remark keeps order 0); every
 		// producer of ordered AST lists sets Start explicitly.
-		l := &adf.OrderedList{Order: ptr(node.Start), Content: listItems}
+		l := &adf.OrderedList{Order: new(node.Start), Content: listItems}
 		c.applyListTightness(&l.Tight, node)
 		return l
 	}
@@ -624,7 +620,7 @@ func (c *astConverter) convertList(node *ast.List) adf.Node {
 // list node (see WithPreserveListTightness).
 func (c *astConverter) applyListTightness(tight **bool, node *ast.List) {
 	if c.preserveTight {
-		*tight = ptr(!node.Spread)
+		*tight = new(!node.Spread)
 	}
 }
 
@@ -642,7 +638,7 @@ func (c *astConverter) convertTaskItems(items []*ast.ListItem) adf.Node {
 		}
 		if p, single := singleParagraphItem(item); single {
 			taskItems = append(taskItems, &adf.TaskItem{
-				LocalID: ptr(""),
+				LocalID: new(""),
 				State:   state,
 				Content: c.convertInlines(p.Children),
 			})
@@ -650,7 +646,7 @@ func (c *astConverter) convertTaskItems(items []*ast.ListItem) adf.Node {
 		}
 		if blockTaskItemLead(item.Children) {
 			taskItems = append(taskItems, &adf.BlockTaskItem{
-				LocalID: ptr(""),
+				LocalID: new(""),
 				State:   state,
 				Content: c.convertBlocks(item.Children),
 			})
@@ -666,12 +662,12 @@ func (c *astConverter) convertTaskItems(items []*ast.ListItem) adf.Node {
 			}
 		}
 		taskItems = append(taskItems, &adf.TaskItem{
-			LocalID: ptr(""),
+			LocalID: new(""),
 			State:   state,
 			Content: inlines,
 		})
 	}
-	return &adf.TaskList{LocalID: ptr(""), Content: taskItems}
+	return &adf.TaskList{LocalID: new(""), Content: taskItems}
 }
 
 // singleParagraphItem reports the item's sole paragraph child (the
@@ -714,12 +710,12 @@ func (c *astConverter) convertDecisionItems(items []*ast.ListItem) adf.Node {
 			}
 		}
 		decisionItems = append(decisionItems, &adf.DecisionItem{
-			LocalID: ptr(""),
+			LocalID: new(""),
 			State:   "DECIDED",
 			Content: inlines,
 		})
 	}
-	return &adf.DecisionList{LocalID: ptr(""), Content: decisionItems}
+	return &adf.DecisionList{LocalID: new(""), Content: decisionItems}
 }
 
 // singleAttachmentImage reports the paragraph's sole child when it is an
@@ -769,15 +765,15 @@ func (c *astConverter) attachmentImageToMedia(img *ast.Image, id string) adf.Nod
 	if alt := ast.PlainText(img.Children); alt != "" {
 		media.Alt = alt
 	}
-	media.Collection = ptr("")
+	media.Collection = new("")
 	if c.resolveImageDims != nil {
 		if fw, fh, ok := c.resolveImageDims(img.URL); ok {
-			media.Width = ptr(float64(fw))
-			media.Height = ptr(float64(fh))
+			media.Width = new(float64(fw))
+			media.Height = new(float64(fh))
 		}
 	}
 	return &adf.MediaSingle{
-		Layout:  ptr("align-start"),
+		Layout:  new("align-start"),
 		Content: []adf.Node{media},
 	}
 }
@@ -878,7 +874,7 @@ func (v *inlineFlattener) VisitInlineCode(n *ast.InlineCode) []adf.Node {
 	// Code mark is exclusive in ADF — drop strong/em/strike
 	marks := []adf.Mark{&adf.Code{}}
 	if v.ctx.hasLink {
-		marks = append(marks, &adf.Link{Href: ptr(v.ctx.link)})
+		marks = append(marks, &adf.Link{Href: new(v.ctx.link)})
 	}
 	return []adf.Node{&adf.Text{Text: n.Value, Marks: marks}}
 }
@@ -1047,13 +1043,13 @@ func nodeValue(n ast.Node) string {
 func (c *astConverter) flattenLink(node *ast.Link, ctx markCtx) []adf.Node {
 	href := node.URL
 	if node.InlineCard {
-		return []adf.Node{&adf.InlineCard{URL: ptr(href)}}
+		return []adf.Node{&adf.InlineCard{URL: new(href)}}
 	}
 	// A link whose text equals the resolver-derived key encodes as an
 	// inlineCard (smart link).
 	if c.smartLinks.KeyFromURL != nil {
 		if key, ok := c.smartLinks.KeyFromURL(href); ok && ast.PlainText(node.Children) == key {
-			return []adf.Node{&adf.InlineCard{URL: ptr(href)}}
+			return []adf.Node{&adf.InlineCard{URL: new(href)}}
 		}
 	}
 	next := ctx

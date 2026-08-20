@@ -37,7 +37,8 @@ func TestSync_DeduplicatesByContent(t *testing.T) {
 				results = append(results, UploadResult{Path: p.Path, MediaID: uuidA})
 			}
 			return results, nil
-		})); syncErr != nil {
+		},
+	)); syncErr != nil {
 		t.Fatal(syncErr)
 	}
 	if len(uploaded) != 1 {
@@ -143,7 +144,8 @@ func TestFormat_RewritesReferencesOnLayoutChange(t *testing.T) {
 	// Same layout: the rewrite is a no-op.
 	same := adfast.ToMarkdown(
 		adfast.FromMarkdown(md, adfast.WithPrettierFormat(), RewriteReferences(local, local)),
-		adfast.WithPrettierFormat(), RewriteReferences(local, local))
+		adfast.WithPrettierFormat(), RewriteReferences(local, local),
+	)
 	if same != md {
 		t.Errorf("same-layout format changed the document:\n%s", same)
 	}
@@ -160,7 +162,8 @@ func TestFormat_RewritesReferencesOnLayoutChange(t *testing.T) {
 	}
 	rewritten := adfast.ToMarkdown(
 		adfast.FromMarkdown(md, adfast.WithPrettierFormat(), RewriteReferences(nil, shared)),
-		adfast.WithPrettierFormat(), RewriteReferences(nil, shared))
+		adfast.WithPrettierFormat(), RewriteReferences(nil, shared),
+	)
 	want := "# Title\n\nBefore text.\n\n![screen](../assets/shot.png)\n\nAfter text.\n"
 	if rewritten != want {
 		t.Errorf("rewritten:\n%q\nwant:\n%q", rewritten, want)

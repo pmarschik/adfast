@@ -117,7 +117,8 @@ func parseNoticeOptions(sink func(convert.Diagnostic)) []markdown.ParseOption {
 				Code: convert.CodeSpanMarkerInvalid,
 				Message: fmt.Sprintf(
 					"table span marker %q at row %d, column %d has %s; kept as literal text",
-					marker, row, col, direction),
+					marker, row, col, direction,
+				),
 			})
 		}),
 	}

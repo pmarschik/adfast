@@ -143,13 +143,13 @@ glue, and `smoke.mjs` covers that.
 |            |                                                                    |
 | ---------- | ------------------------------------------------------------------ |
 | Source     | `$(go env GOROOT)/lib/wasm/wasm_exec.js`                           |
-| Go version | **go1.26.4**                                                       |
+| Go version | **go1.27.0**                                                       |
 | sha256     | `0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14` |
 
 `wasm_exec.js` is **coupled to the Go toolchain that built the binary**:
 the host bindings it installs must match what the runtime expects. It is
 pinned in three places that must move together — `.config/mise/config.toml`
-(`go = "1.26.4"`), the `wasm` job's `go-version` in
+(`go = "1.27.0"`), the `wasm` job's `go-version` in
 `.github/workflows/ci.yml`, and the table above. CI diffs the vendored
 copy against its own toolchain's and fails loudly on drift, so a Go
 upgrade cannot break the smoke test in a confusing way; re-vendor with
@@ -162,7 +162,7 @@ and update the table. Never hand-edit the file.
 
 ## Measured
 
-`go1.26.4`, Apple Silicon, Node 26:
+`go1.27.0`, Apple Silicon, Node 26:
 
 |         |                                                         |
 | ------- | ------------------------------------------------------- |

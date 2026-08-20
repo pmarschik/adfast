@@ -266,7 +266,8 @@ func (o Options) encodeOptions() ([]adfast.Option, error) {
 	default:
 		return nil, fmt.Errorf(
 			"unknown product %q: want %q, %q, or an empty string",
-			o.Product, ProductJira, ProductConfluence)
+			o.Product, ProductJira, ProductConfluence,
+		)
 	}
 }
 
@@ -291,7 +292,8 @@ func (o Options) renderOptions() ([]adfast.Option, error) {
 	default:
 		return nil, fmt.Errorf(
 			"unknown product %q: want %q, %q, or an empty string",
-			o.Product, ProductJira, ProductConfluence)
+			o.Product, ProductJira, ProductConfluence,
+		)
 	}
 }
 
@@ -305,7 +307,8 @@ func (o Options) expandMode() (jira.ExpandMode, error) {
 	default:
 		return "", fmt.Errorf(
 			"unknown expandMode %q: want %q, %q, %q, or an empty string",
-			o.ExpandMode, jira.ExpandAuto, jira.ExpandAll, jira.ExpandExplicit)
+			o.ExpandMode, jira.ExpandAuto, jira.ExpandAll, jira.ExpandExplicit,
+		)
 	}
 }
 
@@ -465,7 +468,8 @@ func ToADF(md string, opts Options) (string, error) {
 // that merely lacks content renders as an empty document rather than an
 // error.
 var ErrNotADocument = errors.New(
-	`value is not an ADF document (want a JSON object like {"type":"doc","version":1,"content":[…]})`)
+	`value is not an ADF document (want a JSON object like {"type":"doc","version":1,"content":[…]})`,
+)
 
 // ToMarkdown converts a wire-format ADF JSON document back to Markdown
 // under the given product options.

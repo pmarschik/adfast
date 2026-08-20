@@ -28,7 +28,8 @@ type colonURLParser struct{}
 // colonURLRegexp matches http/https/ftp URLs — same pattern as Goldmark's
 // internal linkify urlRegexp in extension/linkify.go (path group made optional).
 var colonURLRegexp = regexp.MustCompile(
-	`^(?:https?|ftp)://[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+(?::\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`)
+	`^(?:https?|ftp)://[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+(?::\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`,
+)
 
 func (*colonURLParser) Trigger() []byte { return []byte{':'} }
 

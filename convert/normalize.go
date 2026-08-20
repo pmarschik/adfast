@@ -938,9 +938,7 @@ func (fn *normalizer) decodeItem(it encItem) []ast.Node {
 		}
 		gap = false // the one-to-many media-group decode never reads it
 	case encMediaSingle:
-		if n := fn.decodeMediaSingle(it); n != nil {
-			group = []ast.Node{n}
-		}
+		group = []ast.Node{fn.decodeMediaSingle(it)}
 	}
 	for _, w := range it.wrappers {
 		if len(group) == 0 {

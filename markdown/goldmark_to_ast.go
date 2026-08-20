@@ -25,7 +25,8 @@ import (
 // urlLiteralRe matches GFM literal-autolink URLs (goldmark's linkify
 // pattern; the path part optional).
 var urlLiteralRe = regexp.MustCompile(
-	"(?:(?:https?|ftp)://|www\\.)[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-z]+(?::\\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\\(\\);,'\">\\^{}\\[\\]`]*)?")
+	"(?:(?:https?|ftp)://|www\\.)[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-z]+(?::\\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\\(\\);,'\">\\^{}\\[\\]`]*)?",
+)
 
 // relinkifyTexts converts bare URL literals inside plain text nodes into
 // autolinks. Goldmark's linkify skips URLs while inside a potential link
@@ -1208,7 +1209,7 @@ func decodeCharacterReference(s string, i int) (decoded string, next int, ok boo
 		return decodeNumericReference(s, j+1)
 	}
 	start := j
-	for j < len(s) && j-start <= 48 && (isDirectiveAlnumByte(s[j])) {
+	for j < len(s) && j-start <= 48 && isDirectiveAlnumByte(s[j]) {
 		j++
 	}
 	if j == start || j >= len(s) || s[j] != ';' {

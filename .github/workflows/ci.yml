@@ -88,7 +88,7 @@ jobs:
           # that file is coupled to the runtime that built the binary. Keep
           # in sync with .config/mise/config.toml and wasm/README.md; the
           # drift check below fails loudly if they ever separate.
-          go-version: "1.26.4"
+          go-version: "1.27.0"
 
       - uses: actions/setup-node@v6
         with:
@@ -99,6 +99,8 @@ jobs:
           if ! diff -u "$(go env GOROOT)/lib/wasm/wasm_exec.js" wasm/wasm_exec.js; then
             echo "::error::wasm/wasm_exec.js is out of step with this Go toolchain."
             echo "Re-vendor it and update the version table in wasm/README.md:"
+            # Print the re-vendoring command literally.
+            # shellcheck disable=SC2016
             echo '  cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" wasm/'
             exit 1
           fi
@@ -124,7 +126,7 @@ jobs:
 
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.12.2 # keep in sync with .config/mise/config.toml
+          version: v2.13.0 # keep in sync with .config/mise/config.toml
           args: -c .config/golangci.yml
 
   vuln:

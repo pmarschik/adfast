@@ -50,7 +50,8 @@ func ExampleToMarkdown_format() {
 	md := "Setup   *notes*: the [stand](https://hive.example.org/stand) keeps landing boards clear of the gravel."
 	fmt.Print(adfast.ToMarkdown(
 		adfast.FromMarkdown(md, adfast.WithPrettierFormat(), adfast.WithPrintWidth(40)),
-		adfast.WithPrettierFormat(), adfast.WithPrintWidth(40)))
+		adfast.WithPrettierFormat(), adfast.WithPrintWidth(40),
+	))
 	// Output:
 	// Setup _notes_: the
 	// [stand](https://hive.example.org/stand)

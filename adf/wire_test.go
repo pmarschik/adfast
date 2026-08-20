@@ -15,7 +15,7 @@ func TestIsWireSafe(t *testing.T) {
 		{
 			name: "canonical doc",
 			doc: wireDoc(&Paragraph{Content: []Node{
-				&Text{Text: "plain", Marks: []Mark{&Strong{}, &Link{Href: ptrStr("https://x")}}},
+				&Text{Text: "plain", Marks: []Mark{&Strong{}, &Link{Href: new("https://x")}}},
 			}}),
 			want: true,
 		},
@@ -26,13 +26,13 @@ func TestIsWireSafe(t *testing.T) {
 		},
 		{
 			name: "tight bullet list flag",
-			doc:  wireDoc(&BulletList{Tight: ptrBool(true), Content: []Node{&ListItem{}}}),
+			doc:  wireDoc(&BulletList{Tight: new(true), Content: []Node{&ListItem{}}}),
 			want: false,
 		},
 		{
 			name: "tight ordered list flag nested",
 			doc: wireDoc(&Blockquote{Content: []Node{
-				&OrderedList{Tight: ptrBool(false), Content: []Node{&ListItem{}}},
+				&OrderedList{Tight: new(false), Content: []Node{&ListItem{}}},
 			}}),
 			want: false,
 		},
@@ -55,9 +55,9 @@ func stripFixture() Doc {
 	return wireDoc(
 		&ColwidthsHint{Widths: []float64{80, 120}},
 		&Paragraph{Content: []Node{
-			&Text{Text: "keep", Marks: []Mark{&Strong{}, &Link{Href: ptrStr("https://x")}}},
+			&Text{Text: "keep", Marks: []Mark{&Strong{}, &Link{Href: new("https://x")}}},
 		}},
-		&BulletList{Tight: ptrBool(true), Content: []Node{
+		&BulletList{Tight: new(true), Content: []Node{
 			&ListItem{Content: []Node{&Paragraph{}}},
 		}},
 	)
@@ -99,6 +99,3 @@ func TestStripSynthetic_InputUntouched(t *testing.T) {
 		t.Error("StripSynthetic mutated the input content list")
 	}
 }
-
-func ptrStr(s string) *string { return &s }
-func ptrBool(b bool) *bool    { return &b }

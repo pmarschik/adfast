@@ -49,19 +49,16 @@ func TestDiagnostics_DecisionsOrphan(t *testing.T) {
 	}
 }
 
-func TestDiagnostics_ParseRecovered(t *testing.T) {
+func TestDiagnostics_ParseNoRecoveryNeeded(t *testing.T) {
 	var diags []convert.Diagnostic
-	// goldmark <=1.8.4 panics on this input (see parseGuarded); the guard
-	// retries with expanded tabs and reports the recovery.
+	// goldmark <=1.8.4 panicked on this input. Keep the former crasher as a
+	// regression case; current versions parse it without invoking parseGuarded's
+	// recovery path.
 	mdToADF("*\n  \t\x60", WithDiagnostics(func(d convert.Diagnostic) { diags = append(diags, d) }))
-	found := false
 	for _, d := range diags {
-		if d.Code == "parse-recovered" {
-			found = true
+		if d.Code == convert.CodeParseRecovered {
+			t.Fatalf("unexpected parse recovery diagnostic: %+v", diags)
 		}
-	}
-	if !found {
-		t.Fatalf("expected parse-recovered diagnostic, got %+v", diags)
 	}
 }
 

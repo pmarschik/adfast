@@ -48,7 +48,7 @@ func (n *Emoji) EncodeADF(_ extension.EncodeContext) []adf.Node {
 	}
 	e := &adf.Emoji{ShortName: shortName, ID: n.Attrs["id"]}
 	if text, ok := n.Attrs["text"]; ok {
-		e.Text = strPtr(text)
+		e.Text = new(text)
 	}
 	return []adf.Node{e}
 }

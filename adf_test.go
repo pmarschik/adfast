@@ -37,8 +37,6 @@ func link(href string) *adf.Link {
 	return &adf.Link{Href: &href}
 }
 
-func ptrOf[T any](v T) *T { return &v }
-
 // ---------------------------------------------------------------------------
 // ADF → MD: Block types
 // ---------------------------------------------------------------------------
@@ -132,10 +130,10 @@ func TestAdfToMarkdown_BlockTypes(t *testing.T) {
 		{
 			name: "renders mediaSingle as a ::media directive",
 			input: doc(&adf.MediaSingle{
-				Layout: ptrOf("align-start"), Width: ptrOf(float64(686)), WidthType: ptrOf("pixel"),
+				Layout: new("align-start"), Width: new(float64(686)), WidthType: new("pixel"),
 				Content: []adf.Node{&adf.Media{
 					Type: "file", ID: "abc", Alt: "shot.png",
-					Collection: ptrOf(""), Width: ptrOf(float64(2308)), Height: ptrOf(float64(551)),
+					Collection: new(""), Width: new(float64(2308)), Height: new(float64(551)),
 				}},
 			}),
 			contains: []string{`::media[shot.png]{#abc height="551" layoutWidth="686" width="2308" widthType="pixel"}`},
@@ -299,22 +297,22 @@ func TestAdfToMarkdown_InlineTypes(t *testing.T) {
 		},
 		{
 			name:     "emoji",
-			input:    doc(p(&adf.Emoji{Text: ptrOf("👍"), ShortName: ":thumbsup:"})),
+			input:    doc(p(&adf.Emoji{Text: new("👍"), ShortName: ":thumbsup:"})),
 			contains: []string{"👍"},
 		},
 		{
 			name:     "mention",
-			input:    doc(p(&adf.Mention{Text: ptrOf("@alice"), ID: "123"})),
+			input:    doc(p(&adf.Mention{Text: new("@alice"), ID: "123"})),
 			contains: []string{":mention[alice]{#123}"},
 		},
 		{
 			name:     "inlineCard with Jira URL",
-			input:    doc(p(&adf.InlineCard{URL: ptrOf("https://ixolit.atlassian.net/browse/PROJ-42")})),
+			input:    doc(p(&adf.InlineCard{URL: new("https://ixolit.atlassian.net/browse/PROJ-42")})),
 			contains: []string{"[PROJ-42](https://ixolit.atlassian.net/browse/PROJ-42)"},
 		},
 		{
 			name:     "inlineCard with non-Jira URL",
-			input:    doc(p(&adf.InlineCard{URL: ptrOf("https://example.com/page")})),
+			input:    doc(p(&adf.InlineCard{URL: new("https://example.com/page")})),
 			contains: []string{"https://example.com/page"},
 		},
 	}
@@ -804,7 +802,7 @@ func TestRoundTripIdempotent_LeadingHash(t *testing.T) {
 // renders back without it, and the legacy :mention[@Name] form still
 // parses (leading @ stripped).
 func TestMention_LabelWithoutAt(t *testing.T) {
-	want := doc(p(&adf.Mention{Text: ptrOf("@Jane Doe"), ID: "712020:aa"}))
+	want := doc(p(&adf.Mention{Text: new("@Jane Doe"), ID: "712020:aa"}))
 	for _, md := range []string{
 		":mention[Jane Doe]{#712020:aa}",
 		":mention[@Jane Doe]{#712020:aa}", // legacy form keeps working
@@ -898,10 +896,10 @@ func TestRoundTripIdempotent_AdjacentOrderedLists(t *testing.T) {
 // the original ADF, so a Markdown-authored push reproduces the media node.
 func TestMediaDirective_DefaultsRoundTrip(t *testing.T) {
 	in := doc(&adf.MediaSingle{
-		Layout: ptrOf("align-start"), Width: ptrOf(float64(686)), WidthType: ptrOf("pixel"),
+		Layout: new("align-start"), Width: new(float64(686)), WidthType: new("pixel"),
 		Content: []adf.Node{&adf.Media{
 			Type: "file", ID: "abc", Alt: "shot.png",
-			Collection: ptrOf(""), Width: ptrOf(float64(2308)), Height: ptrOf(float64(551)),
+			Collection: new(""), Width: new(float64(2308)), Height: new(float64(551)),
 		}},
 	})
 	md := adfToMD(in)
@@ -936,10 +934,10 @@ func TestMediaDirective_UUIDDropRoundTrip(t *testing.T) {
 	const id = "b58322aa-b563-4639-89b3-517dc0ceb4e9"
 	const path = "assets/shot.png"
 	in := doc(&adf.MediaSingle{
-		Layout: ptrOf("align-start"), Width: ptrOf(float64(671)), WidthType: ptrOf("pixel"),
+		Layout: new("align-start"), Width: new(float64(671)), WidthType: new("pixel"),
 		Content: []adf.Node{&adf.Media{
 			Type: "file", ID: id, Alt: "shot.png",
-			Collection: ptrOf(""), Width: ptrOf(float64(817)), Height: ptrOf(float64(182)),
+			Collection: new(""), Width: new(float64(817)), Height: new(float64(182)),
 		}},
 	})
 
@@ -1003,10 +1001,10 @@ func TestFormatMode_SlimsMediaViaStore(t *testing.T) {
 func TestMediaDirective_DimsAndCollectionRoundTrip(t *testing.T) {
 	const id, path = "abc-123", "assets/shot.png"
 	in := doc(&adf.MediaSingle{
-		Layout: ptrOf("align-start"), Width: ptrOf(float64(945)), WidthType: ptrOf("pixel"),
+		Layout: new("align-start"), Width: new(float64(945)), WidthType: new("pixel"),
 		Content: []adf.Node{&adf.Media{
 			Type: "file", ID: id, Alt: "shot.png",
-			Collection: ptrOf(""), Width: ptrOf(float64(1355)), Height: ptrOf(float64(568)),
+			Collection: new(""), Width: new(float64(1355)), Height: new(float64(568)),
 		}},
 	})
 	dec := []Option{WithMediaAssets(map[string]convert.MediaAsset{id: {Path: path, Width: 1355, Height: 568, HasDim: true}})}
@@ -1076,13 +1074,13 @@ func TestMediaDirective_NaturalWidthDropped(t *testing.T) {
 	mediaLeaf := func() *adf.Media {
 		return &adf.Media{
 			Type: "file", ID: id, Alt: "shot.png",
-			Collection: ptrOf(""), Width: ptrOf(float64(817)), Height: ptrOf(float64(182)),
+			Collection: new(""), Width: new(float64(817)), Height: new(float64(182)),
 		}
 	}
 
 	// layoutWidth == intrinsic width (817) + matching file dims → slims to path.
 	natural := doc(&adf.MediaSingle{
-		Layout: ptrOf("align-start"), Width: ptrOf(float64(817)), WidthType: ptrOf("pixel"),
+		Layout: new("align-start"), Width: new(float64(817)), WidthType: new("pixel"),
 		Content: []adf.Node{mediaLeaf()},
 	})
 	md := adfToMD(natural, dec...)
@@ -1097,7 +1095,7 @@ func TestMediaDirective_NaturalWidthDropped(t *testing.T) {
 
 	// A genuine resize (671 != 817) keeps layoutWidth + widthType.
 	resized := doc(&adf.MediaSingle{
-		Layout: ptrOf("align-start"), Width: ptrOf(float64(671)), WidthType: ptrOf("pixel"),
+		Layout: new("align-start"), Width: new(float64(671)), WidthType: new("pixel"),
 		Content: []adf.Node{mediaLeaf()},
 	})
 	rmd := adfToMD(resized, dec...)

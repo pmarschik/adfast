@@ -418,7 +418,8 @@ func gfmEmailInvalid(md string) bool {
 // urlLiteralRe matches GFM literal-autolink URLs (a copy of the markdown
 // package's linkify pattern; the path part optional).
 var urlLiteralRe = regexp.MustCompile(
-	"(?:(?:https?|ftp)://|www\\.)[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-z]+(?::\\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\\(\\);,'\">\\^{}\\[\\]`]*)?")
+	"(?:(?:https?|ftp)://|www\\.)[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-z]+(?::\\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\\(\\);,'\">\\^{}\\[\\]`]*)?",
+)
 
 // bareKnownDirectiveRe matches a known empty-content text directive token
 // in rendered output (e.g. ":u" after an emphasis marker, where colon

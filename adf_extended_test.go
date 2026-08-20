@@ -104,7 +104,7 @@ func TestExtended_DateAndPlaceholder(t *testing.T) {
 
 func TestExtended_EmojiFallbacks(t *testing.T) {
 	// text present: unchanged text projection (deliberately lossy).
-	if got := adfToMD(doc(p(&adf.Emoji{Text: ptrOf("👍"), ShortName: ":thumbsup:"}))); got != "👍\n" {
+	if got := adfToMD(doc(p(&adf.Emoji{Text: new("👍"), ShortName: ":thumbsup:"}))); got != "👍\n" {
 		t.Fatalf("text-present emoji: %q", got)
 	}
 	// text absent, toolkit shortname: unicode restored.
@@ -190,7 +190,7 @@ func TestExtended_BlockMarkWrappers(t *testing.T) {
 		doc(&adf.CodeBlock{Content: []adf.Node{txt("wide code")}, Marks: []adf.Mark{&adf.Breakout{Mode: "wide"}}}),
 		":::breakout{wide}\n```\nwide code\n```\n:::\n", nil)
 	assertAdfMdAdf(t,
-		doc(&adf.CodeBlock{Content: []adf.Node{txt("c")}, Marks: []adf.Mark{&adf.Breakout{Mode: "full-width", Width: ptrOf(1200.0)}}}),
+		doc(&adf.CodeBlock{Content: []adf.Node{txt("c")}, Marks: []adf.Mark{&adf.Breakout{Mode: "full-width", Width: new(1200.0)}}}),
 		":::breakout{full-width width=\"1200\"}\n```\nc\n```\n:::\n", nil)
 	// Nested wrappers on one paragraph: the ADF mark order maps
 	// inside-out (first mark innermost).
@@ -311,15 +311,15 @@ func TestExtended_SyncBlocks(t *testing.T) {
 func TestExtended_Layouts(t *testing.T) {
 	assertAdfMdAdf(t,
 		doc(&adf.LayoutSection{Content: []adf.Node{
-			&adf.LayoutColumn{Width: ptrOf(50.0), Content: []adf.Node{p(txt("left"))}},
-			&adf.LayoutColumn{Width: ptrOf(50.0), Content: []adf.Node{p(txt("right"))}},
+			&adf.LayoutColumn{Width: new(50.0), Content: []adf.Node{p(txt("left"))}},
+			&adf.LayoutColumn{Width: new(50.0), Content: []adf.Node{p(txt("right"))}},
 		}}),
 		"::::section\n:::column{width=\"50\"}\nleft\n:::\n\n:::column{width=\"50\"}\nright\n:::\n::::\n", nil)
 	assertAdfMdAdf(t,
 		doc(&adf.LayoutSection{
 			ColumnRuleStyle: "solid",
 			Content: []adf.Node{
-				&adf.LayoutColumn{Width: ptrOf(33.33), VAlign: "top", LocalID: "c1", Content: []adf.Node{p(txt("x"))}},
+				&adf.LayoutColumn{Width: new(33.33), VAlign: "top", LocalID: "c1", Content: []adf.Node{p(txt("x"))}},
 			},
 		}),
 		"::::section{columnRuleStyle=\"solid\"}\n:::column{localId=\"c1\" valign=\"top\" width=\"33.33\"}\nx\n:::\n::::\n", nil)
@@ -328,7 +328,7 @@ func TestExtended_Layouts(t *testing.T) {
 		doc(&adf.LayoutSection{
 			Marks: []adf.Mark{&adf.Breakout{Mode: "wide"}},
 			Content: []adf.Node{
-				&adf.LayoutColumn{Width: ptrOf(100.0), Content: []adf.Node{p(txt("w"))}},
+				&adf.LayoutColumn{Width: new(100.0), Content: []adf.Node{p(txt("w"))}},
 			},
 		}),
 		":::::breakout{wide}\n::::section\n:::column{width=\"100\"}\nw\n:::\n::::\n:::::\n", nil)
@@ -336,18 +336,18 @@ func TestExtended_Layouts(t *testing.T) {
 
 func TestExtended_BlockTaskItems(t *testing.T) {
 	assertAdfMdAdf(t,
-		doc(&adf.TaskList{LocalID: ptrOf(""), Content: []adf.Node{
-			&adf.BlockTaskItem{LocalID: ptrOf(""), State: "TODO", Content: []adf.Node{
+		doc(&adf.TaskList{LocalID: new(""), Content: []adf.Node{
+			&adf.BlockTaskItem{LocalID: new(""), State: "TODO", Content: []adf.Node{
 				p(txt("first")),
 				p(txt("second paragraph")),
 			}},
-			&adf.TaskItem{LocalID: ptrOf(""), State: "DONE", Content: []adf.Node{txt("plain")}},
+			&adf.TaskItem{LocalID: new(""), State: "DONE", Content: []adf.Node{txt("plain")}},
 		}}),
 		"- [ ] first\n\n  second paragraph\n- [x] plain\n", nil)
 	// Nested blocks (a bullet list) ride under the checkbox item.
 	assertAdfMdAdf(t,
-		doc(&adf.TaskList{LocalID: ptrOf(""), Content: []adf.Node{
-			&adf.BlockTaskItem{LocalID: ptrOf(""), State: "TODO", Content: []adf.Node{
+		doc(&adf.TaskList{LocalID: new(""), Content: []adf.Node{
+			&adf.BlockTaskItem{LocalID: new(""), State: "TODO", Content: []adf.Node{
 				p(txt("head")),
 				&adf.BulletList{Content: []adf.Node{li(p(txt("sub")))}},
 			}},
@@ -359,7 +359,7 @@ func TestExtended_MediaCaptions(t *testing.T) {
 	// Plain-text caption on an image-expressible media: the image title.
 	assertAdfMdAdf(t,
 		doc(&adf.MediaSingle{
-			Layout: ptrOf("center"),
+			Layout: new("center"),
 			Content: []adf.Node{
 				&adf.Media{Type: "external", URL: "https://example.com/i.png", Alt: "alt"},
 				&adf.Caption{Content: []adf.Node{txt("A caption")}},
@@ -369,7 +369,7 @@ func TestExtended_MediaCaptions(t *testing.T) {
 	// A formatted caption keeps the :::media container form.
 	assertAdfMdAdf(t,
 		doc(&adf.MediaSingle{
-			Layout: ptrOf("center"),
+			Layout: new("center"),
 			Content: []adf.Node{
 				&adf.Media{Type: "external", URL: "https://example.com/i.png", Alt: "alt"},
 				&adf.Caption{Content: []adf.Node{txt("see "), txt("bold", &adf.Strong{})}},
@@ -379,7 +379,7 @@ func TestExtended_MediaCaptions(t *testing.T) {
 	// A caption on media too rich for the image form keeps :::media too.
 	assertAdfMdAdf(t,
 		doc(&adf.MediaSingle{
-			Layout: ptrOf("wide"),
+			Layout: new("wide"),
 			Content: []adf.Node{
 				&adf.Media{Type: "external", URL: "https://example.com/i.png"},
 				&adf.Caption{Content: []adf.Node{txt("plain")}},
@@ -399,7 +399,7 @@ func TestExtended_MediaCaptions(t *testing.T) {
 func TestExtended_MediaBorder(t *testing.T) {
 	assertAdfMdAdf(t,
 		doc(&adf.MediaSingle{
-			Layout: ptrOf("center"),
+			Layout: new("center"),
 			Content: []adf.Node{&adf.Media{
 				Type: "external", URL: "https://example.com/i.png", Alt: "a",
 				Marks: []adf.Mark{&adf.Border{Color: "#091e42", Size: 2}},

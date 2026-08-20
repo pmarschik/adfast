@@ -55,7 +55,8 @@ func TestSymlinkRead_PlantedLinkRejected(t *testing.T) {
 		func(_ context.Context, batch []PendingAsset) ([]UploadResult, error) {
 			uploaded = uploaded || len(batch) > 0
 			return nil, nil
-		})); syncErr != nil {
+		},
+	)); syncErr != nil {
 		t.Fatal(syncErr)
 	}
 	if uploaded {

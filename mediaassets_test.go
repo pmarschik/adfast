@@ -26,10 +26,10 @@ func (s *mediaAssetSpy) resolve(id string) (convert.MediaAsset, bool) {
 // assets the tests hold, so a resolved id collapses to a plain image.
 func downloadedMedia(id, alt string) adf.Node {
 	return &adf.MediaSingle{
-		Layout: ptrOf("align-start"),
+		Layout: new("align-start"),
 		Content: []adf.Node{&adf.Media{
 			Type: "file", ID: id, Alt: alt,
-			Collection: ptrOf(""), Width: ptrOf(float64(8)), Height: ptrOf(float64(4)),
+			Collection: new(""), Width: new(float64(8)), Height: new(float64(4)),
 		}},
 	}
 }
