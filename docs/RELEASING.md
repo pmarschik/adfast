@@ -17,10 +17,13 @@ there is enough for it to be pinned and tagged — no task edits needed.
 ```sh
 mise run release:prepare   # bump version, regenerate CHANGELOG.md, pin go.mod versions
 # review CHANGELOG.md and the go.mod changes
-mise run release:tag       # commit, tag root + submodules, push, tidy go.sum
+mise run release:tag       # commit, tag root + submodules — local only
+mise run release:push      # push branch, then tags in order, update release notes
+mise run release:post-tidy # once the proxy serves it: re-tidy go.sum
 ```
 
-Pushing requires a hardware key touch; `release:tag` prompts for it.
+Nothing before `release:push` touches the remote, so a bad `prepare` or
+`tag` is undone locally. Pushing requires a hardware key touch.
 Tag pushes trigger `.github/workflows/release.yml`, which runs goreleaser
 with `--release-notes CHANGELOG.md` against `.config/goreleaser.yaml`.
 
@@ -42,8 +45,8 @@ Go modules in one repository resolve independently, so the order matters:
    consumable only after those two are tagged.
 3. **Tag the submodules**: `jira/vX.Y.Z`, `confluence/vX.Y.Z`,
    `skill/vX.Y.Z`, `frontmatter/vX.Y.Z`, and — after those —
-   `wasm/vX.Y.Z`, all on the same commit. The `release:tag` task creates
-   the tags and pushes the root tag first (GitHub suppresses workflow
+   `wasm/vX.Y.Z`, all on the same commit. `release:tag` creates the tags;
+   `release:push` pushes the root tag first (GitHub suppresses workflow
    events when more than three tags arrive at once, so the root tag goes
    alone to reliably trigger Actions; the submodule tags follow in a
    second push, which carries `jira/` and `confluence/` alongside
@@ -81,12 +84,17 @@ consequences:
 
 ## After tagging
 
-`release:tag` finishes the job automatically; the pieces are also
-available as manual recovery steps:
+`release:tag` stops at the local tags. Two steps finish the release:
 
-- `mise run release:push` — push branch + tags, create/update the GitHub
-  release from `CHANGELOG.md` (needed only if `release:tag` was
-  interrupted).
+- `mise run release:push` — advance the `main` bookmark, push the branch,
+  then the root tag alone, then the submodule tags, and create/update the
+  GitHub release from `CHANGELOG.md`. The staging is the whole point of
+  the task: `jj git push --all` pushes bookmarks **and** tags (jj has
+  pushed tags since 0.36), so pushing everything at once sends six tags
+  in one go and GitHub suppresses the push event that
+  `.github/workflows/release.yml` listens for — which is exactly how
+  v0.5.0 and v0.6.0 shipped without goreleaser artifacts. Hence
+  `--bookmark main`, then `--tag vX.Y.Z`, then `--all`.
 - `mise run release:post-tidy` — after the proxy serves the new version,
   re-tidy every module's `go.sum` with `GOWORK=off` (cross-module
   checksums can only be computed against the published version) and sync

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Push the tagged release to GitHub — manual recovery step (release:tag runs this automatically)"
+#MISE description="Push the tagged release to GitHub — run after release:tag (hardware key touch)"
 set -euo pipefail
 # shellcheck source=_lib.sh
 source "$(dirname "$0")/_lib.sh"
@@ -13,10 +13,9 @@ info "VCS: ${VCS}"
 
 # ── resolve the version being released from CHANGELOG.md ─────────────────────
 # Not "the newest v* tag in the repo": run before release:tag has tagged
-# anything — which is exactly when someone reaches for this task — that
-# resolves to the *previous* release, pushes nothing new, and then tries to
-# drag main backwards onto it. The changelog names the release that prepare
-# and tag produced, and the tag for it must already exist.
+# anything, that resolves to the *previous* release, pushes nothing new, and
+# then tries to drag main backwards onto it. The changelog names the release
+# that prepare and tag produced, and the tag for it must already exist.
 version=$(sed -n 's/^## \[\(v[0-9][^]]*\)\].*/\1/p' CHANGELOG.md | head -1)
 [[ -n "${version}" ]] \
   || die "no version heading in CHANGELOG.md — run 'mise run release:prepare' first"
@@ -32,9 +31,12 @@ if [[ "${VCS}" == "jj" ]]; then
 fi
 
 # ── push branch ───────────────────────────────────────────────────────────────
+# The branch goes alone: `jj git push --all` pushes bookmarks AND tags (jj has
+# pushed tags since 0.36), which would send all six tags in one push and undo
+# the staging below. --bookmark keeps the tags out of it.
 if [[ "${VCS}" == "jj" ]]; then
   info "Pushing bookmark (requires hardware key)…"
-  jj git push --all
+  jj git push --bookmark main
 else
   info "Pushing branch…"
   HK=0 git push origin HEAD
@@ -45,12 +47,20 @@ success "Branch pushed"
 # GitHub suppresses push events when > 3 tags are pushed at once, so the root
 # tag must be pushed separately to reliably trigger GitHub Actions.
 info "Pushing root tag ${version} (triggers GitHub Actions)…"
-HK=0 git push origin "refs/tags/${version}"
+if [[ "${VCS}" == "jj" ]]; then
+  jj git push --tag "${version}"
+else
+  HK=0 git push origin "refs/tags/${version}"
+fi
 success "Root tag pushed"
 
 # ── push sub-module tags ──────────────────────────────────────────────────────
 info "Pushing sub-module tags…"
-HK=0 git push --tags
+if [[ "${VCS}" == "jj" ]]; then
+  jj git push --all
+else
+  HK=0 git push --tags
+fi
 success "Sub-module tags pushed"
 
 # ── update GitHub release notes from CHANGELOG.md ────────────────────────────

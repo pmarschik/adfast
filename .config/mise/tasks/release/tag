@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Commit, tag, push, and tidy go.sum — full release after reviewing release:prepare output"
+#MISE description="Commit and tag root + submodules — run release:push next to publish"
 set -euo pipefail
 # shellcheck source=_lib.sh
 source "$(dirname "$0")/_lib.sh"
@@ -37,13 +37,13 @@ HIGHLIGHTS=$(awk '/^## \[/{found=1; next} found && /^###/{exit} found && NF{prin
 echo ""
 
 # ── confirm ──────────────────────────────────────────────────────────────────
-confirm "Commit, tag ${version}, push, and tidy go.sum?" \
+confirm "Commit and tag ${version}?" \
   || { warn "Aborted."; echo ""; exit 0; }
 echo ""
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STEP 1 — commit + tag
-# ═══════════════════════════════════════════════════════════════════════════════
+# ── commit + tag ─────────────────────────────────────────────────────────────
+# Nothing here touches the remote: pushing needs a hardware key touch and the
+# tags have to leave in a specific order, so it lives in release:push.
 if [[ "${VCS}" == "jj" ]]; then
   jj describe -m "chore(release): ${version}"
 else
@@ -70,83 +70,7 @@ for mod in "${MONOREPO_MODULES[@]}"; do
 done
 success "Tagged sub-modules: ${version}"
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# STEP 2 — push (requires hardware key touch)
-# ═══════════════════════════════════════════════════════════════════════════════
 echo ""
-info "Pushing… (hardware key touch required)"
-
-if [[ "${VCS}" == "jj" ]]; then
-  advance_main_bookmark "${version}"
-  jj git push --all
-else
-  HK=0 git push origin HEAD
-fi
-success "Branch pushed"
-
-# Root tag first — GitHub suppresses push events when >3 tags arrive at once.
-HK=0 git push origin "refs/tags/${version}"
-success "Root tag pushed"
-HK=0 git push --tags
-success "Sub-module tags pushed"
-
-info "Updating GitHub release notes…"
-notes=$(awk '/^## \[/{if(p) exit; p=1; next} p' CHANGELOG.md | sed '/./,$!d')
-if gh release view "${version}" &>/dev/null; then
-  gh release edit "${version}" --notes "${notes}"
-else
-  gh release create "${version}" --title "${version}" --notes "${notes}"
-fi
-success "Release notes updated"
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# STEP 3 — wait for proxy, tidy go.sum, commit + push (second key touch)
-# ═══════════════════════════════════════════════════════════════════════════════
-echo ""
-info "Waiting for proxy to serve ${version}…"
-max_wait=120
-elapsed=0
-until GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod download "${ROOT_MODULE}@${version}" 2>/dev/null; do
-  elapsed=$((elapsed + 5))
-  [[ $elapsed -ge $max_wait ]] && {
-    warn "Proxy timeout — run 'mise run release:post-tidy' later to finish go.sum update."
-    echo ""
-    echo -e "  ${green}${bold}✓ Release ${version} is live (go.sum tidy pending).${reset}"
-    echo ""
-    exit 0
-  }
-  sleep 5
-done
-success "Proxy is serving ${version}"
-
-info "Syncing go.work.sum…"
-GONOSUMDB="${ROOT_MODULE}" go work sync
-success "go.work.sum synced"
-
-info "Tidying go.sum files…"
-for dir in "${MODULE_DIRS[@]}"; do
-  pushd "$dir" > /dev/null
-  GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod tidy
-  popd > /dev/null
-done
-success "go.sum files updated"
-
-if [[ "${VCS}" == "jj" ]]; then
-  jj commit -m "chore: update go.sum after ${version}"
-else
-  git add '*/go.sum' go.sum go.work.sum 2>/dev/null || true
-  git commit -m "chore: update go.sum after ${version}"
-fi
-success "go.sum commit created"
-
-info "Pushing go.sum commit… (hardware key touch required)"
-if [[ "${VCS}" == "jj" ]]; then
-  jj git push --all
-else
-  HK=0 git push origin HEAD
-fi
-success "go.sum commit pushed"
-
-echo ""
-echo -e "  ${green}${bold}✓ Release ${version} is complete.${reset}"
+echo -e "  Tagged locally, nothing pushed yet. Publish with:"
+echo -e "  ${bold}mise run release:push${reset}"
 echo ""
