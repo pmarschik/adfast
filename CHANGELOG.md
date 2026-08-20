@@ -1,3 +1,35 @@
+## [v0.6.0] - 2026-08-20
+
+### 🚀 Features
+
+- _(wasm)_ Add the js/wasm module exposing adfast to JavaScript
+- _(wasm)_ Export catalog() so consumers can bind directive names
+
+### 🐛 Bug Fixes
+
+- _(core)_ Keep the md round trip idempotent across eighteen re-parse hazards
+- _(release)_ Pin every unpublished monorepo module in go.work
+
+### 💼 Other
+
+- _(release)_ Allow the deps commit scope
+- _(deps)_ Bump goldmark-directive to v0.3.0
+- _(deps)_ Bump goldmark-directive to v0.3.1 and drop its workaround
+- _(release)_ Pin the v0.6.0 monorepo module versions
+
+### 📚 Documentation
+
+- _(wasm)_ Document the module, its offsets contract and its release order
+
+### 🧪 Testing
+
+- _(wasm)_ Add the Node smoke test and the build tasks
+
+### ⚙️ Miscellaneous Tasks
+
+- Update go.sum after v0.5.0
+- _(wasm)_ Test, build and smoke-test the wasm module
+
 ## [v0.5.0] - 2026-08-14
 
 ### 🚀 Features
@@ -82,6 +114,7 @@
 ### 🚀 Features
 
 - Initial implementation — markdown ⇄ Atlassian Document Format at the AST level
+  [v0.6.0]: https://github.com/pmarschik/adfast/releases/tag/v0.6.0
   [v0.5.0]: https://github.com/pmarschik/adfast/releases/tag/v0.5.0
   [v0.4.0]: https://github.com/pmarschik/adfast/releases/tag/v0.4.0
   [v0.3.0]: https://github.com/pmarschik/adfast/releases/tag/v0.3.0
