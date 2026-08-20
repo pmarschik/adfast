@@ -1,3 +1,13 @@
+## [v0.6.2] - 2026-08-20
+
+### 🐛 Bug Fixes
+
+- _(release)_ Select root tag for goreleaser
+
+### ⚙️ Miscellaneous Tasks
+
+- Update go.sum after v0.6.1
+
 ## [v0.6.1] - 2026-08-20
 
 ### 🐛 Bug Fixes
@@ -132,6 +142,7 @@
 ### 🚀 Features
 
 - Initial implementation — markdown ⇄ Atlassian Document Format at the AST level
+  [v0.6.2]: https://github.com/pmarschik/adfast/releases/tag/v0.6.2
   [v0.6.1]: https://github.com/pmarschik/adfast/releases/tag/v0.6.1
   [v0.6.0]: https://github.com/pmarschik/adfast/releases/tag/v0.6.0
   [v0.5.0]: https://github.com/pmarschik/adfast/releases/tag/v0.5.0
