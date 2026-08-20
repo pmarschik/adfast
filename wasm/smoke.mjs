@@ -58,7 +58,7 @@ go.run(instance); // never resolves: main() parks on `select {}`
 const booted = performance.now();
 
 check("globalThis.adfast is installed", typeof globalThis.adfast === "object");
-for (const name of ["scanSpans", "toADF", "toMarkdown", "diagnostics"]) {
+for (const name of ["scanSpans", "catalog", "toADF", "toMarkdown", "diagnostics"]) {
   check(`adfast.${name} is a function`, typeof globalThis.adfast?.[name] === "function");
 }
 if (failures > 0) {
@@ -66,7 +66,7 @@ if (failures > 0) {
   process.exit(1);
 }
 
-const { scanSpans, toADF, toMarkdown, diagnostics } = globalThis.adfast;
+const { scanSpans, catalog, toADF, toMarkdown, diagnostics } = globalThis.adfast;
 
 // --- scanSpans ------------------------------------------------------------
 // The accented letter and the emoji are the point: the offsets must index
@@ -98,6 +98,26 @@ const { scanSpans, toADF, toMarkdown, diagnostics } = globalThis.adfast;
   // what the buffer looks like mid-keystroke.
   const spans = JSON.parse(value("scanSpans on an unclosed container", scanSpans(":::info\nstill typing\n")) ?? "[]");
   check("unclosed container runs to the end", spans[0]?.end === 21, JSON.stringify(spans));
+}
+
+// --- catalog --------------------------------------------------------------
+// The join a plugin actually performs: take the names scanSpans reports and
+// look each one up by (name, level).
+{
+  const entries = JSON.parse(value("catalog returns JSON", catalog()) ?? "[]");
+  check("catalog is a non-empty array", Array.isArray(entries) && entries.length > 0, entries.length);
+  const byKey = new Map(entries.map((e) => [`${e.name}/${e.level}`, e]));
+  check("catalog binds a panel name to its kind", byKey.get("info/3")?.kind === "panel", JSON.stringify(byKey.get("info/3")));
+  check(
+    "catalog keeps a per-level kind",
+    byKey.get("media/1")?.kind === "mediaInline" && byKey.get("media/2")?.kind === "media",
+    JSON.stringify([byKey.get("media/1"), byKey.get("media/2")]),
+  );
+  check("catalog reports decodedByCore", byKey.get("colwidths/2")?.decodedByCore === true, JSON.stringify(byKey.get("colwidths/2")));
+  const md = ":::info\nSee :status[Ready]{color=\"green\"}.\n:::\n";
+  const spans = JSON.parse(value("scanSpans for the catalog join", scanSpans(md)) ?? "[]");
+  const unknown = spans.filter((s) => !byKey.has(`${s.name}/${s.level}`));
+  check("every scanned span resolves in the catalog", unknown.length === 0, JSON.stringify(unknown));
 }
 
 // --- toADF ----------------------------------------------------------------

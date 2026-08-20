@@ -21,6 +21,7 @@
 //
 //	globalThis.adfast = {
 //	  scanSpans(md)                 -> Result   // JSON [{start,end,level,name,attrs}]
+//	  catalog()                     -> Result   // JSON [{name,level,kind,decodedByCore}]
 //	  toADF(md, opts)               -> Result   // ADF JSON
 //	  toMarkdown(adf, opts)         -> Result   // markdown text
 //	  diagnostics(md, opts)         -> Result   // JSON [{code,message}]
@@ -44,10 +45,12 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"unicode/utf8"
 
 	directive "github.com/pmarschik/goldmark-directive"
@@ -58,6 +61,7 @@ import (
 	"github.com/pmarschik/adfast/adf"
 	"github.com/pmarschik/adfast/confluence"
 	"github.com/pmarschik/adfast/convert"
+	"github.com/pmarschik/adfast/dialect"
 	"github.com/pmarschik/adfast/jira"
 	"github.com/pmarschik/adfast/markdown"
 )
@@ -122,6 +126,76 @@ type Span struct {
 	// already resolved). Never nil — a directive without attributes has an
 	// empty object, so `span.attrs.color` needs no guard.
 	Attrs map[string]string `json:"attrs"`
+}
+
+// CatalogEntry names one directive the dialect registers, at one level.
+//
+// ScanSpans is purely SYNTACTIC: a span carries a name, a level and
+// attributes, but nothing about what the directive means — `:::info` and
+// `:::frobnicate` look alike to a consumer. The catalog is the semantic
+// half, so an editor integration can bind names to visuals from the
+// dialect itself instead of keeping a parallel table in TypeScript that
+// drifts silently.
+//
+// Attribute schemas are deliberately out of scope: they live inside the
+// promote functions, not in the registration, so an entry describes the
+// directive's identity (name, level, ADF kind) and nothing more.
+//
+//nolint:govet // fieldalignment: as with Span, the declaration order is the published JSON key order.
+type CatalogEntry struct {
+	// Name is the directive name, without its colons ("info", "status", …)
+	// — the same value Span.Name carries.
+	Name string `json:"name"`
+	// Level is LevelContainer (3), LevelLeaf (2), or LevelText (1). A name
+	// can be registered at more than one level, with a different kind at
+	// each ("media" is the media kind as a leaf or container and the
+	// mediaInline kind as a text directive), so (name, level) — the pair a
+	// span carries — is what identifies an entry.
+	Level int `json:"level"`
+	// Kind is the dialect kind the directive promotes to
+	// (extension.Registration.Kind), e.g. "panel" for every panel name.
+	Kind string `json:"kind"`
+	// DecodedByCore reports that the ADF → Markdown direction is handled
+	// structurally by convert rather than by the kind's own decode hook
+	// (extension.Registration.DecodedByCore) — true for the cross-sibling
+	// kinds ":colwidths" and "::decisions", which have no ADF node of
+	// their own. It does NOT affect the Markdown → ADF direction.
+	DecodedByCore bool `json:"decodedByCore"`
+}
+
+// Catalog returns every directive name the dialect registers, one entry
+// per (name, level) pair, sorted by name and then level.
+//
+// It is derived from dialect.Registrations() at call time — there is no
+// hand-maintained table here to fall behind the dialect. Where two
+// registrations claim the same name at the same level the LAST one wins,
+// mirroring the parser's own promotion index (see markdown.Parse), so the
+// catalog always describes the promotion that actually happens.
+func Catalog() []CatalogEntry {
+	type key struct {
+		name  string
+		level int
+	}
+	seen := map[key]CatalogEntry{}
+	for _, reg := range dialect.Registrations() {
+		for name := range reg.Texts {
+			seen[key{name, LevelText}] = CatalogEntry{name, LevelText, reg.Kind, reg.DecodedByCore}
+		}
+		for name := range reg.Leaves {
+			seen[key{name, LevelLeaf}] = CatalogEntry{name, LevelLeaf, reg.Kind, reg.DecodedByCore}
+		}
+		for name := range reg.Containers {
+			seen[key{name, LevelContainer}] = CatalogEntry{name, LevelContainer, reg.Kind, reg.DecodedByCore}
+		}
+	}
+	out := make([]CatalogEntry, 0, len(seen))
+	for _, e := range seen {
+		out = append(out, e)
+	}
+	slices.SortFunc(out, func(a, b CatalogEntry) int {
+		return cmp.Or(strings.Compare(a.Name, b.Name), a.Level-b.Level)
+	})
+	return out
 }
 
 // Diagnostic is one notice raised while converting a document.
@@ -480,6 +554,11 @@ func bridgeOptions(optsJSON string) (Options, error) {
 // bridgeScanSpans backs globalThis.adfast.scanSpans.
 func bridgeScanSpans(md string) (string, error) {
 	return marshalJSON(ScanSpans(md))
+}
+
+// bridgeCatalog backs globalThis.adfast.catalog.
+func bridgeCatalog() (string, error) {
+	return marshalJSON(Catalog())
 }
 
 // bridgeToADF backs globalThis.adfast.toADF.

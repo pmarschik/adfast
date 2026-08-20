@@ -19,6 +19,9 @@ func main() {
 				return bridgeScanSpans(stringArg(args, 0))
 			})
 		}),
+		"catalog": js.FuncOf(func(_ js.Value, _ []js.Value) any {
+			return bridgeGuard(bridgeCatalog)
+		}),
 		"toADF": js.FuncOf(func(_ js.Value, args []js.Value) any {
 			return bridgeGuard(func() (string, error) {
 				return bridgeToADF(stringArg(args, 0), stringArg(args, 1))

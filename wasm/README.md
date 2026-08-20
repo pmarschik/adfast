@@ -32,6 +32,7 @@ Ship `adfast.wasm` together with `wasm_exec.js`.
 ```js
 globalThis.adfast = {
   scanSpans(md),          // JSON [{start, end, level, name, attrs}]
+  catalog(),              // JSON [{name, level, kind, decodedByCore}]
   toADF(md, opts),        // ADF JSON
   toMarkdown(adf, opts),  // markdown text
   diagnostics(md, opts),  // JSON [{code, message}]
@@ -91,6 +92,35 @@ opening fence through the end of the matching closing fence. An unclosed
 container (what the buffer looks like mid-keystroke) has no closing fence
 at all; its `end` is the end of the enclosing container, or of the
 source.
+
+### `catalog()` is the semantic half of `scanSpans`
+
+`scanSpans` is purely syntactic: `:::info` and `:::frobnicate` look alike
+to it. `catalog()` takes no arguments and returns every directive the
+dialect registers, one entry per `(name, level)` pair, sorted by name
+then level:
+
+```js
+{ name: "info", level: 3, kind: "panel", decodedByCore: false }
+```
+
+- `name` is the same value `scanSpans` reports, so `(name, level)` joins
+  a span to its entry.
+- `level` is `1` text, `2` leaf, `3` container. A name can be registered
+  at several levels with a different `kind` at each — `media` is
+  `mediaInline` as a text directive and `media` as a leaf or container.
+- `kind` is the dialect kind the directive promotes to, so all five panel
+  names share `"panel"` and a consumer can style by kind instead of
+  enumerating names.
+- `decodedByCore` marks the kinds `convert` handles structurally in the
+  ADF → Markdown direction (`::colwidths`, `::decisions`, which have no
+  ADF node of their own). It does not affect Markdown → ADF.
+
+The list is derived from `dialect.Registrations()` at call time, so a
+plugin binding names to visuals cannot fall behind the dialect the way a
+hand-maintained TypeScript table does. Attribute schemas are deliberately
+out of scope — they live inside the promote functions, not the
+registration, so an entry describes identity and nothing more.
 
 ## Layout
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"os"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"unicode/utf16"
 
 	adfast "github.com/pmarschik/adfast"
+	"github.com/pmarschik/adfast/dialect"
 )
 
 // sliceUTF16 is the test's independent oracle for the offset contract: it
@@ -237,6 +239,141 @@ func TestScanSpans_Corpus(t *testing.T) {
 		t.Fatal("the corpus produced no spans at all")
 	}
 	t.Logf("scanned %d directive spans across %d corpus documents", total, len(fixtures.Markdown))
+}
+
+// TestCatalog derives the expected entries from dialect.Registrations()
+// the same way api.go does, but independently: the point is not to prove
+// the two loops agree, it is to prove the catalog is a FUNCTION of the
+// registrations — every registered (name, level) shows up exactly once,
+// nothing that is not registered shows up at all, and the last
+// registration wins where two claim the same pair (as markdown.Parse's
+// promotion index does).
+func TestCatalog(t *testing.T) {
+	type key struct {
+		name  string
+		level int
+	}
+	want := map[key]CatalogEntry{}
+	for _, reg := range dialect.Registrations() {
+		for _, m := range []struct {
+			names map[string]bool
+			level int
+		}{
+			{namesOf(reg.Texts), LevelText},
+			{namesOf(reg.Leaves), LevelLeaf},
+			{namesOf(reg.Containers), LevelContainer},
+		} {
+			for name := range m.names {
+				want[key{name, m.level}] = CatalogEntry{
+					Name: name, Level: m.level, Kind: reg.Kind, DecodedByCore: reg.DecodedByCore,
+				}
+			}
+		}
+	}
+	if len(want) == 0 {
+		t.Fatal("the dialect registered nothing at all")
+	}
+
+	got := Catalog()
+	seen := map[key]bool{}
+	for _, e := range got {
+		k := key{e.Name, e.Level}
+		if seen[k] {
+			t.Errorf("%q at level %d appears more than once", e.Name, e.Level)
+		}
+		seen[k] = true
+		w, ok := want[k]
+		if !ok {
+			t.Errorf("catalog lists %q at level %d, which no registration claims", e.Name, e.Level)
+			continue
+		}
+		if e != w {
+			t.Errorf("catalog entry for %q at level %d = %+v, want %+v", e.Name, e.Level, e, w)
+		}
+	}
+	for k := range want {
+		if !seen[k] {
+			t.Errorf("registered directive %q at level %d is missing from the catalog", k.name, k.level)
+		}
+	}
+
+	for i := 1; i < len(got); i++ {
+		prev, cur := got[i-1], got[i]
+		if prev.Name > cur.Name || (prev.Name == cur.Name && prev.Level >= cur.Level) {
+			t.Errorf("catalog is not sorted by (name, level): %+v precedes %+v", prev, cur)
+		}
+	}
+	t.Logf("catalog lists %d directive registrations", len(got))
+}
+
+// TestCatalog_Pins nails the two properties the derivation could satisfy
+// vacuously: a name registered at several levels keeps a per-level kind,
+// and decodedByCore is carried through rather than hard-coded false.
+func TestCatalog_Pins(t *testing.T) {
+	byKey := map[string]CatalogEntry{}
+	for _, e := range Catalog() {
+		byKey[fmt.Sprintf("%s/%d", e.Name, e.Level)] = e
+	}
+	tests := []struct {
+		key  string
+		want CatalogEntry
+	}{
+		{"media/1", CatalogEntry{Name: "media", Level: LevelText, Kind: "mediaInline"}},
+		{"media/2", CatalogEntry{Name: "media", Level: LevelLeaf, Kind: "media"}},
+		{"media/3", CatalogEntry{Name: "media", Level: LevelContainer, Kind: "media"}},
+		{"info/3", CatalogEntry{Name: "info", Level: LevelContainer, Kind: "panel"}},
+		{"warning/3", CatalogEntry{Name: "warning", Level: LevelContainer, Kind: "panel"}},
+		{"colwidths/2", CatalogEntry{Name: "colwidths", Level: LevelLeaf, Kind: "colwidths", DecodedByCore: true}},
+		{"decisions/2", CatalogEntry{Name: "decisions", Level: LevelLeaf, Kind: "decisions", DecodedByCore: true}},
+		{"u/1", CatalogEntry{Name: "u", Level: LevelText, Kind: "underline"}},
+	}
+	for _, tt := range tests {
+		got, ok := byKey[tt.key]
+		if !ok {
+			t.Errorf("%s is missing from the catalog", tt.key)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("%s = %+v, want %+v", tt.key, got, tt.want)
+		}
+	}
+}
+
+func TestBridgeCatalog(t *testing.T) {
+	out, err := bridgeCatalog()
+	if err != nil {
+		t.Fatalf("bridgeCatalog: %v", err)
+	}
+	var entries []struct {
+		Name          string `json:"name"`
+		Kind          string `json:"kind"`
+		Level         int    `json:"level"`
+		DecodedByCore bool   `json:"decodedByCore"`
+	}
+	if err := json.Unmarshal([]byte(out), &entries); err != nil {
+		t.Fatalf("unmarshal %q: %v", out, err)
+	}
+	if len(entries) != len(Catalog()) {
+		t.Errorf("bridge returned %d entries, Catalog has %d", len(entries), len(Catalog()))
+	}
+	for _, e := range entries {
+		if e.Name == "" || e.Kind == "" {
+			t.Errorf("entry %+v has an empty name or kind", e)
+		}
+		if e.Level < LevelText || e.Level > LevelContainer {
+			t.Errorf("entry %+v has an out-of-range level", e)
+		}
+	}
+}
+
+// namesOf collects the keys of a registration map whose value type differs
+// per level, so the table above can treat all three levels alike.
+func namesOf[V any](m map[string]V) map[string]bool {
+	out := make(map[string]bool, len(m))
+	for name := range m {
+		out[name] = true
+	}
+	return out
 }
 
 func TestOptions_EncodeAndRender(t *testing.T) {
