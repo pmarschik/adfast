@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-#MISE description="Update go.sum files post-publish — run after release:push, once the proxy serves the new version"
+#MISE description="Update go.sum files post-publish — recovery step; release:push runs this automatically"
 set -euo pipefail
 # shellcheck source=_lib.sh
 source "$(dirname "$0")/_lib.sh"
 
 # go.sum entries for cross-module workspace deps can only be computed after the
-# new version exists on the proxy. This step runs post-push with GOWORK=off so
-# Go sees each module's cross-deps as external and writes correct checksums.
-# Commit the resulting go.sum changes as an untagged housekeeping commit.
+# new version exists on the proxy. release:push does this itself; this task is
+# for the case where the proxy was still catching up when it ran. Commit the
+# resulting go.sum changes as an untagged housekeeping commit.
 
 echo ""
 echo -e "${bold}🔑 Post-release go.sum tidy…${reset}"
@@ -17,30 +17,15 @@ detect_vcs
 discover_modules
 
 version=$(git tag --sort=-version:refname | grep '^v[0-9]' | head -1)
-[[ -n "${version}" ]] || die "no version tag found — run 'mise run release:tag' first"
+[[ -n "${version}" ]] || die "no version tag found — run 'mise run release:push' first"
 info "Version: ${bold}${version}${reset}"
 
-max_wait=120
 info "Waiting for proxy to serve ${version}…"
-elapsed=0
-until GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod download "${ROOT_MODULE}@${version}" 2>/dev/null; do
-  elapsed=$((elapsed + 5))
-  [[ $elapsed -ge $max_wait ]] && die "Timed out — proxy not serving ${version} yet. Retry later."
-  sleep 5
-done
+wait_for_proxy "${version}" \
+  || die "Timed out — proxy not serving ${version} yet. Retry later."
 success "Proxy is serving ${version}"
 
-info "Syncing go.work.sum…"
-GONOSUMDB="${ROOT_MODULE}" go work sync
-success "go.work.sum synced"
-
-info "Tidying go.sum files…"
-for dir in "${MODULE_DIRS[@]}"; do
-  pushd "$dir" > /dev/null
-  GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod tidy
-  popd > /dev/null
-done
-success "go.sum files updated"
+tidy_go_sums
 
 echo ""
 echo -e "  Review the go.sum changes, then commit and push:"

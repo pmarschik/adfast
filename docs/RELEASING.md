@@ -17,15 +17,15 @@ there is enough for it to be pinned and tagged — no task edits needed.
 ```sh
 mise run release:prepare   # bump version, regenerate CHANGELOG.md, pin go.mod versions
 # review CHANGELOG.md and the go.mod changes
-mise run release:tag       # commit, tag root + submodules — local only
-mise run release:push      # push branch, then tags in order, update release notes
-mise run release:post-tidy # once the proxy serves it: re-tidy go.sum
+mise run release:push      # commit, tag, push, update release notes, tidy go.sum
 ```
 
-Nothing before `release:push` touches the remote, so a bad `prepare` or
-`tag` is undone locally. Pushing requires a hardware key touch.
-Tag pushes trigger `.github/workflows/release.yml`, which runs goreleaser
-with `--release-notes CHANGELOG.md` against `.config/goreleaser.yaml`.
+`release:prepare` only edits files, so a bad bump is undone locally;
+`release:push` does everything that touches the remote and asks for
+confirmation first. It needs two hardware key touches — one for the
+release, one for the `go.sum` commit that follows it. Tag pushes trigger
+`.github/workflows/release.yml`, which runs goreleaser with
+`--release-notes CHANGELOG.md` against `.config/goreleaser.yaml`.
 
 ## Multi-module release order
 
@@ -45,8 +45,8 @@ Go modules in one repository resolve independently, so the order matters:
    consumable only after those two are tagged.
 3. **Tag the submodules**: `jira/vX.Y.Z`, `confluence/vX.Y.Z`,
    `skill/vX.Y.Z`, `frontmatter/vX.Y.Z`, and — after those —
-   `wasm/vX.Y.Z`, all on the same commit. `release:tag` creates the tags;
-   `release:push` pushes the root tag first (GitHub suppresses workflow
+   `wasm/vX.Y.Z`, all on the same commit. `release:push` creates the tags
+   and pushes the root tag first (GitHub suppresses workflow
    events when more than three tags arrive at once, so the root tag goes
    alone to reliably trigger Actions; the submodule tags follow in a
    second push, which carries `jira/` and `confluence/` alongside
@@ -79,23 +79,28 @@ consequences:
   a sibling needs its own replace. `release:prepare` bumps all of them
   together with the go.mod requires (and adds a line for a module that
   has newly become a sibling requirement); a stale or missing pin here
-  breaks every build between `prepare` and `tag` with "unknown revision
+  breaks every build between `prepare` and `push` with "unknown revision
   vX.Y.Z".
 
-## After tagging
+## How release:push pushes
 
-`release:tag` stops at the local tags. Two steps finish the release:
+The pushes are staged, and the order is load-bearing: the `main`
+bookmark first, then the root tag **alone**, then the submodule tags.
+`jj git push --all` pushes bookmarks **and** tags (jj has pushed tags
+since 0.36), so pushing everything in one go sends six tags at once,
+and GitHub suppresses the push event that
+`.github/workflows/release.yml` listens for — which is exactly how
+v0.5.0 and v0.6.0 shipped without goreleaser artifacts. Hence
+`--bookmark main`, then `--tag vX.Y.Z`, then `--all`.
 
-- `mise run release:push` — advance the `main` bookmark, push the branch,
-  then the root tag alone, then the submodule tags, and create/update the
-  GitHub release from `CHANGELOG.md`. The staging is the whole point of
-  the task: `jj git push --all` pushes bookmarks **and** tags (jj has
-  pushed tags since 0.36), so pushing everything at once sends six tags
-  in one go and GitHub suppresses the push event that
-  `.github/workflows/release.yml` listens for — which is exactly how
-  v0.5.0 and v0.6.0 shipped without goreleaser artifacts. Hence
-  `--bookmark main`, then `--tag vX.Y.Z`, then `--all`.
-- `mise run release:post-tidy` — after the proxy serves the new version,
+Afterwards it waits for the proxy, re-tidies `go.sum`, and pushes that
+as `chore: update go.sum after vX.Y.Z` — the tags stay on the release
+commit, only the branch moves on.
+
+## Recovery steps
+
+- `mise run release:post-tidy` — if the proxy was still catching up when
+  `release:push` reached the tidy, run this once the version resolves:
   re-tidy every module's `go.sum` with `GOWORK=off` (cross-module
   checksums can only be computed against the published version) and sync
   `go.work.sum`. Commit the result as

@@ -45,6 +45,35 @@ advance_main_bookmark() {
   success "main → ${rev}"
 }
 
+# Block until the module proxy serves ROOT_MODULE@$1, or return 1 after $2
+# seconds (default 120). Callers decide whether a timeout is fatal.
+wait_for_proxy() {
+  local version="$1" max_wait="${2:-120}" elapsed=0
+  until GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod download "${ROOT_MODULE}@${version}" 2>/dev/null; do
+    elapsed=$((elapsed + 5))
+    [[ ${elapsed} -ge ${max_wait} ]] && return 1
+    sleep 5
+  done
+}
+
+# Re-tidy every module's go.sum against the published version. GOWORK=off so Go
+# sees each module's cross-deps as external and writes real checksums for them;
+# inside the workspace they resolve locally and never get one. Needs
+# discover_modules to have run.
+tidy_go_sums() {
+  info "Syncing go.work.sum…"
+  GONOSUMDB="${ROOT_MODULE}" go work sync
+  success "go.work.sum synced"
+
+  info "Tidying go.sum files…"
+  for dir in "${MODULE_DIRS[@]}"; do
+    pushd "$dir" > /dev/null
+    GOWORK=off GONOSUMDB="${ROOT_MODULE}" go mod tidy
+    popd > /dev/null
+  done
+  success "go.sum files updated"
+}
+
 # Populate MONOREPO_MODULES (module paths) and MODULE_DIRS (relative dirs) from go.work.
 # Also sets ROOT_MODULE to the root module path.
 # Paths whose directory component matches EXCLUDE_GLOB (default: "example/*") are skipped.
