@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Root release tag to recover
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -15,6 +21,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: actions/setup-go@v7
         with:
@@ -26,3 +33,6 @@ jobs:
           args: release --config .config/goreleaser.yaml --release-notes CHANGELOG.md --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # All module tags point at one commit. Tell GoReleaser which root tag
+          # triggered the workflow instead of relying on git's tag ordering.
+          GORELEASER_CURRENT_TAG: ${{ inputs.tag || github.ref_name }}
