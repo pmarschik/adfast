@@ -89,16 +89,32 @@ for dir in "${MODULE_DIRS[@]}"; do
 done
 success "go.mod files updated"
 
-# ── update go.work: its local replace pins the same upcoming version ─────────
-# The submodule go.mod files now require ${version}, which the proxy cannot
-# serve until the root module is tagged. go.work resolves exactly that version
-# to this checkout, so a stale pin here breaks every build between prepare and
-# tag with "unknown revision ${version}". Edited with sed rather than
-# `go work edit` to keep the comment above the directive.
-if [[ -f go.work ]] && grep -q "^replace ${ROOT_MODULE} v" go.work; then
-  info "Pinning ${ROOT_MODULE} in go.work…"
-  sed -i.bak "s|^replace ${ROOT_MODULE} v[^ ]* => \.|replace ${ROOT_MODULE} ${version} => .|" go.work
-  rm -f go.work.bak
+# ── update go.work: its local replaces pin the same upcoming versions ────────
+# The go.mod files now require ${version} of every monorepo module they depend
+# on, and the proxy cannot serve those until the tags exist. go.work resolves
+# exactly those versions to this checkout, so a stale or missing pin here
+# breaks every build between prepare and tag with "unknown revision
+# ${version}" — the workspace `use` list alone does not cover a submodule
+# required by another submodule (wasm/ → confluence/, jira/). Edited with sed
+# rather than `go work edit` to keep the comment above the directives.
+if [[ -f go.work ]]; then
+  info "Pinning monorepo replaces in go.work…"
+  GO_MOD_FILES=()
+  for dir in "${MODULE_DIRS[@]}"; do
+    [[ "$dir" == "." ]] && GO_MOD_FILES+=("go.mod") || GO_MOD_FILES+=("$dir/go.mod")
+  done
+  for i in "${!MONOREPO_MODULES[@]}"; do
+    mod="${MONOREPO_MODULES[$i]}"
+    dir="${MODULE_DIRS[$i]}"
+    [[ "$dir" == "." ]] || dir="./${dir}"
+    if grep -q "^replace ${mod} v" go.work; then
+      sed -i.bak "s|^replace ${mod} v[^ ]* => .*|replace ${mod} ${version} => ${dir}|" go.work
+      rm -f go.work.bak
+    elif grep -qE "^[[:space:]]*${mod} v" "${GO_MOD_FILES[@]}"; then
+      # Newly depended on by a sibling module: it needs a pin from now on.
+      printf '\nreplace %s %s => %s\n' "${mod}" "${version}" "${dir}" >> go.work
+    fi
+  done
   success "go.work updated"
 fi
 

@@ -9,9 +9,12 @@ use (
 	./wasm
 )
 
-// The submodules' go.mod files pin the upcoming release version, which
-// is not on the module proxy until the root module is tagged. Resolve
-// exactly that version to the local checkout for development builds;
-// go.work never ships to consumers. Bump alongside the submodule
-// go.mod files at release time (see docs/RELEASING.md).
+// The go.mod files pin the upcoming release version of every monorepo
+// module they require, and the proxy cannot serve those until the tags
+// exist. Resolve exactly those versions to the local checkouts for
+// development builds; go.work never ships to consumers. A module needs
+// a line here as soon as another module requires it — wasm/ requires
+// confluence/ and jira/, and the workspace `use` alone does not satisfy
+// their unpublished versions when the module graph is loaded. Bumped
+// alongside the go.mod files at release time (see docs/RELEASING.md).
 replace github.com/pmarschik/adfast v0.5.0 => .

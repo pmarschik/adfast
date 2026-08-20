@@ -66,12 +66,18 @@ consequences:
   "fix" it by re-adding a `replace` to a submodule go.mod (released
   module files must be replace-free).
 - **Local development builds resolve through the workspace.** `go.work`
-  carries a version-specific replace
-  (`replace github.com/pmarschik/adfast vX.Y.Z => .`) so that the module
-  graph can be computed without fetching the not-yet-published version.
-  `release:prepare` bumps it together with the submodule go.mod requires;
-  a stale pin here breaks every build between `prepare` and `tag` with
-  "unknown revision vX.Y.Z".
+  carries a version-specific replace for every monorepo module some
+  go.mod requires — `replace github.com/pmarschik/adfast vX.Y.Z => .`
+  plus, because `wasm/` requires them, `…/confluence vX.Y.Z =>
+  ./confluence` and `…/jira vX.Y.Z => ./jira` — so that the module graph
+  can be computed without fetching the not-yet-published versions. The
+  workspace `use` list is not enough on its own: loading the graph still
+  reads the go.mod of every required version, so a submodule required by
+  a sibling needs its own replace. `release:prepare` bumps all of them
+  together with the go.mod requires (and adds a line for a module that
+  has newly become a sibling requirement); a stale or missing pin here
+  breaks every build between `prepare` and `tag` with "unknown revision
+  vX.Y.Z".
 
 ## After tagging
 
