@@ -1,5 +1,5 @@
-github.com/pmarschik/adfast v0.6.0 h1:6xBSD+9+A7jUgLpEQmG8+MadUv3blaKSRWl77wLv53E=
-github.com/pmarschik/adfast v0.6.0/go.mod h1:Ufzg1ts0MZK0e/6B0ifo4sCT8uhM++PT+ubeFDyfIE8=
+github.com/pmarschik/adfast v0.6.1 h1:aiLfruaF60T6NXA+pKIaoPrC39uCIpIeIsK/V1NxAjk=
+github.com/pmarschik/adfast v0.6.1/go.mod h1:Ufzg1ts0MZK0e/6B0ifo4sCT8uhM++PT+ubeFDyfIE8=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
