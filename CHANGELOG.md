@@ -1,3 +1,21 @@
+## [v0.6.1] - 2026-08-20
+
+### 🐛 Bug Fixes
+
+- _(release)_ Push the tags in stages again, from release:push alone
+
+### 💼 Other
+
+- _(release)_ Split prepare and push by vcs
+
+### 🚜 Refactor
+
+- _(release)_ Fold release:tag into release:push
+
+### ⚙️ Miscellaneous Tasks
+
+- Update go.sum after v0.6.0
+
 ## [v0.6.0] - 2026-08-20
 
 ### 🚀 Features
@@ -114,6 +132,7 @@
 ### 🚀 Features
 
 - Initial implementation — markdown ⇄ Atlassian Document Format at the AST level
+  [v0.6.1]: https://github.com/pmarschik/adfast/releases/tag/v0.6.1
   [v0.6.0]: https://github.com/pmarschik/adfast/releases/tag/v0.6.0
   [v0.5.0]: https://github.com/pmarschik/adfast/releases/tag/v0.5.0
   [v0.4.0]: https://github.com/pmarschik/adfast/releases/tag/v0.4.0
