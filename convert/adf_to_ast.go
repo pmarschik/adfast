@@ -132,6 +132,34 @@ func (rc renderCtx) fileCardLink(n *adf.MediaInline) (FileCardLink, bool) {
 	return link, true
 }
 
+// mediaInlineAsImage answers with the inline image a mediaInline came
+// from, or nil to leave it a :media directive. It is the inline mirror
+// of the block fileMediaAsImage, and declines on the same principle:
+// only a card that carries nothing beyond what ![alt](path) can say
+// goes back to an image, so anything the directive alone can express
+// (a collection, an occurrence key, a mark, a non-file type) keeps the
+// directive rather than losing that detail silently.
+func (rc renderCtx) mediaInlineAsImage(n *adf.MediaInline) ast.Node {
+	if n.Type != "file" || n.ID == "" {
+		return nil
+	}
+	if n.Collection != nil && *n.Collection != "" {
+		return nil
+	}
+	if len(n.Marks) > 0 || adf.HasExtra(n, "occurrenceKey") {
+		return nil
+	}
+	asset, ok := rc.assets.lookup(n.ID)
+	if !ok || asset.Path == "" {
+		return nil
+	}
+	img := &ast.Image{URL: asset.Path}
+	if n.Alt != "" {
+		img.Children = []ast.Node{&ast.Text{Value: n.Alt}}
+	}
+	return img
+}
+
 // reportRawNode emits the raw-node diagnostic: the markdown projection
 // met an unknown (RawNode) kind and either recursed into its content or
 // dropped it.
@@ -1116,10 +1144,15 @@ func (v *adfInlineVisitor) VisitMention(n *adf.Mention) []flatInline { return v.
 func (v *adfInlineVisitor) VisitStatus(n *adf.Status) []flatInline { return v.inlineFallback(n) }
 
 // VisitMediaInline implements adf.Visitor. A card the host product owns reads
-// back as the link it stands for; every other one stays a :media directive.
+// back as the link it stands for; an attachment the asset store has the file
+// for reads back as the inline image it came from; every other one stays a
+// :media directive.
 func (v *adfInlineVisitor) VisitMediaInline(n *adf.MediaInline) []flatInline {
 	if link, ok := v.rc.fileCardLink(n); ok {
 		return []flatInline{{text: link.Label, href: link.Href, isLink: true}}
+	}
+	if img := v.rc.mediaInlineAsImage(n); img != nil {
+		return []flatInline{{directive: img}}
 	}
 	return v.inlineFallback(n)
 }

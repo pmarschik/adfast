@@ -228,6 +228,15 @@ key order, comments, and quoting untouched.
   `![alt](assets/shot.png)` and maps back to its media id on encode.
   Anything richer (PDFs, resized media, non-default layouts) keeps the
   `::media` directive.
+- **Inline images** — an image inside a paragraph, a table cell, or a
+  list item becomes a `mediaInline` chip when the asset store maps its
+  path to a media id, and reads back as the same `![alt](path)` when the
+  store is wired on the render side too. An absolute `http(s)` URL has
+  no ADF form at all, because `mediaInline` addresses an uploaded
+  attachment by id and has no external variant (unlike block media), so
+  it degrades to a link — alt text as the label, image URL as the href —
+  with an `inline-image-degraded` diagnostic. Any other path drops with
+  `unresolved-asset`.
 - **Issue/page links** — a link whose text equals the resolver-derived
   key (e.g. `[ABC-123](https://…/browse/ABC-123)`, or
   `[DOCS/123456](https://…/wiki/spaces/DOCS/pages/123456/…)` with the

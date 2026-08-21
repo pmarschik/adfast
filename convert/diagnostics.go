@@ -56,6 +56,17 @@ const (
 	// rendered page will not have. The heading text is unaffected.
 	// Emitted by ToADF, only when the option is set.
 	CodeHeadingAnchorDropped = "heading-anchor-dropped"
+	// CodeInlineImageDegraded reports an inline ![alt](url) with an
+	// absolute http(s) URL rewritten as a link, because ADF has no
+	// inline image that can carry one: mediaInline addresses an
+	// uploaded attachment by id and has no external variant, unlike
+	// block media (type "external" + url). The alt text becomes the
+	// link label and the image URL its href, so the content stays
+	// visible and the round trip is stable; only the "render this
+	// inline" intent is lost. An inline image the asset store resolves
+	// to a media id is unaffected — it becomes a real mediaInline.
+	// Emitted by ToADF, one per degraded image.
+	CodeInlineImageDegraded = "inline-image-degraded"
 	// CodeBeforeEncodeFailed reports a BeforeEncode hook error downgraded
 	// to a diagnostic by the infallible facade conversion.
 	CodeBeforeEncodeFailed = "before-encode-failed"

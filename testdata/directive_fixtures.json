@@ -394,13 +394,25 @@
               },
               {
                 "type": "text",
+                "text": "x",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "https://example.com/i.png"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "text",
                 "text": ") more"
               }
             ]
           }
         ]
       },
-      "roundtrip": "text () more\n"
+      "roundtrip": "text ([x](https://example.com/i.png)) more\n"
     },
     {
       "md": "![shot.png](assets/shot.png)\n",

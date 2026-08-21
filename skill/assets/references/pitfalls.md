@@ -8,9 +8,14 @@ Without an asset store wired in (`WithMediaAssets` or
 `MarkdownOptions`/`RenderOptions` bundles), a local image
 reference like `![sketch](assets/sketch.png)` has no media id and is
 **dropped from the ADF payload** with an `unresolved-asset` diagnostic.
-Images with absolute `https://` URLs survive as external media. To push
-local attachments: store them through `assets.FSStore`, upload via the
-`Uploader` seam (`assets.Sync` / `assets.PushPipeline`), then encode.
+A **block** image with an absolute `https://` URL survives as external
+media. An **inline** one (inside a paragraph, a table cell, or a list
+item) does not: ADF's `mediaInline` addresses an uploaded attachment by
+id and has no external variant, so it degrades to a link — alt text as
+the label, image URL as the href — with an `inline-image-degraded`
+diagnostic. To push local attachments: store them through
+`assets.FSStore`, upload via the `Uploader` seam (`assets.Sync` /
+`assets.PushPipeline`), then encode.
 
 ## A store lookup can have side effects
 
@@ -53,6 +58,11 @@ vocabulary:
   cannot apply; kept as literal cell text.
 - `unresolved-asset` — an `![alt](assets/…)` reference the asset store
   could not map to a media id.
+- `inline-image-degraded` — an inline `![alt](https://…)` rewritten as a
+  link, because ADF has no inline image that can carry an external URL.
+  The content stays visible and the round trip is stable; only the
+  "render this inline" intent is lost. An inline image the asset store
+  resolves to a media id is unaffected.
 - `unsupported-code-language` — a fenced code block whose language tag
   is not in the configured `WithCodeLanguages` set; the language still
   encodes verbatim.

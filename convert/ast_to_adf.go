@@ -1,6 +1,7 @@
 package convert
 
 import (
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -935,21 +936,62 @@ func (v *inlineFlattener) VisitLink(n *ast.Link) []adf.Node {
 	return v.c.flattenLink(n, v.ctx)
 }
 
-// VisitImage implements ast.Visitor.
+// VisitImage implements ast.Visitor. An inline image has three fates,
+// because ADF's two inline-media shapes cover only one of them:
+//
+//   - a path the asset store maps to a media id becomes a real
+//     mediaInline, the faithful form (an uploaded attachment addressed
+//     by id);
+//   - an absolute http(s) URL has no faithful form at all — mediaInline
+//     has no external variant, unlike block media — so it degrades to a
+//     link that keeps the content visible (CodeInlineImageDegraded);
+//   - any other path is an asset not in the store yet (no media id
+//     before upload) and drops, reported so an upload flow can pick it
+//     up (CodeUnresolvedAsset).
 func (v *inlineFlattener) VisitImage(n *ast.Image) []adf.Node {
-	// An inline image that cannot become media is dropped
-	// (mirrors remark, where mdast images carry alt as a string, not
-	// children). A local-path image landing here usually means an asset
-	// added to the markdown that is not in the store yet (no media id
-	// before upload) — report it so an upload flow can pick it up.
-	if v.c.diagnostics != nil && n.URL != "" &&
-		!strings.HasPrefix(n.URL, "http://") && !strings.HasPrefix(n.URL, "https://") {
+	alt := ast.PlainText(n.Children)
+	if id, ok := v.c.assetID(n.URL); ok && id != "" {
+		return []adf.Node{&adf.MediaInline{
+			Type:       "file",
+			ID:         strings.ToLower(id),
+			Alt:        alt,
+			Collection: new(""),
+		}}
+	}
+	if strings.HasPrefix(n.URL, "http://") || strings.HasPrefix(n.URL, "https://") {
+		return v.degradeInlineImage(n, alt)
+	}
+	if v.c.diagnostics != nil && n.URL != "" {
 		v.c.diagnostics(Diagnostic{
 			Code:    CodeUnresolvedAsset,
 			Message: "image " + n.URL + " has no media id (not in the asset store); dropped from the ADF payload",
 		})
 	}
 	return nil
+}
+
+// degradeInlineImage rewrites an external inline image as the link it
+// can still be. The label falls back the way a file card's does (alt,
+// then the filename the URL ends in, then the URL itself), so the
+// degraded text is never empty and md → adf → md is stable.
+func (v *inlineFlattener) degradeInlineImage(n *ast.Image, alt string) []adf.Node {
+	label := alt
+	if label == "" {
+		label = path.Base(n.URL)
+	}
+	if label == "" || label == "." || label == "/" {
+		label = n.URL
+	}
+	if v.c.diagnostics != nil {
+		v.c.diagnostics(Diagnostic{
+			Code:    CodeInlineImageDegraded,
+			Message: "inline image " + n.URL + " rewritten as a link: ADF has no inline image for an external URL",
+		})
+	}
+	return []adf.Node{&adf.Text{
+		Text:  label,
+		Marks: []adf.Mark{&adf.Link{Href: new(n.URL)}},
+	}}
 }
 
 // VisitBreak implements ast.Visitor.
