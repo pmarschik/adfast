@@ -1,3 +1,20 @@
+## [v0.7.0] - 2026-08-21
+
+### 🚀 Features
+
+- _(convert)_ Add ordinary link resolver
+- _(core)_ Support custom heading anchor ids with {#my-anchor}
+- _(convert)_ Publish a labelled link as the host editor's file card
+
+### 📚 Documentation
+
+- Rewrite prose in Simplified Technical English
+
+### ⚙️ Miscellaneous Tasks
+
+- Update go.sum after v0.6.2
+- _(build)_ Add the convert scope to cog.toml
+
 ## [v0.6.2] - 2026-08-20
 
 ### 🐛 Bug Fixes
@@ -142,6 +159,7 @@
 ### 🚀 Features
 
 - Initial implementation — markdown ⇄ Atlassian Document Format at the AST level
+  [v0.7.0]: https://github.com/pmarschik/adfast/releases/tag/v0.7.0
   [v0.6.2]: https://github.com/pmarschik/adfast/releases/tag/v0.6.2
   [v0.6.1]: https://github.com/pmarschik/adfast/releases/tag/v0.6.1
   [v0.6.0]: https://github.com/pmarschik/adfast/releases/tag/v0.6.0
