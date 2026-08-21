@@ -2,64 +2,68 @@
 
 ## Toolchain
 
-Tooling is managed with [mise](https://mise.jdx.dev) — tool versions are
-pinned in `.config/mise/config.toml`:
+[mise](https://mise.jdx.dev) manages the tooling.
+`.config/mise/config.toml` pins the tool versions:
 
 ```sh
 mise install      # install the pinned toolchain
-mise run setup    # download Go deps and install the git hooks
+mise run setup    # download the Go deps and install the git hooks
 ```
 
-The git hooks are managed by [hk](https://hk.jdx.dev)
-(`.config/hk.pkl`): pre-commit runs format/lint on changed files, and
-commit messages are checked against Conventional Commits.
+[hk](https://hk.jdx.dev) manages the git hooks through `.config/hk.pkl`.
+The pre-commit hook formats and lints the changed files. The commit-msg
+hook checks the message against Conventional Commits.
 
 ## Everyday tasks
 
 ```sh
 mise run check          # all quality gates: format + lint + typos + test
-mise run test           # go test across both workspace modules
+mise run test           # go test across every workspace module
 mise run fmt            # golangci-lint --fix + dprint
 mise run lint           # golangci-lint + dprint check
-mise run check-changed  # hk check on changed files only
-mise run tidy           # go mod tidy across workspace modules
+mise run check-changed  # hk check on the changed files only
+mise run tidy           # go mod tidy across the workspace modules
 ```
 
-Run `mise run check` before pushing. The repo is a Go workspace
-(`go.work`) with four modules — the root, `jira/`, `confluence/`, and
-`skill/` — and the tasks iterate over all of them.
+Run `mise run check` before you push. The repository is a Go workspace
+(`go.work`) with six modules: the root, `jira/`, `confluence/`,
+`skill/`, `frontmatter/`, and `wasm/`. Each task iterates over all of
+them.
 
 ## Testing
 
-- `go test ./...` from the root covers the workspace; CI additionally
-  runs each submodule (`jira/`, `confluence/`, `skill/`) on its own.
-- Renderer or parser changes should also run the round-trip fuzzer:
+- `go test ./...` from the root covers the workspace. CI also runs
+  `jira/`, `confluence/`, `skill/`, `frontmatter/`, and `wasm/` on their
+  own.
+- After a change to the renderer or the parser, run the round-trip
+  fuzzer too:
 
   ```sh
   go test -fuzz FuzzRoundTripIdempotent .
   ```
 
-  New crashers become corpus seeds (`testdata/fuzz/`). Known
-  remark-equally-unstable inputs are documented as skip classes in
-  `adf_fuzz_test.go` — each has a probe input and analysis; do not
-  silence new failures without that analysis.
-- The rendering rules are measured against reference implementations
-  (remark-stringify, and prettier for the formatter): a fixture corpus
-  generated from them (`testdata/directive_fixtures.json`) pins
-  escaping, wrapping, list marker alternation, and character-reference
-  encoding. New divergences must be deliberate and documented next to
-  the code.
-- The README tutorial is executable: `TestReadmeTutorialRoundTrips`
-  extracts the fenced example and asserts it round-trips, so keep it
-  green when editing either side.
+  Each new crasher becomes a corpus seed in `testdata/fuzz/`. The skip
+  classes in `adf_fuzz_test.go` document the inputs that remark is
+  equally unstable on. Each class has a probe input and an analysis. Do
+  not silence a new failure without that analysis.
+- The rendering rules are measured against reference implementations:
+  remark-stringify, and prettier for the formatter. A fixture corpus
+  generated from them (`testdata/directive_fixtures.json`) pins the
+  escaping, the wrapping, the list marker alternation, and the
+  character-reference encoding. A new divergence must be deliberate and
+  documented next to the code.
+- The README tutorial is executable. `TestReadmeTutorialRoundTrips`
+  extracts the fenced example and asserts that it round-trips. When you
+  edit either side, keep that test green.
 
 ## Commits
 
-Conventional Commits, strictly: `<type>(<scope>): <description>` with
-types `feat|fix|refactor|build|ci|chore|docs|style|perf|test` and scopes
-from `cog.toml`. Breaking changes use `feat!:`/`fix!:` — this is a
-public library; see AGENTS.md for the API stability rules.
+Use Conventional Commits. No other form is permitted:
+`<type>(<scope>): <description>`, with the types
+`feat|fix|refactor|build|ci|chore|docs|style|perf|test` and the scopes
+from `cog.toml`. A breaking change uses `feat!:` or `fix!:`. This is a
+public library. Read AGENTS.md for the API stability rules.
 
 ## Releases
 
-See [docs/RELEASING.md](docs/RELEASING.md).
+Read [docs/RELEASING.md](docs/RELEASING.md).

@@ -2,10 +2,11 @@
 
 adfast converts Markdown to and from
 [ADF](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
-(Atlassian Document Format — the JSON document model behind Jira Cloud and
-Confluence Cloud) at the **AST level**: round-trip-stable, remark-compatible
-output, plus a typed ADF document model that losslessly preserves everything
-it does not understand.
+at the **AST level**. ADF (Atlassian Document Format) is the JSON
+document model behind Jira Cloud and Confluence Cloud. The output is
+round-trip-stable and remark-compatible. A typed ADF document model
+keeps everything that adfast does not understand, and it keeps it
+losslessly.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/pmarschik/adfast.svg)](https://pkg.go.dev/github.com/pmarschik/adfast)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pmarschik/adfast)](https://goreportcard.com/report/github.com/pmarschik/adfast)
@@ -22,23 +23,25 @@ go get github.com/pmarschik/adfast/skill       # the dialect as an embeddable ag
 go get github.com/pmarschik/adfast/frontmatter # optional YAML frontmatter parse/render/patch
 ```
 
-Requires Go 1.27+. Note that [`jira/`](jira/), [`confluence/`](confluence/),
-[`skill/`](skill/), and [`frontmatter/`](frontmatter/) are **separate Go
-modules** (product-specific addons ship as submodules so consumers only pull
-what they use).
+adfast needs Go 1.27 or later. [`jira/`](jira/),
+[`confluence/`](confluence/), [`skill/`](skill/), and
+[`frontmatter/`](frontmatter/) are **separate Go modules**. A
+product-specific addon ships as a submodule, so a consumer pulls only
+what it uses.
 
-[`wasm/`](wasm/) is a separate module too, but a **build artifact rather
-than a library**: it compiles the conversion and the directive dialect to
-WebAssembly for JavaScript consumers (editor integrations that must
-locate and convert directives without a second parser in TypeScript).
-Build it rather than `go get` it:
+[`wasm/`](wasm/) is a separate module too, but it is a **build artifact
+rather than a library**. It compiles the conversion and the directive
+dialect to WebAssembly for a JavaScript consumer, such as an editor
+integration that must locate and convert directives without a second
+parser in TypeScript. Build it instead of a `go get`:
 
 ```sh
 mise run wasm:build   # writes wasm/adfast.wasm; ship it with wasm/wasm_exec.js
 ```
 
-See [`wasm/README.md`](wasm/README.md) for the JS surface — and for the
-offsets contract, which is the one thing a consumer must not get wrong.
+Read [`wasm/README.md`](wasm/README.md) for the JS surface, and for the
+offsets contract. That contract is the one thing a consumer must not get
+wrong.
 
 ## Quickstart
 
@@ -61,40 +64,43 @@ pretty := adfast.ToMarkdown(
 )
 ```
 
-md→adf is `ToADF(FromMarkdown(md))` and adf→md is
-`ToMarkdown(FromADF(doc))` — the four primitives meet at the pivot AST
-(`ast.Node`), and each reads the subset of the shared `adfast.Option` it
-needs. The reverse edge into `FromADF` is `adf.DecodeDoc`: it turns any
-JSON-decoded ADF value into the typed `adf.Doc`. Runnable examples live
-in [`example_test.go`](example_test.go) and on
+md → adf is `ToADF(FromMarkdown(md))`, and adf → md is
+`ToMarkdown(FromADF(doc))`. The four primitives meet at the pivot AST
+(`ast.Node`), and each one reads the subset of the shared `adfast.Option`
+that it needs. The reverse edge into `FromADF` is `adf.DecodeDoc`. It
+turns any JSON-decoded ADF value into the typed `adf.Doc`. Runnable
+examples live in [`example_test.go`](example_test.go) and on
 [pkg.go.dev](https://pkg.go.dev/github.com/pmarschik/adfast#pkg-examples).
 
 ## Key properties
 
-- **Dialect**: CommonMark + GFM, plus
+- **Dialect**: CommonMark and GFM, plus
   [remark-directive](https://github.com/remarkjs/remark-directive)-style
-  directives (via [goldmark-directive](https://github.com/pmarschik/goldmark-directive))
-  for ADF features without native syntax — see
+  directives through
+  [goldmark-directive](https://github.com/pmarschik/goldmark-directive).
+  The directives carry the ADF features that have no native syntax. Read
   [Supported Markdown](#supported-markdown).
-- **remark-compatible rendering**: escaping, list marker alternation, prose
-  wrapping, and character-reference encoding are measured against
-  remark-stringify and byte-match it on the covered corpus.
+- **remark-compatible rendering**: the escaping, the list marker
+  alternation, the prose wrapping, and the character-reference encoding
+  are measured against remark-stringify. They byte-match it on the
+  covered corpus.
 - **Round-trip stable**: the md → adf → md round trip
-  (`ToMarkdown(FromADF(ToADF(FromMarkdown(md))))`) is idempotent,
-  enforced by a continuously grown fuzz corpus
-  (`FuzzRoundTripIdempotent`).
+  (`ToMarkdown(FromADF(ToADF(FromMarkdown(md))))`) is idempotent. A
+  continuously grown fuzz corpus (`FuzzRoundTripIdempotent`) enforces
+  this.
 - **Formatter**: the prettier md → md formatter is the composition
-  `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`
-  — a pure md → ast → md pass (prettier-compatible output) that never
-  routes through ADF, with semantic coherence against the ADF conversion
-  enforced by tests.
-- **Extensible**: custom node kinds plug into all four pipeline paths
-  through one public contract — see [Extending adfast](#extending-adfast).
+  `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`.
+  It is a pure md → ast → md pass with prettier-compatible output, and it
+  never routes through ADF. Tests enforce its semantic coherence with the
+  ADF conversion.
+- **Extensible**: a custom node kind plugs into all four pipeline paths
+  through one public contract. Read
+  [Extending adfast](#extending-adfast).
 
 ## How it works
 
-Both conversion directions pivot through one source-independent tree — the
-adfast AST (its semantics mirror remark's mdast):
+Both conversion directions pivot through one source-independent tree, the
+adfast AST. Its semantics mirror the mdast of remark.
 
 ```
 markdown text ──goldmark──▶ goldmark AST      (source-anchored parse tree)
@@ -107,14 +113,15 @@ markdown text ──goldmark──▶ goldmark AST      (source-anchored parse t
                              ADF tree (Doc)  ──json──▶ serialized ADF
 ```
 
-The pivot is built once from the goldmark parse (normalizing parser quirks
-in the process), is what the remark-compatible renderer consumes, and the
-ADF `Doc`/`Node` types are the ADF AST — JSON only happens at the very edge.
+The pivot is built once from the goldmark parse, and that build normalizes
+the quirks of the parser. It is also what the remark-compatible renderer
+consumes. The ADF `Doc` and `Node` types are the AST of the ADF side, and
+JSON happens only at the very edge.
 
 The facade is FOUR primitives with the pivot AST (`ast.Node`) as the
-explicit currency — named by their non-AST end, `From*`/`To*` being
-inverses at the AST boundary — plus one shared `adfast.Option` type each
-primitive reads the subset of:
+explicit currency. Each one is named by its non-AST end, and `From*` and
+`To*` are inverses at the AST boundary. One shared `adfast.Option` type
+serves them all, and each primitive reads the subset that it needs:
 
 | Primitive                            | Shape                  | Role                       |
 | ------------------------------------ | ---------------------- | -------------------------- |
@@ -123,8 +130,8 @@ primitive reads the subset of:
 | `adfast.FromADF(doc, ...Option)`     | `adf.Doc` → `ast.Node` | decode                     |
 | `adfast.ToMarkdown(n, ...Option)`    | `ast.Node` → md        | render                     |
 
-The common conversions are compositions (pass the same options to both
-halves — each primitive ignores what it does not read):
+The common conversions are compositions. Pass the same options to both
+halves, because each primitive ignores what it does not read:
 
 | Conversion | Composition                                                                |
 | ---------- | -------------------------------------------------------------------------- |
@@ -132,72 +139,75 @@ halves — each primitive ignores what it does not read):
 | adf → md   | `ToMarkdown(FromADF(doc))`                                                 |
 | md → md    | `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())` |
 
-`FromMarkdown` parses to the faithful pivot AST and stops — no ADF, no
-canonicalization — so it is the currency the `To*` primitives consume;
-the subpackage `markdown.Parse`/`markdown.Render` and
-`convert.ToADF`/`convert.FromADF` sit one layer down under the same
-shapes. The `To*` primitives normalize on the way out: `ToADF` encodes
-through the canonicalizing projection onto ADF's data model, and
-`ToMarkdown`'s prettier-format mode (`WithPrettierFormat`) runs the
-shared `convert.Normalize` pass before rendering.
+`FromMarkdown` parses to the faithful pivot AST and stops. It produces no
+ADF and no canonicalization, so it is the currency that the `To*`
+primitives consume. The subpackage functions
+`markdown.Parse`/`markdown.Render` and `convert.ToADF`/`convert.FromADF`
+sit one layer down under the same shapes. The `To*` primitives normalize
+on the way out. `ToADF` encodes through the canonicalizing projection onto
+the data model of ADF, and the prettier-format mode of `ToMarkdown`
+(`WithPrettierFormat`) runs the shared `convert.Normalize` pass before it
+renders.
 
 The prettier md → md formatter is therefore the composition
-`ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`
-(add `WithPrintWidth(w)` to both calls for a custom width). `FromMarkdown`
-is a single faithful parse in both directions: text values are fully
-decoded (the ADF currency) while prettier's literal escapes ride
-separately on `ast.Text.Raw` as escape provenance, so formatting re-emits
-them byte-for-byte without polluting the semantic value. Escaping is thus
-a render-only concern — `WithPrettierFormat` now has NO parse-side effect
-at all: both directions share one `FrontmatterProvider`, so frontmatter
-detection can never diverge and the flag is read only on the render call.
-It is a pure
-md → ast → md pass: it parses to the pivot AST, applies the
-`convert.Normalize` canonicalization (unknown directives degrade,
-`::colwidths`/`::decisions` resolve, inline marks canonicalize, media
-re-derives its canonical payload), and renders back with prettier's text
-rules. Nothing routes through ADF, so the formatter never loses
-constructs ADF cannot model (frontmatter, raw HTML, inline images pass
-straight through). `WithASTTransforms` is its content-rewrite seam.
-Instead of a structural guarantee, two test obligations keep format and
-conversion from drifting (see `format_contract_test.go`): semantic
-coherence — formatting then parsing produces the same ADF as parsing the
-original — and idempotence, both run over the fixture corpus and fuzzed
-continuously (`FuzzFormatSemanticsPreserved`).
+`ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`.
+For a custom width, add `WithPrintWidth(w)` to both calls. `FromMarkdown`
+is a single faithful parse in both directions. Text values are fully
+decoded, because that is the ADF currency, and the literal escapes of
+prettier ride separately on `ast.Text.Raw` as escape provenance. The
+format therefore re-emits them byte-for-byte without a change to the
+semantic value. Escaping is a render-only concern, and
+`WithPrettierFormat` now has NO parse-side effect at all. Both directions
+share one `FrontmatterProvider`, so frontmatter detection cannot diverge,
+and the flag is read on the render call only. The formatter is a pure
+md → ast → md pass. It parses to the pivot AST, applies the
+`convert.Normalize` canonicalization, and renders back with the text
+rules of prettier. That canonicalization degrades an unknown directive,
+resolves `::colwidths` and `::decisions`, canonicalizes the inline marks,
+and re-derives the canonical payload of media. Nothing routes through
+ADF, so the formatter never loses a construct that ADF cannot model.
+Frontmatter, raw HTML, and inline images pass straight through.
+`WithASTTransforms` is its content-rewrite seam. Two test obligations
+keep the format and the conversion from a drift apart, in place of a
+structural guarantee (read `format_contract_test.go`). The first is
+semantic coherence: a format followed by a parse produces the same ADF as
+a parse of the original. The second is idempotence. Both run over the
+fixture corpus, and both are fuzzed continuously
+(`FuzzFormatSemanticsPreserved`).
 
 Canonical `ToADF(FromMarkdown(md))` output is wire-safe unless
-`WithPreserveListTightness` is enabled — `adf.IsWireSafe` is the guard
-to run before submitting a document of uncertain origin, and
-`adf.StripSynthetic` the corresponding cleanup.
+`WithPreserveListTightness` is enabled. Run `adf.IsWireSafe` as the guard
+before you submit a document of uncertain origin, and use
+`adf.StripSynthetic` as the matching cleanup.
 
-Media/attachment resolution is pluggable via `WithMediaAssets`,
-`WithAssetIDResolver`, and `WithImageDimsResolver`. Where the collection
-of downloaded files is large, or producing an entry costs something,
+Media and attachment resolution is pluggable through `WithMediaAssets`,
+`WithAssetIDResolver`, and `WithImageDimsResolver`. If the collection of
+downloaded files is large, or an entry costs something to produce,
 `WithMediaAssetResolver` answers the same question one media id at a
-time: the conversion asks only about the media it actually meets.
+time. The conversion then asks only about the media that it meets.
 
 ADF records no ordered-list marker style, so `FromADF` renders the
-reference form — the start number repeated on every item, matching
+reference form: the start number repeated on every item, which matches
 remark-stringify with `incrementListMarker` off. Add
-`WithIncrementListMarkers` where the Markdown is written and read by
-people: items renumber `1. 2. 3.`, and a list a document already spelled
+`WithIncrementListMarkers` where people write and read the Markdown. The
+items renumber `1. 2. 3.`, and a list that a document already spelled
 that way survives the round trip unchanged.
 
-Automatic link handling makes **no assumptions about the host product**:
+Automatic link handling makes **no assumptions about the host product**.
 `WithSmartLinks(convert.SmartLinks{KeyFromURL, URLForKey})` teaches the
-conversion a URL scheme once for both directions (links whose text equals
-the derived key encode as inlineCards; bare `::linkCard[KEY]` labels
-expand; cards render back to the short key).
-`WithLinkResolver(convert.LinkResolver{Encode, Decode})` rewrites ordinary
-labelled-link destinations at the ADF boundary: `Encode` maps a Markdown
-href to its product-facing form and `Decode` restores the stable Markdown
-href. Resolver misses preserve the original destination; cards and media
-are unaffected. `WithDocTransforms` hooks document-level rewrites. The
-[`jira/`](jira/) submodule bundles the
-Jira conventions — `jira.MarkdownOptions`/`jira.RenderOptions` each return
-a `[]adfast.Option` slice; pass the encode-side bundle to both halves of
-the md→adf composition and the decode-side bundle to both halves of the
-adf→md one:
+conversion a URL scheme once for both directions. A link whose text
+equals the derived key encodes as an inlineCard, a bare
+`::linkCard[KEY]` label expands, and a card renders back to the short
+key. `WithLinkResolver(convert.LinkResolver{Encode, Decode})` rewrites
+the destination of an ordinary labelled link at the ADF boundary.
+`Encode` maps a Markdown href to its product-facing form, and `Decode`
+restores the stable Markdown href. A resolver miss keeps the original
+destination, and cards and media are unaffected. `WithDocTransforms`
+hooks document-level rewrites. The [`jira/`](jira/) submodule bundles the
+Jira conventions. `jira.MarkdownOptions` and `jira.RenderOptions` each
+return a `[]adfast.Option` slice. Pass the encode-side bundle to both
+halves of the md → adf composition, and the decode-side bundle to both
+halves of the adf → md one:
 
 ```go
 mdOpts := jira.MarkdownOptions(baseURL, jira.ExpandAuto)
@@ -207,26 +217,27 @@ rOpts := jira.RenderOptions()
 out := adfast.ToMarkdown(adfast.FromADF(doc, rOpts...), rOpts...)
 ```
 
-Bare-key expansion is selected with the typed `jira.ExpandMode` constants
-(`ExpandAuto`, `ExpandAll`, `ExpandExplicit`). The submodule also ships
+The typed `jira.ExpandMode` constants select the bare-key expansion:
+`ExpandAuto`, `ExpandAll`, and `ExpandExplicit`. The submodule also ships
 `jira.EncodeRichText` with the typed `jira.RichTextFormat` constants
-(`RichTextADF`, `RichTextText`; `InferRichTextFormat` matches whatever an
-existing field holds) and `jira.CodeLanguages`, the code-block language
-set of Jira Cloud's editor for the `WithCodeLanguages` check.
+`RichTextADF` and `RichTextText`, where `InferRichTextFormat` matches
+whatever an existing field holds. `jira.CodeLanguages` is the code-block
+language set of the Jira Cloud editor, for the `WithCodeLanguages` check.
 
 The [`confluence/`](confluence/) submodule bundles the Confluence
-conventions the same way: `confluence.MarkdownOptions(baseURL)` /
-`confluence.RenderOptions()` wire smart links for Confluence Cloud page
-URLs (`…/wiki/spaces/KEY/pages/123456789/Title` ⇄ the stable
-`KEY/123456789` key — the mutable title slug is deliberately not part of
-the key) plus `confluence.CodeLanguages`, the language set of Confluence
-Cloud's code block macro (a much smaller set than Jira's editor list).
+conventions the same way. `confluence.MarkdownOptions(baseURL)` and
+`confluence.RenderOptions()` wire smart links for the page URLs of
+Confluence Cloud: `…/wiki/spaces/KEY/pages/123456789/Title` ⇄ the stable
+`KEY/123456789` key. The mutable title slug is deliberately not part of
+the key. The submodule also ships `confluence.CodeLanguages`, the
+language set of the code block macro of Confluence Cloud, which is a much
+smaller set than the editor list of Jira.
 
 Both bundles also install `confluence.Macros()`, named directives for the
-core Confluence macros. Each is expressible as the generic
-`::extension{key type parameters}` directive, but the `parameters`
-attribute carries a JSON blob no one wants to hand-write, so the macros
-people actually use get a directive of their own:
+core Confluence macros. The generic `::extension{key type parameters}`
+directive can express each one, but the `parameters` attribute carries a
+JSON blob that nobody wants to hand-write. The macros that people use
+therefore get a directive of their own:
 
 | Directive                     | Macro key         | Notes                                         |
 | ----------------------------- | ----------------- | --------------------------------------------- |
@@ -237,70 +248,72 @@ people actually use get a directive of their own:
 | `::excerptInclude[Page]`      | `excerpt-include` | Insert excerpt — the label is the target page |
 | `::includePage[Page]`         | `include`         | Include page — the label is the target page   |
 
-Macro parameters ride as directive attributes, and the macro's unnamed
-parameter is the `[label]`. Every name registers in all three directive
-positions (`::name`, `:name`, `:::name`), because the same macro key
-genuinely appears as a block, an inline, and a bodied node in live pages;
-the ADF node type decides the form on the way back.
+Macro parameters ride as directive attributes, and the unnamed parameter
+of the macro is the `[label]`. Every name registers in all three
+directive positions (`::name`, `:name`, `:::name`). The same macro key
+genuinely appears as a block, an inline, and a bodied node in live pages,
+and the ADF node type decides the form on the way back.
 
-Everything Confluence derives is left out of the markdown: `macroId` is
-server-generated (a macro written without one comes back with one filled
-in), and `schemaVersion`/`title` are constant per macro key, so the
-encode synthesizes them and the decode drops them — a plain table of
-contents is just `::toc`. A value that _diverges_ from the per-key
-default survives as an explicit `schemaVersion=` / `title=` attribute
-rather than being silently rewritten, and `layout="default"` is dropped
-as the default it is.
+Everything that Confluence derives is left out of the markdown. `macroId`
+is server-generated, so a macro written without one comes back with one
+filled in. `schemaVersion` and `title` are constant per macro key.
+Therefore the encode synthesizes all three and the decode drops them, and
+a plain table of contents is no more than `::toc`. A value that
+_diverges_ from the per-key default survives as an explicit
+`schemaVersion=` or `title=` attribute instead of a silent rewrite.
+`layout="default"` is dropped, because it is the default.
 
-The sugar claims only what it can carry exactly. An unsugared macro key,
-a non-string parameter, an unexpected metadata field, or a parameter
-named like one of the reserved attributes (`layout`, `localId`,
-`schemaVersion`, `title`) all decline and degrade through the generic
-`::extension` path with the `parameters` JSON intact. Measured against
-182 macro instances in 150 live pages: every one round-tripped through
-the sugar, none degraded.
+The sugar claims only what it can carry exactly. Four cases decline and
+degrade through the generic `::extension` path with the `parameters` JSON
+intact: an unsugared macro key, a non-string parameter, an unexpected
+metadata field, and a parameter named like one of the reserved attributes
+(`layout`, `localId`, `schemaVersion`, `title`). The sugar was measured
+against 182 macro instances in 150 live pages. Every one round-tripped
+through the sugar, and none degraded.
 
 The [`skill/`](skill/) submodule ships the markdown dialect as an
-**agent skill**: an embedded `SKILL.md` + `references/` bundle
-(complete syntax, ADF coverage, a format-stable worked example, and
-pitfalls) that teaches AI coding agents to read and write
-adfast-flavored markdown. Hosts serve it via `skill.Files()` (an
-`fs.FS`) or materialize it with `skill.Install(dir)` into their
-agent-skills directory (e.g. `.claude/skills/`).
+**agent skill**. It is an embedded bundle of `SKILL.md` plus
+`references/`, and it holds the complete syntax, the ADF coverage, a
+format-stable worked example, and the pitfalls. It teaches an AI coding
+agent to read and write adfast-flavored markdown. A host serves it
+through `skill.Files()`, an `fs.FS`, or materializes it with
+`skill.Install(dir)` into its own agent-skills directory, such as
+`.claude/skills/`.
 
-Leading document metadata is pluggable via `WithFrontmatterProvider`: the
-default handles YAML `---` frontmatter; supply your own provider for other
-conventions (e.g. the `<!-- Space: X -->` HTML-comment headers used by
-Confluence sync tools). The same provider drives BOTH directions (md→adf
-and the formatter), so detection can never diverge between them. A found
-block never reaches the parser and is re-emitted verbatim by the
-style-preserving formatter; a provider may also report a block as
-_malformed_ (it opens the convention but does not close validly), in which
-case the bytes are kept as body and a `malformed-frontmatter` diagnostic
-fires.
+Leading document metadata is pluggable through
+`WithFrontmatterProvider`. The default handles YAML `---` frontmatter.
+Supply your own provider for another convention, for example the
+`<!-- Space: X -->` HTML-comment headers of the Confluence sync tools.
+The same provider drives BOTH directions, md → adf and the formatter, so
+detection cannot diverge between them. A found block never reaches the
+parser, and the style-preserving formatter re-emits it verbatim. A
+provider can also report a block as _malformed_, which means that the
+block opens the convention but does not close validly. The bytes are then
+kept as body and a `malformed-frontmatter` diagnostic fires.
 
-The core stays YAML-neutral — the front block is opaque bytes, kept
-verbatim on `ast.Frontmatter.Value` (delimiters included). Consumers who
-want _structured_ access to a YAML block opt into the
-[`frontmatter/`](frontmatter/) submodule, which turns the raw block ⇄ a
-`map[string]any` without coupling the core to a YAML implementation:
-`frontmatter.Parse`/`Render`, `frontmatter.Patch` (merge under a
-caller-supplied top-level key order; nil values delete), `Replace`, the
-nested dot-path helpers `Get`/`Set`/`Remove`, and `KeyOrder` (read the
-authored order back out). It never re-implements boundary detection —
-that stays with the `FrontmatterProvider`; `frontmatter.ParseNode`
-bridges straight from an `ast.Frontmatter` node. For hand-authored blocks
-where formatting matters, `frontmatter.PatchPreserving` edits only the
-changed keys on the YAML CST, preserving the original key order, comments,
-and scalar styles of everything it does not touch.
+The core stays YAML-neutral. The front block is opaque bytes, kept
+verbatim on `ast.Frontmatter.Value`, delimiters included. A consumer who
+wants _structured_ access to a YAML block opts into the
+[`frontmatter/`](frontmatter/) submodule. It turns the raw block into a
+`map[string]any` and back, and it does not couple the core to a YAML
+implementation. It offers `frontmatter.Parse` and `Render`,
+`frontmatter.Patch` (a merge under a caller-supplied top-level key order,
+where a nil value erases the key), `Replace`, the nested dot-path helpers
+`Get`, `Set`, and `Remove`, and `KeyOrder`, which reads the authored order
+back out. It never re-implements boundary detection. That work stays with
+the `FrontmatterProvider`, and `frontmatter.ParseNode` bridges straight
+from an `ast.Frontmatter` node. For a hand-authored block where
+formatting matters, `frontmatter.PatchPreserving` edits the changed keys
+on the YAML CST only. It keeps the original key order, the comments, and
+the scalar styles of everything that it does not touch.
 
 ### Reusable pipelines
 
-The composition halves are easy to drift apart — an extension registered
-only on the parse call parses but never decodes back. A `Pipeline`
-registers cross-cutting options once for BOTH directions and exposes the
-composed one-shot conveniences, so every call reuses the same
-configuration (immutable, safe for concurrent use):
+The two halves of a composition drift apart easily. An extension that is
+registered on the parse call only parses, but it never decodes back. A
+`Pipeline` registers the cross-cutting options once for BOTH directions
+and shows the composed one-shot conveniences, so every call reuses the
+same options. A `Pipeline` is immutable and safe for concurrent use:
 
 ```go
 pipe := adfast.NewPipeline(adfast.WithPipelineOptions(
@@ -314,93 +327,103 @@ out := pipe.ADFToMarkdown(doc)       // ToMarkdown(FromADF(doc)) under the confi
 pretty := pipe.Format(md)            // the prettier md → md formatter, same config
 ```
 
-Because there is one shared option type, every cross-cutting option goes
-through `WithPipelineOptions`; there are no direction-specific pipeline
-constructors. `pipe.MarkdownToADFAll(mds)` is the batched variant — it
+There is one shared option type, so every cross-cutting option goes
+through `WithPipelineOptions`. There are no direction-specific pipeline
+constructors. `pipe.MarkdownToADFAll(mds)` is the batched variant. It
 parses every document, runs the `WithBeforeEncode(hooks…)` hooks over the
-whole set of parsed ASTs, then encodes each (so cross-document work such
-as a single batched asset upload happens before anything encodes), and
-`pipe.ADFBytesToMarkdown(v)` decodes raw ADF JSON (or any decoded value)
-first. The free primitives stay as sugar for one-off calls.
+whole set of parsed ASTs, and then encodes each one. Cross-document work,
+such as a single batched asset upload, therefore happens before anything
+encodes. `pipe.ADFBytesToMarkdown(v)` decodes raw ADF JSON, or any
+decoded value, first. The free primitives stay as sugar for a one-off
+call.
 
 ## When not to use adfast
 
-- **ADF → HTML rendering** — adfast targets markdown, not display HTML;
-  use Atlassian's frontend tooling to render ADF for viewing.
-- **Jira Data Center / Server** — those APIs speak wiki markup, not ADF;
-  adfast covers Cloud ADF only.
-- **Full API clients** — adfast converts documents, it does not talk to
-  Atlassian APIs; pair it with a client library such as go-atlassian or
-  go-jira for the transport.
+- **ADF → HTML rendering** — adfast targets markdown, not display HTML.
+  Use the frontend tooling of Atlassian to render ADF for viewing.
+- **Jira Data Center and Server** — those APIs speak wiki markup, not
+  ADF. adfast covers Cloud ADF only.
+- **Full API clients** — adfast converts documents, and it does not talk
+  to the Atlassian APIs. Pair it with a client library such as
+  go-atlassian or go-jira for the transport.
 
 ## Error handling
 
-The four primitives never return errors and never panic:
-`FromMarkdown`, `FromADF`, `ToADF`, and `ToMarkdown` always produce a
-result. Lossy or recovered situations — a dropped orphan `::colwidths`
-or `::decisions` (`colwidths-orphan`, `decisions-orphan`), a table span
-marker whose merge cannot apply (`span-marker-invalid`), a code-block
-language outside a configured `WithCodeLanguages` set
-(`unsupported-code-language`), a node or mark the target product does not
-render (`unsupported-in-product`, see below), a recovered parser panic
-(`parse-recovered`), an unknown ADF node reaching the markdown projection
-(`raw-node`), a retired `:fontSize` dropped to plain text
-(`fontsize-dropped`) — flow through a diagnostics sink instead. One
-`WithDiagnostics(func(convert.Diagnostic))` wires the sink into whichever
-primitive emits (parse notices on `FromMarkdown`, encode notices on
-`ToADF`, decode notices on `FromADF`); pass it to whichever primitives a
-composition runs. Without a sink, diagnostics are silently dropped.
-`Pipeline.MarkdownToADFAll` is the errable batch variant: a
-`BeforeEncode` hook failure (e.g. a batched asset upload) aborts the call
-and returns the error.
+The four primitives never return an error and never panic. `FromMarkdown`,
+`FromADF`, `ToADF`, and `ToMarkdown` always produce a result. A lossy or
+recovered situation flows through a diagnostics sink instead:
+
+- an orphan `::colwidths` or `::decisions` that is dropped
+  (`colwidths-orphan`, `decisions-orphan`),
+- a table span marker whose merge cannot apply (`span-marker-invalid`),
+- a code-block language outside a configured `WithCodeLanguages` set
+  (`unsupported-code-language`),
+- a node or a mark that the target product does not render
+  (`unsupported-in-product`, described below),
+- a recovered parser panic (`parse-recovered`),
+- an unknown ADF node that reaches the markdown projection (`raw-node`),
+- a retired `:fontSize` that is dropped to plain text
+  (`fontsize-dropped`).
+
+One `WithDiagnostics(func(convert.Diagnostic))` wires the sink into
+whichever primitive emits: parse notices on `FromMarkdown`, encode
+notices on `ToADF`, and decode notices on `FromADF`. Pass it to whichever
+primitives a composition runs. Without a sink, every diagnostic is
+silently dropped. `Pipeline.MarkdownToADFAll` is the errable batch
+variant. A failure of a `BeforeEncode` hook, for example a batched asset
+upload, aborts the call and returns the error.
 
 ### Product availability (`unsupported-in-product`)
 
-The core conversion is universal — it round-trips a Confluence document
-faithfully — so product availability is enforced as an authoring-side
-**diagnostic**, not a conversion change. `WithUnsupportedKinds(product,
-kinds)` declares the ADF node/mark kinds a target product does not
-render; after `ToADF` produces the document it walks both nodes and
-marks and emits one `unsupported-in-product` diagnostic per distinct
-offending kind (e.g. `placeholder is not available in jira`). No node is
-dropped or altered — the output is byte-identical with and without the
-option; the **consumer decides severity** (e.g. treat it as a blocking
-error before a Jira-targeted push).
+The core conversion is universal, and it round-trips a Confluence
+document faithfully. Product availability is therefore enforced as an
+authoring-side **diagnostic**, not as a change to the conversion.
+`WithUnsupportedKinds(product, kinds)` declares the ADF node kinds and
+mark kinds that a target product does not render. After `ToADF` produces
+the document, it walks both the nodes and the marks and emits one
+`unsupported-in-product` diagnostic per distinct offending kind, for
+example `placeholder is not available in jira`. No node is dropped and no
+node is altered, and the output is byte-identical with and without the
+option. The **consumer decides the severity**, and it can treat the
+diagnostic as a blocking error before a Jira-targeted push.
 
-The product sets are scoped to **render-confirmed non-support** — kinds
-a full live probe (2026-07-22) showed dropped, shown as an
-unsupported-content block, rejected by the product's ADF endpoint, or
-stripped/downgraded on save — not documentation-by-omission, which
-proved unreliable (Jira's docs are non-exhaustive, its REST accepts most
-of the shared schema, and it renders most omitted kinds first-class incl.
-layoutSection, cards, status, the extension family, syncBlock, and the
-alignment/indentation/breakout/annotation/fragment/dataConsumer marks).
-So `jira.UnsupportedKinds` is `placeholder` (dropped by the render) plus
-`multiBodiedExtension` and `extensionFrame` (rejected by the Jira REST
-endpoint with INVALID_INPUT), and `confluence.UnsupportedKinds` is
-`blockTaskItem` (downgraded to a plain taskItem); both are wired via
-`jira`/`confluence.MarkdownOptions`. `fontSize` is in neither set even
-though both products reject it: adfast **retires** the mark (it never
-produces one — see the `fontSize` note below), so an
-`unsupported-in-product` check for it would be moot.
-Adding a kind requires a live-probe confirmation, not a missing docs
-page. The evidence and the full availability data live in
-`docs/adf-coverage.md` + `docs/adf-availability.json`.
+The product sets are scoped to **render-confirmed non-support**. A full
+live probe on 2026-07-22 showed each such kind dropped, shown as an
+unsupported-content block, rejected by the ADF endpoint of the product,
+or stripped or downgraded on save. The sets are not
+documentation-by-omission, which proved unreliable. The Jira docs are
+non-exhaustive, the Jira REST accepts most of the shared schema, and Jira
+renders most omitted kinds first-class, layoutSection, cards, status, the
+extension family, syncBlock, and the alignment, indentation, breakout,
+annotation, fragment, and dataConsumer marks among them. Therefore
+`jira.UnsupportedKinds` is `placeholder`, which the render drops, plus
+`multiBodiedExtension` and `extensionFrame`, which the Jira REST endpoint
+rejects with INVALID_INPUT. `confluence.UnsupportedKinds` is
+`blockTaskItem`, which Confluence downgrades to a plain taskItem. Both
+sets are wired through `jira.MarkdownOptions` and
+`confluence.MarkdownOptions`. `fontSize` is in neither set, although both
+products reject it. adfast **retires** the mark and never produces one,
+described in the `fontSize` note below, so an `unsupported-in-product`
+check for it would be moot. A new kind needs a live-probe confirmation,
+not a missing docs page. The evidence and the full availability data live
+in `docs/adf-coverage.md` and `docs/adf-availability.json`.
 
 ## Supported Markdown
 
-The base dialect is **CommonMark + GFM**: pipe tables (padded to column
-width, plus [remark-extended-table](https://github.com/wataru-chocola/remark-extended-table)
-cell merging — a cell containing only `>` merges into the cell to its right,
-a cell containing only `^` extends the cell above; literal `>`/`^` cell
-content is escaped), task lists (`- [ ]` / `- [x]`), strikethrough, and
-autolink literals. On top of that: decision lists (a `::decisions` leaf
-directive marks the immediately following plain bullet list, exactly like
-`::colwidths` marks the following table), YAML frontmatter (pluggable via
-`WithFrontmatterProvider`), and the directive dialect below —
-`:name[label]{attrs}` inline, `::name[label]{attrs}` as a block leaf, and
-`:::name … :::` as a container. Everything below round-trips losslessly
-through ADF.
+The base dialect is **CommonMark and GFM**. It gives pipe tables, padded
+to column width, with the cell merging of
+[remark-extended-table](https://github.com/wataru-chocola/remark-extended-table).
+A cell that holds `>` only merges into the cell to its right, and a cell
+that holds `^` only extends the cell above. Literal `>` and `^` cell
+content is escaped. GFM also gives task lists (`- [ ]` and `- [x]`),
+strikethrough, and autolink literals. On top of that come three things.
+The first is decision lists, where a `::decisions` leaf directive marks
+the plain bullet list that follows it, exactly like `::colwidths` marks
+the table that follows. The second is YAML frontmatter, which is
+pluggable through `WithFrontmatterProvider`. The third is the directive
+dialect below: `:name[label]{attrs}` inline, `::name[label]{attrs}` as a
+block leaf, and `:::name … :::` as a container. Everything below
+round-trips losslessly through ADF.
 
 ### Container directives (block elements)
 
@@ -418,25 +441,26 @@ through ADF.
 | `:::dataConsumer{sources="id1,id2"}` … | dataConsumer mark            | `sources` is a comma-separated list of source ids (opaque strings; parsed by splitting on commas and trimming)                                                         |
 | `:::fragment{localId="…" name?}` …     | fragment mark                | Stable references to tables/extensions                                                                                                                                 |
 
-Nested containers grow the outer fence (`::::`), like remark. The
-mark-wrapper containers (`:::center`/`:::end`, `:::indent`,
+A nested container grows the outer fence (`::::`), like remark. The
+mark-wrapper containers (`:::center` and `:::end`, `:::indent`,
 `:::breakout`, `:::dataConsumer`, `:::fragment`) put the ADF **block
-mark** on every block they wrap; wrappers compose by nesting, and the
-ADF mark array maps inside-out onto the nesting (first mark innermost),
-so round trips preserve mark order. Single-valued directives take the
-**bare-value attribute form** (`{2}`, `{wide}`, `{small}`): exactly one
-attribute with an empty value is the directive's value (a named
-`level=`/`mode=`/`size=` attribute wins when both are present).
-Arbitrary-JSON payloads (`parameters` on extensions) use a **canonical
-JSON attr encoding**: `json.Marshal` output (sorted keys, no
-insignificant whitespace). Because that JSON contains `"`, the attribute
-is **single-quoted** so it stays readable and lossless —
-`parameters='{"station":"rooftop"}'`. When the JSON value itself contains
-a `'`, single-quoting would not be lossless, so the attribute falls back
-to double quotes with every `"` written as `&quot;` (remark-compatible,
-since remark decodes character references in attribute values). The
-`dataConsumer` `sources` attribute is a plain comma-separated list of
-source ids, not JSON.
+mark** on every block that they wrap. The wrappers compose by nesting,
+and the ADF mark array maps inside-out onto that nesting, with the first
+mark innermost, so a round trip keeps the mark order. A single-valued
+directive takes the **bare-value attribute form** (`{2}`, `{wide}`,
+`{small}`), where exactly one attribute with an empty value is the value
+of the directive. When both forms are present, a named `level=`, `mode=`,
+or `size=` attribute wins. An arbitrary-JSON payload, such as
+`parameters` on an extension, uses a **canonical JSON attribute
+encoding**: the output of `json.Marshal`, with sorted keys and no
+insignificant whitespace. That JSON holds a `"`, so the attribute is
+**single-quoted** and stays readable and lossless, as in
+`parameters='{"station":"rooftop"}'`. When the JSON value itself holds a
+`'`, a single quote would not be lossless. The attribute then falls back
+to double quotes and writes every `"` as `&quot;`. This is
+remark-compatible, because remark decodes a character reference in an
+attribute value. The `sources` attribute of `dataConsumer` is a plain
+comma-separated list of source ids, and it is not JSON.
 
 ### Leaf directives (standalone lines)
 
@@ -450,8 +474,8 @@ source ids, not JSON.
 | `::extension{key="…" type="…" parameters='…' layout? localId? text?}`                                    | extension                  | Bodiless macros; `key`/`type` are the ADF extensionKey/extensionType; `parameters` carries arbitrary JSON in the canonical attr encoding                                                                                                                                                                                                                                                                                               |
 | `::syncBlock{localId="…" resourceId="…"}`                                                                | syncBlock                  | A reference to a synced block                                                                                                                                                                                                                                                                                                                                                                                                          |
 
-Media directives additionally carry `borderColor`/`borderSize`
-attributes for the ADF border mark on the media node.
+A media directive also carries the `borderColor` and `borderSize`
+attributes, for the ADF border mark on the media node.
 
 ### Text directives (inline elements)
 
@@ -471,42 +495,43 @@ attributes for the ADF border mark on the media node.
 | `:fontSize[text]{small}`                                | _retired_            | Parses (the bare value is the size; `size="…"` also parses) but is dropped to plain text — no product supports the mark. See the coverage table          |
 | `:media{#<media-uuid> collection}`                      | mediaInline          | Inline attachment chip. `type` defaults to `file` and is left out when canonical; a bare `collection` is an empty collection, and its absence means none |
 
-Mark directives nest with regular emphasis:
-`:color[**bold red**]{color="#ff5630"}`. Inline mark directives wrap
-per text run in fixed nesting order (outside → inside): `:annotation`,
-`:color`, `:bg`, `:u`, `:sub`/`:sup`. (`:fontSize` is retired — it parses
-but drops to plain text.) Directive labels cannot nest brackets, so
-overlapping annotation marks on one text run degrade to the outermost
-anchor.
+A mark directive nests with regular emphasis, as in
+`:color[**bold red**]{color="#ff5630"}`. An inline mark directive wraps
+per text run, in a fixed nesting order from outside to inside:
+`:annotation`, `:color`, `:bg`, `:u`, and `:sub` or `:sup`. (`:fontSize`
+is retired. It parses, but it drops to plain text.) A directive label
+cannot nest brackets, so overlapping annotation marks on one text run
+degrade to the outermost anchor.
 
-Every known directive parses into a **typed AST node** (package
-[`dialect/`](dialect/)) implementing the public extension contract; unknown
-directive names keep the generic directive kinds and degrade exactly like
-remark (containers dissolve into their content, unknown leaves drop,
-unknown text directives flatten to text).
+Every known directive parses into a **typed AST node** in the package
+[`dialect/`](dialect/), and that node implements the public extension
+contract. An unknown directive name keeps the generic directive kinds and
+degrades exactly like remark: a container dissolves into its content, an
+unknown leaf drops, and an unknown text directive flattens to text.
 
 ### Related conventions (no directive needed)
 
-- **Attachments as images** — with a media-asset store wired in
-  (`WithMediaAssets` or `WithMediaAssetResolver`, plus `WithAssetIDResolver`
-  and `WithImageDimsResolver`),
-  file media whose local copy carries every ADF property renders as a plain
-  `![alt](assets/shot.png)` and maps back to its media id on encode.
-  Anything richer (PDFs, resized media, non-default layouts) keeps the
-  `::media` directive.
-- **Issue links** — a link whose text equals the resolver-derived key
-  (e.g. `[ABC-123](https://…/browse/ABC-123)`) becomes an inlineCard.
+- **Attachments as images** — wire in a media-asset store, with
+  `WithMediaAssets` or `WithMediaAssetResolver`, plus
+  `WithAssetIDResolver` and `WithImageDimsResolver`. File media whose
+  local copy carries every ADF property then renders as a plain
+  `![alt](assets/shot.png)`, and it maps back to its media id on encode.
+  Anything richer keeps the `::media` directive: a PDF, resized media, or
+  a non-default layout.
+- **Issue links** — a link whose text equals the resolver-derived key,
+  for example `[ABC-123](https://…/browse/ABC-123)`, becomes an
+  inlineCard.
 - **Image titles as captions** — `![alt](path "caption")` maps the title
-  to a mediaSingle caption child; richer captions (formatting, hard
-  breaks) use the `:::media` container form.
-- **Tables** — GFM pipe tables; a header row is synthesized when the ADF
+  to a mediaSingle caption child. A richer caption, with formatting or a
+  hard break, uses the `:::media` container form.
+- **Tables** — GFM pipe tables. A header row is synthesized when the ADF
   table has none.
 
 ## A complete example
 
-A single document exercising most of the dialect — usable as a template.
-It round-trips through `FromMarkdown` → `ToMarkdown` unchanged (a test
-extracts this block and asserts it):
+One document that exercises most of the dialect, usable as a template. It
+round-trips through `FromMarkdown` → `ToMarkdown` unchanged, and a test
+extracts this block and asserts that:
 
 <!-- tutorial:begin -->
 
@@ -706,55 +731,60 @@ Finally, a `:::breakout` lets a block escape the content column's width:
 
 ## ADF coverage
 
-Every node and mark type in Atlassian's ADF schema
-([`@atlaskit/adf-schema`](https://unpkg.com/browse/@atlaskit/adf-schema/dist/json-schema/v1/)
-full + stage-0, cross-checked against the
-[ADF reference](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)),
-whether it can occur in that product's documents, and how adfast treats
-it.
+The tables below hold every node type and mark type in the ADF schema of
+Atlassian
+([`@atlaskit/adf-schema`](https://unpkg.com/browse/@atlaskit/adf-schema/dist/json-schema/v1/),
+full and stage-0, cross-checked against the
+[ADF reference](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)).
+Each row states whether the kind can occur in the documents of that
+product, and how adfast treats it.
 
-> **Fully cited matrix:** every row below — with each kind's upstream
-> schema-definition link (pinned to a mirror commit SHA) and the exact
-> Jira/Confluence evidence behind its marker — lives in
-> [docs/adf-coverage.md](docs/adf-coverage.md). Machine-readable form:
+> **Fully cited matrix:** every row below lives in
+> [docs/adf-coverage.md](docs/adf-coverage.md), with the upstream
+> schema-definition link of each kind, pinned to a mirror commit SHA, and
+> the exact Jira and Confluence evidence behind its marker. The
+> machine-readable form is
 > [docs/adf-availability.json](docs/adf-availability.json). Both columns
-> were confirmed empirically (2026-07-22) against a live Cloud site: every
-> node and mark was written to a Jira issue and a Confluence page and the
-> product-rendered DOM inspected, and the Confluence page was additionally
-> read back to see what survives save. See the "Empirical validation"
-> section of the cited matrix.
+> were confirmed empirically on 2026-07-22 against a live Cloud site.
+> Every node and mark was written to a Jira issue and to a Confluence
+> page, and the product-rendered DOM was inspected. The Confluence page
+> was also read back, to see what survives the save. Read the "Empirical
+> validation" section of the cited matrix.
 
-**Per-product marker** (whether the kind can occur in that product's
-documents; as of 2026-07-22 the markers reflect live render/round-trip
-evidence, not just documentation):
+**Per-product marker** — whether the kind can occur in the documents of
+that product. As of 2026-07-22 the markers reflect live render and
+round-trip evidence, not documentation alone:
 
-- **✓** — available: the product renders it first-class, or renders it
-  degraded-but-present (Jira), or preserves it on save (Confluence);
-- **∘** — present in the shared ADF schema but genuinely untestable here
-  (e.g. attachment-gated file media);
-- **—** — not available: dropped by the render, rejected by the product's
-  ADF endpoint, or stripped/downgraded on save.
+- **✓** — available. The product renders it first-class, or renders it
+  degraded but present (Jira), or keeps it on save (Confluence).
+- **∘** — present in the shared ADF schema, but genuinely untestable
+  here, for example attachment-gated file media.
+- **—** — not available. The render drops it, the ADF endpoint of the
+  product rejects it, or the save strips or downgrades it.
 
-**adfast support** (adfast's own handling, independent of product
-availability):
+**adfast support** — the handling of adfast itself, independent of
+product availability:
 
-- **converted** — has a markdown mapping and round-trips through it;
-- **preserved** — survives ADF decode → encode losslessly (typed or as
-  `RawNode`/`RawMark`) but is dropped or reduced by the markdown
-  projection, with a `raw-node` diagnostic.
-- **dropped** — deliberately retired: adfast never produces the kind, and
-  a legacy instance decodes to plain text (with a `fontsize-dropped`
-  diagnostic) — text preserved, styling lost. `fontSize` is the only such
-  kind (no Atlassian product supports the mark).
+- **converted** — the kind has a markdown mapping and round-trips through
+  it.
+- **preserved** — the kind survives an ADF decode → encode losslessly,
+  typed or as a `RawNode` or `RawMark`, but the markdown projection drops
+  or reduces it, with a `raw-node` diagnostic.
+- **dropped** — deliberately retired. adfast never produces the kind, and
+  a legacy instance decodes to plain text with a `fontsize-dropped`
+  diagnostic. The text is kept and the styling is lost. `fontSize` is the
+  only such kind, because no Atlassian product supports the mark.
 
 The product-availability diagnostic uses the render-confirmed
-not-available set (see [Product availability](#product-availability-unsupported-in-product)).
-`jira.UnsupportedKinds` is `placeholder` (dropped by the render) plus
-`multiBodiedExtension` and `extensionFrame` (rejected by the Jira REST
-endpoint with INVALID_INPUT) — Jira renders every other kind probed.
-`confluence.UnsupportedKinds` is `blockTaskItem` (downgraded to a plain
-taskItem). `fontSize` is in neither set: both products reject it, but
-adfast retires the mark (never produced), so the check would be moot.
+not-available set. Read
+[Product availability](#product-availability-unsupported-in-product).
+`jira.UnsupportedKinds` is `placeholder`, which the render drops, plus
+`multiBodiedExtension` and `extensionFrame`, which the Jira REST endpoint
+rejects with INVALID_INPUT. Jira renders every other kind that the probe
+covered. `confluence.UnsupportedKinds` is `blockTaskItem`, which
+Confluence downgrades to a plain taskItem. `fontSize` is in neither set.
+Both products reject it, but adfast retires the mark and never produces
+one, so the check would be moot.
 
 | ADF node                                      | Jira | Confluence | adfast support | Markdown mapping / notes                                                                                                                                                                                                                                         |
 | --------------------------------------------- | ---- | ---------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -810,19 +840,19 @@ adfast retires the mark (never produced), so the check would be moot.
 | fragment        | ✓    | ✓          | converted      | `:::fragment{localId name?}` wrapper around the block. Both products preserve/render the mark (live 2026-07-22)                                                                                                                                                                                                       |
 | fontSize        | —    | —          | dropped        | **Retired** — no product supports the mark (Jira REST rejects it with INVALID_INPUT; Confluence strips it on save). `:fontSize[text]{size}` still parses but unwraps to plain text on encode, and a legacy `fontSize` ADF mark decodes to bare text; both emit a `fontsize-dropped` diagnostic (text kept, size lost) |
 
-In short: unknown or undocumented ADF content **survives ADF-level
-round trips losslessly** and can be reported through diagnostics; only
-the markdown projection reduces it. Every kind in the table has a
-markdown mapping, so documents also survive markdown-only persistence
-(render → store the file → re-parse → push). The mechanics — RawNode/
-Extra preservation, diagnostic codes, and the few deliberate edge-case
-losses — are documented in [docs/design.md](docs/design.md).
+In short: unknown or undocumented ADF content **survives an ADF-level
+round trip losslessly**, and diagnostics can report it. Only the markdown
+projection reduces it. Every kind in the table has a markdown mapping, so
+a document also survives markdown-only persistence: render, store the
+file, re-parse, and push. The mechanics are documented in
+[docs/design.md](docs/design.md): the RawNode and Extra preservation, the
+diagnostic codes, and the few deliberate edge-case losses.
 
 ## Extending adfast
 
-The [`extension/`](extension/) package defines the public contract for
-custom node kinds. A kind must support **all four pipeline paths** —
-capability fragments (render-only or encode-only) are rejected at
+The [`extension/`](extension/) package defines the public contract for a
+custom node kind. A kind must support **all four pipeline paths**. A
+capability fragment, render-only or encode-only, is rejected at
 registration:
 
 1. **md → ast**: a parse constructor promotes a generic directive node
@@ -834,11 +864,11 @@ registration:
 4. **adf → ast**: a decode hook recognizes the ADF shape the kind owns
    (`Registration.DecodeBlock`/`DecodeBlockList`/`DecodeInline`).
 
-The known dialect (package [`dialect/`](dialect/)) is implemented on
-exactly this contract, so it is both the default registration set and the
-reference implementation. A complete custom kind — a fictional
-`:youtube[dQw4w9WgXcQ]` inline directive for a (made-up) `youtube` ADF
-node:
+The known dialect, in the package [`dialect/`](dialect/), is implemented
+on exactly this contract. It is therefore both the default registration
+set and the reference implementation. Here is a complete custom kind: a
+fictional `:youtube[dQw4w9WgXcQ]` inline directive for an invented
+`youtube` ADF node.
 
 ```go
 package youtubenode
@@ -899,11 +929,11 @@ func Registration() extension.Registration {
 }
 ```
 
-Wire it in — one `adfast.WithExtensions` covers every direction (the
-facade forwards to `markdown.WithExtensions` on parse and
-`convert.WithExtensions` on encode/decode); the default dialect set stays
-active. Register the same bundle on both halves of a composition so the
-parse and decode legs never drift apart:
+Wire it in. One `adfast.WithExtensions` covers every direction, because
+the facade forwards to `markdown.WithExtensions` on the parse and to
+`convert.WithExtensions` on the encode and the decode. The default
+dialect set stays active. Register the same bundle on both halves of a
+composition, so that the parse leg and the decode leg never drift apart:
 
 ```go
 reg := adfast.WithExtensions(youtubenode.Registration())
@@ -911,19 +941,20 @@ doc := adfast.ToADF(adfast.FromMarkdown(md, reg), reg)
 out := adfast.ToMarkdown(adfast.FromADF(doc, reg), reg)
 ```
 
-Block kinds additionally embed `ast.BlockSpacing` (blank-line structure)
-and implement `extension.ContainerForm` when they render a `:::` container
-(so enclosing fences grow around them). A few dialect behaviors deliberately
-stay structural in `convert` because they cross node boundaries: the
-`::colwidths` ↔ table attachment, the `::decisions` ↔ bullet-list
-marking, and the inline mark directives' decode (ADF stores them as
-text marks, not nodes) — see the `dialect` package documentation.
+A block kind also embeds `ast.BlockSpacing`, the blank-line structure.
+When it renders a `:::` container, it implements
+`extension.ContainerForm`, so that the enclosing fences grow around it.
+Three dialect behaviors deliberately stay structural in `convert`,
+because they cross node boundaries: the `::colwidths` ↔ table attachment,
+the `::decisions` ↔ bullet-list marking, and the decode of the inline
+mark directives, which ADF stores as text marks instead of nodes. Read
+the documentation of the `dialect` package.
 
 ## Layout
 
-The module is layered into public subpackages along the pipeline stages;
-the root package is a thin facade composing them. Full package notes live
-in [docs/design.md](docs/design.md).
+The module is layered into public subpackages along the pipeline stages,
+and the root package is a thin facade that composes them. The full
+package notes live in [docs/design.md](docs/design.md).
 
 | Package                        | Purpose                                                                                                                                        |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -942,32 +973,32 @@ in [docs/design.md](docs/design.md).
 | [`frontmatter/`](frontmatter/) | **Separate module**: optional YAML frontmatter access (`Parse`, `Render`, `Patch`, `PatchPreserving`, path helpers)                            |
 | [`wasm/`](wasm/)               | **Separate module**: a js/wasm build exposing conversion and directive span scanning to JavaScript — a build artifact, not an importable API   |
 
-The root module is platform-neutral ADF ⇄ Markdown. Platform-specific
-addons ship as separate submodules (`jira/`, `confluence/`, the
-`skill/` agent-skill bundle, and the optional `frontmatter/` YAML
-helpers), so consumers only pull what they use.
-Smart-link recognition (bare issue keys, `/browse/` URLs, inline cards)
-stays in the root module — Confluence content links to Jira issues
-through the same ADF nodes.
+The root module is platform-neutral ADF ⇄ Markdown. A platform-specific
+addon ships as a separate submodule, so a consumer pulls only what it
+uses: `jira/`, `confluence/`, the `skill/` agent-skill bundle, and the
+optional `frontmatter/` YAML helpers. Smart-link recognition stays in the
+root module, for bare issue keys, `/browse/` URLs, and inline cards.
+Confluence content links to a Jira issue through the same ADF nodes.
 
-`wasm/` is a submodule for the same reason but a different kind of
-thing: no Go code imports it. It is compiled to WebAssembly and consumed
-from JavaScript, so it is versioned and tagged with the rest but
-delivered as a `.wasm` file rather than a `go get`.
+`wasm/` is a submodule for the same reason, but it is a different kind of
+thing: no Go code imports it. It compiles to WebAssembly and it is
+consumed from JavaScript. It is therefore versioned and tagged with the
+rest, but delivered as a `.wasm` file instead of a `go get`.
 
 ## Asset store
 
-The `assets` package is the media seam behind the resolvers. `Store` is
-a storage-agnostic interface — nothing in it assumes a filesystem, so an
-in-memory or object-storage (S3, …) backend is equally implementable;
-scope is the one cross-cutting concern every store honors (a media id is
-valid within a product container). `FSStore` is the shipped **default**:
-a free-form `assets/` folder next to your markdown files, adding
-content-addressed deduplication as an implementation detail (the
-interface neither requires nor knows about it). `NewFSStore` keeps
-assets next to the documents; `NewFSStoreAt`/`NewFSStoreSplit` separate
-physical location from the documents; `assets.Layered` stacks stores.
-One call wires a store into each half of a composition:
+The `assets` package is the media seam behind the resolvers. `Store` is a
+storage-agnostic interface. Nothing in it assumes a filesystem, so an
+in-memory backend or an object-storage backend, on S3 or elsewhere, is
+equally implementable. Scope is the one cross-cutting concern that every
+store honors, because a media id is valid inside a product container
+only. `FSStore` is the shipped **default**: a free-form `assets/` folder
+next to your markdown files. It adds content-addressed deduplication as
+an implementation detail, and the interface neither requires that nor
+knows about it. `NewFSStore` keeps the assets next to the documents.
+`NewFSStoreAt` and `NewFSStoreSplit` separate the physical location from
+the documents, and `assets.Layered` stacks stores. One call wires a store
+into each half of a composition:
 
 ```go
 store, _ := assets.NewFSStore(mdDir)
@@ -979,37 +1010,40 @@ rOpts := assets.RenderOptions(store)
 out := adfast.ToMarkdown(adfast.FromADF(doc, rOpts...), rOpts...)
 ```
 
-Markdown-first assets are supported: reference a local file before any
-upload and the encode side reports an `unresolved-asset` diagnostic
-instead of silently dropping it. The upload seam is the pluggable
-`Uploader` interface — `assets.Sync(ctx, store, uploader)` uploads the
-pending worklist in one batch, `assets.PushPipeline(ctx, store, uploader)`
-returns an `adfast.Pipeline` that uploads referenced pending assets
-automatically right before encoding (via a `WithBeforeEncode` hook on the
-pipeline), and `assets.EnsureUploaded` syncs first and returns the wired
-markdown options. `assets.RewriteReferences(old, new)` re-paths image
-references through the formatter (as a `WithASTTransforms` transform)
-after a store-layout change.
+Markdown-first assets are supported. Reference a local file before any
+upload, and the encode side reports an `unresolved-asset` diagnostic
+instead of a silent drop. The upload seam is the pluggable `Uploader`
+interface. `assets.Sync(ctx, store, uploader)` uploads the pending
+worklist in one batch. `assets.PushPipeline(ctx, store, uploader)`
+returns an `adfast.Pipeline` that uploads the referenced pending assets
+automatically, immediately before the encode, through a
+`WithBeforeEncode` hook on the pipeline. `assets.EnsureUploaded` syncs
+first and returns the wired markdown options.
+`assets.RewriteReferences(old, new)` re-paths the image references
+through the formatter, as a `WithASTTransforms` transform, after a change
+to the store layout.
 
-Attachments have a product-side container boundary (a Jira media id is
-bound to one issue, a Confluence one to one page) —
-`assets.ForScope(store, "KEY-123")` binds a view to one container so
-every document encodes ids valid for _its_ container while local storage
-stays deduplicated.
+An attachment has a product-side container boundary. A Jira media id is
+bound to one issue, and a Confluence one to one page.
+`assets.ForScope(store, "KEY-123")` binds a view to one container, so
+every document encodes ids that are valid for _its_ container, while
+local storage stays deduplicated.
 
-Store internals (on-disk layout, atomicity, layered/split stores, and
-the scoping model) are documented in
-[docs/design.md](docs/design.md#asset-store-internals).
+The store internals are documented in
+[docs/design.md](docs/design.md#asset-store-internals): the on-disk
+layout, the atomicity, the layered and split stores, and the scoping
+model.
 
 ## Visitors
 
-Both trees ship exhaustive, type-safe visitors: `ast.Visitor[T]` /
-`ast.Visit` and `adf.Visitor[T]` / `adf.Visit` (plus `adf.MarkVisitor[T]`).
-Implementing a visitor requires one method per kind, so **adding a node
-kind breaks every visitor at compile time** — the enforcement a Go type
-switch cannot give. Open-set escapes are explicit: unknown markdown kinds
-(extension/dialect nodes) dispatch to `VisitExtension`, unknown ADF
-content to `VisitRaw`/`VisitRawMark`.
+Both trees ship exhaustive, type-safe visitors: `ast.Visitor[T]` with
+`ast.Visit`, and `adf.Visitor[T]` with `adf.Visit`, plus
+`adf.MarkVisitor[T]`. A visitor needs one method per kind, so **a new
+node kind breaks every visitor at compile time**. That is the enforcement
+a Go type switch cannot give. The open-set escapes are explicit. An
+unknown markdown kind, which is an extension node or a dialect node,
+dispatches to `VisitExtension`. Unknown ADF content dispatches to
+`VisitRaw` or `VisitRawMark`.
 
 ```go
 type linkCollector struct{ urls []string }
@@ -1020,23 +1054,26 @@ func (c *linkCollector) VisitLink(l *ast.Link) struct{} {
 }
 ```
 
-For ADF-side traversal that does not need per-kind dispatch, `adf.Walk`
-iterates every node of a subtree as a Go iterator (`for n := range
-adf.Walk(root)`), and `adf.Transform(doc, f)` rewrites a document
-copy-on-write: `f` returns (replacement, handled) per node — replace,
-delete (empty slice), or prune a subtree from the rewrite by returning
-the node itself; the input document is never mutated. The `jira`
-transforms (issue-link → inlineCard, bare-key expansion) are built on
+For an ADF-side traversal that needs no per-kind dispatch, `adf.Walk`
+iterates every node of a subtree as a Go iterator: `for n := range
+adf.Walk(root)`. `adf.Transform(doc, f)` rewrites a document
+copy-on-write. Per node, `f` returns a replacement and a handled flag,
+which gives three actions: replace the node, erase it with an empty
+slice, or prune a subtree from the rewrite by a return of the node
+itself. The input document is never mutated. The `jira` transforms, the
+issue-link → inlineCard rewrite and the bare-key expansion, are built on
 `adf.Transform`.
 
-Extension packages chain the exhaustiveness: `dialect.Visitor[T]` /
-`dialect.Visit` covers the typed dialect kinds — call it from your
-`VisitExtension` and unknown-to-the-dialect kinds continue to its
-`VisitOther`, where further extension visitors chain. Extension authors
-shipping their own kinds should follow the same escape-and-chain shape.
+An extension package chains the exhaustiveness. `dialect.Visitor[T]` with
+`dialect.Visit` covers the typed dialect kinds. Call it from your
+`VisitExtension`, and a kind that the dialect does not know continues to
+its `VisitOther`, where a further extension visitor chains. An extension
+author who ships custom kinds must follow the same escape-and-chain
+shape.
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the toolchain (mise), hooks,
-test invocations, and the fixture/fuzz corpus workflow.
-Releases are documented in [docs/RELEASING.md](docs/RELEASING.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the mise toolchain, the
+hooks, the test commands, and the workflow of the fixture corpus and the
+fuzz corpus. Releases are documented in
+[docs/RELEASING.md](docs/RELEASING.md).

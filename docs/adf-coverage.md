@@ -1,16 +1,19 @@
 # ADF coverage — fully cited matrix
 
-This is the evidence-backed companion to the **ADF coverage** section of
-[`README.md`](../README.md). Every ADF node and mark adfast handles is
-listed here with (1) a link to its upstream schema definition pinned to a
-commit SHA, and (2) the evidence behind its per-product availability
-marker. The machine-readable form is [`adf-availability.json`](adf-availability.json).
+This document is the evidence-backed companion to the **ADF coverage**
+section of [`README.md`](../README.md). It lists every ADF node and mark
+that adfast handles. Each row carries two things: (1) a link to the
+upstream schema definition, pinned to a commit SHA, and (2) the evidence
+behind the per-product availability marker.
+[`adf-availability.json`](adf-availability.json) is the machine-readable
+form.
 
 ## Provenance
 
 - **Schema mirror:** [`pioug/atlassian-frontend-mirror`](https://github.com/pioug/atlassian-frontend-mirror)
-  — a public daily mirror of Atlassian's `atlassian-frontend` monorepo
-  (the home of the upstream `@atlaskit/adf-schema` package).
+  — a public daily mirror of the `atlassian-frontend` monorepo of
+  Atlassian, which is the home of the upstream `@atlaskit/adf-schema`
+  package.
 - **Pinned commit:** `f5ca0f120c6ea5d79873805d081a72c82917e1f8` (2026-07-21).
   Every schema link below is pinned to this SHA.
 - **Schema base path:** [`editor/adf-schema/src/schema`](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema)
@@ -18,38 +21,42 @@ marker. The machine-readable form is [`adf-availability.json`](adf-availability.
 
 ## Legend
 
-Per-product markers describe whether the kind can occur in that product's
-documents. As of 2026-07-22 they reflect **live render / round-trip
-evidence** (see [Empirical validation](#empirical-validation-2026-07-22)),
-which supersedes the documentation-by-omission the schema/reference
+A per-product marker states whether the kind can occur in the documents
+of that product. Since 2026-07-22 the markers hold **live render and
+round-trip evidence** (see
+[Empirical validation](#empirical-validation-2026-07-22)). That evidence
+supersedes the documentation-by-omission that the schema and reference
 columns still cite:
 
 - **✓ — available.** The product renders it first-class or
-  degraded-but-present (Jira), or preserves it on save (Confluence).
-- **∘ — in the shared schema, genuinely untestable here.** Present in the
-  shared default ADF schema but not empirically determinable (e.g.
-  attachment-gated file media).
-- **— — not available.** Dropped by the render, rejected by the product's
-  ADF endpoint, or stripped/downgraded on save.
+  degraded-but-present (Jira), or keeps it on save (Confluence).
+- **∘ — in the shared schema, genuinely untestable here.** The kind is
+  present in the shared default ADF schema, but no test here can
+  determine its availability. File media behind an attachment gate is
+  the example.
+- **— — not available.** The render drops it, the ADF endpoint of the
+  product rejects it, or the save strips or downgrades it.
 
-The **Support** column is adfast's own handling of the kind and is
-**independent of product availability**:
+The **Support** column is the handling of the kind by adfast itself and
+is **independent of product availability**:
 
-- **converted** — has a markdown mapping and round-trips through it.
-- **preserved** — survives ADF decode → encode losslessly (typed or as
-  `RawNode`/`RawMark`) but is dropped/reduced by the markdown projection
-  (emits a `raw-node` diagnostic). _(No tabled kind is preserved-only; the
-  category covers unknown/undocumented ADF, which is why it does not appear
-  as a value below.)_
-- **dropped** — retired: adfast never produces the kind, and a legacy
-  instance decodes to plain text (emits a `fontsize-dropped` diagnostic) —
-  text kept, styling lost. `fontSize` is the only such kind (see [Retired marks](#retired-marks)).
+- **converted** — the kind has a markdown mapping and round-trips
+  through it.
+- **preserved** — the kind survives ADF decode → encode losslessly, as a
+  typed node or as `RawNode`/`RawMark`, but the markdown projection
+  drops or reduces it and emits a `raw-node` diagnostic. _(No tabled
+  kind is preserved-only. The category covers unknown and undocumented
+  ADF, which is why no row below carries this value.)_
+- **dropped** — retired. adfast never produces the kind, and a legacy
+  instance decodes to plain text and emits a `fontsize-dropped`
+  diagnostic: the text is kept and the styling is lost. `fontSize` is
+  the only such kind (see [Retired marks](#retired-marks)).
 
 ## Evidence model
 
-Product markers are **not** self-evident from the schema — the shared ADF
-schema is a superset of what any one product accepts. Evidence is drawn, in
-priority order, from:
+The schema does **not** make a product marker self-evident. The shared
+ADF schema is a superset of what any one product accepts. The evidence
+comes, in priority order, from these three sources:
 
 1. **Per-product schemas in the mirror.** The mirror ships
    [`jira-schema.ts`](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/jira-schema.ts)
@@ -58,43 +65,46 @@ priority order, from:
    **Both are `@deprecated [ED-15676]`** — "We have stopped supporting
    product specific schemas. Use `@atlaskit/adf-schema/schema-default`
    instead." They are stale, non-exhaustive snapshots:
-   - `jira-schema.ts` is a minimal, config-gated _editor_ schema whose base
-     set is only `doc, paragraph, text, hardBreak, heading, rule` plus a
-     handful of feature-flag-gated additions. It materially under-lists what
-     Jira Cloud actually renders (no `panel`, `status`, `date`, `inlineCard`,
-     `expand`, …), so it is **not** used to set Jira markers below.
-   - `confluence-schema.ts` is a fixed allowlist and is the best
-     machine-readable per-product source that exists for Confluence, so its
-     `nodes`/`marks` arrays are cited as the primary Confluence evidence —
-     but **absence from it is evidence-by-omission only**, not proof of
-     non-support (it predates newer features like sync blocks and status
-     lozenges).
+   - `jira-schema.ts` is a minimal _editor_ schema behind configuration
+     gates. Its base set is only `doc, paragraph, text, hardBreak,
+     heading, rule`, plus a few additions behind feature flags. It lists
+     materially less than Jira Cloud renders in practice: no `panel`, no
+     `status`, no `date`, no `inlineCard`, no `expand`, and more. It is
+     therefore **not** used to set the Jira markers below.
+   - `confluence-schema.ts` is a fixed allowlist and the best
+     machine-readable per-product source that exists for Confluence. Its
+     `nodes` and `marks` arrays are cited as the primary Confluence
+     evidence. But **absence from it is evidence-by-omission only**, not
+     proof of non-support, because it predates newer features such as
+     sync blocks and status lozenges.
    - The modern `next-schema/` node definitions carry no per-product
-     metadata (only a `stage0` staging flag), so they cannot serve as a
+     metadata, only a `stage0` staging flag, so they cannot serve as a
      current per-product allowlist.
 2. **Atlassian developer docs — Jira.** The
    [Jira Cloud ADF reference](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
-   enumerates the nodes/marks Jira documents. A dedicated node/mark page
-   (HTTP 200) is positive "documented available" evidence for **Jira**; a
-   404 is evidence-by-omission. The reference itself warns it is
-   non-exhaustive: _"Marks and nodes included in the JSON schema may not be
-   valid in this implementation. Refer to this documentation for details of
-   supported marks and nodes."_ **There is no equivalent enumerated
-   Confluence ADF reference** — `developer.atlassian.com/cloud/confluence/apis/document/*`
-   returns 404 — which is why Confluence evidence falls back to
+   enumerates the nodes and marks of a Jira document. A dedicated node or
+   mark page (HTTP 200) is positive "documented available" evidence for
+   **Jira**. A 404 is evidence-by-omission. The reference warns that it
+   is non-exhaustive: _"Marks and nodes included in the JSON schema may
+   not be valid in this implementation. Refer to this documentation for
+   details of supported marks and nodes."_ **There is no equivalent
+   enumerated Confluence ADF reference.**
+   `developer.atlassian.com/cloud/confluence/apis/document/*` returns
+   404, which is why the Confluence evidence falls back to
    `confluence-schema.ts`.
-3. **Shared-schema existence** (for `∘` and for the schema-definition
-   links) is the kind's definition file under `schema/{nodes,marks}/`.
+3. **Shared-schema existence** is the definition file of the kind under
+   `schema/{nodes,marks}/`. It backs the `∘` marker and the
+   schema-definition links.
 
 The version-pinned JSON schema
 ([`unpkg.com/@atlaskit/adf-schema`](https://unpkg.com/browse/@atlaskit/adf-schema/dist/json-schema/v1/),
 canonically [`go.atlassian.com/adf-json-schema`](https://go.atlassian.com/adf-json-schema))
 is the fallback artifact for the "exists in the shared schema" claim.
 
-> **Line anchors.** Schema links point at the `@name`/`export` line of each
-> spec, verified at the pinned SHA. Where several kinds share one file
-> (`tableNodes.ts`, `multi-bodied-extension.ts`, `task-item.ts`) each anchor
-> targets that kind's own declaration.
+> **Line anchors.** Each schema link points at the `@name` or `export`
+> line of the spec, verified at the pinned SHA. Where several kinds share
+> one file (`tableNodes.ts`, `multi-bodied-extension.ts`,
+> `task-item.ts`), each anchor targets the declaration of its own kind.
 
 ## Nodes
 
@@ -146,10 +156,10 @@ is the fallback artifact for the "exists in the shared schema" claim.
 | syncBlock            | ✓    | ✓          | converted | [sync-block.ts#L21](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/nodes/sync-block.ts#L21)                         | no page (404) — omission                                                                                                      | **absent** from confluence-schema.ts (predates sync blocks). render-confirmed 2026-07-22                                                                                                 |
 | bodiedSyncBlock      | ✓    | ✓          | converted | [bodied-sync-block.ts#L46](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/nodes/bodied-sync-block.ts#L46)           | no page (404) — omission                                                                                                      | **absent** from confluence-schema.ts (predates sync blocks). render-confirmed 2026-07-22                                                                                                 |
 
-> `blockCard + datasource` in the README is not a distinct ADF `type` — it
-> is a `blockCard` carrying a `datasource` attribute (see the `anyOf` in
-> [block-card.ts](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/nodes/block-card.ts)),
-> so it shares `blockCard`'s evidence.
+> `blockCard + datasource` in the README is not a distinct ADF `type`. It
+> is a `blockCard` that carries a `datasource` attribute (see the `anyOf`
+> in [block-card.ts](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/nodes/block-card.ts)),
+> so it shares the evidence of `blockCard`.
 
 ## Marks
 
@@ -175,40 +185,42 @@ is the fallback artifact for the "exists in the shared schema" claim.
 
 ## Historical documentation gaps (now empirically resolved)
 
-The `Jira`/`Confluence` columns above are **empirically render/round-trip
-confirmed (2026-07-22)** — see the next section. They previously carried
-`∘`/`—` markers wherever the upstream _documentation_ did not positively
-back adfast's `✓` (Jira's ADF reference is self-admittedly non-exhaustive;
-the Confluence `confluence-schema.ts` allowlist is deprecated and stale).
-The live probe resolved every one of those gaps: Jira in fact renders the
-overwhelming majority of the kinds its docs omit (task/decision lists,
-smart-link cards, `status`, page layouts, the extension family,
-`syncBlock`, and the `alignment`/`indentation`/`breakout`/`annotation`/
-`fragment`/`dataConsumer` marks), and Confluence preserves almost
-everything the deprecated snapshot omits. The markers now reflect that
-evidence, not documentation-by-omission.
+The `Jira` and `Confluence` columns above are **confirmed empirically by
+render and round trip (2026-07-22)** — see the next section. They
+previously carried a `∘` or `—` marker wherever the upstream
+_documentation_ did not positively back the `✓` of adfast. The ADF
+reference of Jira admits that it is non-exhaustive, and the Confluence
+`confluence-schema.ts` allowlist is deprecated and stale. The live probe
+resolved every one of those gaps. Jira renders the great majority of the
+kinds its documentation omits: task and decision lists, smart-link
+cards, `status`, page layouts, the extension family, `syncBlock`, and the
+`alignment`, `indentation`, `breakout`, `annotation`, `fragment`, and
+`dataConsumer` marks. Confluence keeps almost everything the deprecated
+snapshot omits. The markers now hold that evidence instead of
+documentation-by-omission.
 
 ## Empirical validation (2026-07-22)
 
-**Full coverage:** every one of the 45 nodes and 17 marks was written to a
-live **Jira** issue description (`ARCH-506`) and a live **Confluence** page
-(`1729232906`, ENGINEERING space) on `ixolit.atlassian.net` via the
-Atlassian API (`contentFormat=adf`), each preceded by an `L-<kind>` label
-paragraph. Determination used two oracles: (1) the **product-rendered DOM**
-inspected read-only in a logged-in browser, and (2) for Confluence, the
-**stored ADF read back** to see which kinds survived save. Attachment-gated
-file media (`mediaGroup`, `mediaInline`) is not injection-testable —
-synthetic ids raise `ATTACHMENT_VALIDATION_ERROR` (a data error, not a
-schema/render signal) — so those rely on documentation.
+**Full coverage:** all 45 nodes and all 17 marks were written through the
+Atlassian API (`contentFormat=adf`) to a live **Jira** issue description
+(`ARCH-506`) and a live **Confluence** page (`1729232906`, ENGINEERING
+space) on `ixolit.atlassian.net`. An `L-<kind>` label paragraph precedes
+each one. Two oracles gave the determination: (1) the **product-rendered
+DOM**, inspected read-only in a logged-in browser, and (2) for
+Confluence, the **stored ADF read back**, which shows which kinds
+survived the save. File media behind an attachment gate (`mediaGroup`,
+`mediaInline`) cannot be tested by injection, because a synthetic id
+raises `ATTACHMENT_VALIDATION_ERROR`. That is a data error, not a schema
+or render signal, so those two kinds rely on the documentation.
 
 ### Jira — live render is the product-support oracle
 
-The Jira issue view renders description ADF with the shared
-`@atlaskit/renderer`. Classification: renders first-class **or**
-degraded-but-present = available; **dropped** (no DOM) / **unsupported-
-content block** = not available; a REST `INVALID_INPUT` rejection = the
-kind is not in Jira's ADF schema = not available. **No unsupported-content
-blocks appeared for any kind.**
+The Jira issue view renders the description ADF with the shared
+`@atlaskit/renderer`. The classification runs as follows. First-class
+**or** degraded-but-present means available. A drop (no DOM) or an
+**unsupported-content block** means not available. A REST `INVALID_INPUT`
+rejection means the kind is not in the ADF schema of Jira, and therefore
+not available. **No unsupported-content block appeared for any kind.**
 
 **Rendered first-class:** paragraph, text, heading, blockquote, rule,
 codeBlock, bullet/ordered lists + listItem, `taskList`/`taskItem`,
@@ -220,72 +232,82 @@ mark (strong, em, strike, code, underline, link, subsup, textColor,
 backgroundColor) plus `border`, `alignment` (`data-align`), `indentation`
 (`data-level`), `breakout` (`data-mode`), `annotation` (`data-mark-type`).
 
-**Rendered degraded-but-present (available):** `extension` /
-`bodiedExtension` (in an `ak-renderer-extension` container; body content
-shows), `inlineExtension` (inline fallback), `syncBlock` (renders the
-sync-block widget, error state only because the synthetic `resourceId`
-doesn't resolve), `bodiedSyncBlock` (body renders), and the `fragment` /
-`dataConsumer` marks (rendered as `data-mark-type` wrappers around their
-extension).
+**Rendered degraded-but-present (available):** `extension` and
+`bodiedExtension` (inside an `ak-renderer-extension` container, and the
+body content shows), `inlineExtension` (an inline fallback), `syncBlock`
+(the sync-block widget renders, in an error state only because the
+synthetic `resourceId` does not resolve), `bodiedSyncBlock` (the body
+renders), and the `fragment` and `dataConsumer` marks (rendered as
+`data-mark-type` wrappers around their extension).
 
 **Not available in Jira (4 kinds):**
 
-- **`placeholder`** — DROPPED: renders as an empty `<span></span>`; its
-  text is not shown.
-- **`fontSize`** — REST `INVALID_INPUT`: the mark is not in Jira's ADF
-  schema (a doc carrying it is rejected outright). **RETIRED by adfast**
-  (see below) — never produced, so it cannot reach a Jira push.
-- **`multiBodiedExtension`** / **`extensionFrame`** — REST `INVALID_INPUT`
-  (rejected together; not in Jira's ADF schema).
+- **`placeholder`** — DROPPED. It renders as an empty `<span></span>`,
+  and its text is not shown.
+- **`fontSize`** — REST `INVALID_INPUT`. The mark is not in the ADF
+  schema of Jira, and the endpoint rejects a whole document that carries
+  it. adfast **RETIRES** the mark (see below) and never produces it, so
+  it cannot reach a Jira push.
+- **`multiBodiedExtension`** and **`extensionFrame`** — REST
+  `INVALID_INPUT`. They are rejected together, and they are not in the
+  ADF schema of Jira.
 
 `jira.UnsupportedKinds` = `placeholder`, `multiBodiedExtension`,
-`extensionFrame` (three kinds). `fontSize` is deliberately **excluded**:
-adfast retires it — the mark is never produced (the `:fontSize` directive
-drops to plain text with a `fontsize-dropped` diagnostic), so an
-`unsupported-in-product` check for it would be moot.
+`extensionFrame` (three kinds). `fontSize` is **excluded** deliberately.
+adfast retires the mark and never produces it, because the `:fontSize`
+directive drops to plain text with a `fontsize-dropped` diagnostic. An
+`unsupported-in-product` check for it would therefore be moot.
 
-**Inconclusive:** `mediaInline` (attachment-gated; `ATTACHMENT_VALIDATION_
-ERROR` with a synthetic id — the schema accepts the node, so left `∘`).
+**Inconclusive:** `mediaInline`. It is attachment-gated, and a synthetic
+id raises `ATTACHMENT_VALIDATION_ERROR`. The schema accepts the node, so
+the marker stays `∘`.
 
 ### Confluence — round-trip survival is the oracle
 
-Confluence silently strips or downgrades unsupported kinds on save;
-round-trip survival (read-back via `contentFormat=adf`) confirms support,
-and the browser render confirmed no unsupported-content blocks.
+Confluence strips or downgrades an unsupported kind on save, and it does
+so silently. Survival of the round trip, read back through
+`contentFormat=adf`, therefore confirms support. The browser render
+showed no unsupported-content block.
 
-**Survived (available):** every node and mark **except** the two below —
-including the previously-inconclusive `dataConsumer` and `fragment` marks
-(both survived), `multiBodiedExtension`+`extensionFrame`, `syncBlock`,
-`bodiedSyncBlock`, `placeholder`, and all the block marks. Known macros are
-resolved on save (`extension{toc}` stays an extension; `bodiedExtension{info}`
-resolves to a native panel; `inlineExtension{status}` resolves to a native
-status node) — the node kinds are still accepted and rendered.
+**Survived (available):** every node and mark **except** the two below.
+This includes the two marks that were inconclusive before,
+`dataConsumer` and `fragment` (both survived), as well as
+`multiBodiedExtension` with `extensionFrame`, `syncBlock`,
+`bodiedSyncBlock`, `placeholder`, and every block mark. A known macro
+resolves on save: `extension{toc}` stays an extension,
+`bodiedExtension{info}` resolves to a native panel, and
+`inlineExtension{status}` resolves to a native status node. The node
+kinds are still accepted and rendered.
 
-**Not preserved in Confluence (2 kinds):**
+**Not kept in Confluence (2 kinds):**
 
-- **`fontSize`** — the mark is STRIPPED on save (text kept, `fontSize`
-  removed). **RETIRED by adfast** (see below) — never produced.
-- **`blockTaskItem`** — DOWNGRADED to a plain `taskItem` (its block body is
-  flattened to inline); the distinct kind is not preserved.
+- **`fontSize`** — the save STRIPS the mark. The text is kept and
+  `fontSize` is removed. adfast **RETIRES** the mark (see below) and
+  never produces it.
+- **`blockTaskItem`** — DOWNGRADED to a plain `taskItem`, with its block
+  body flattened to inline content. The distinct kind is not kept.
 
 `confluence.UnsupportedKinds` = `blockTaskItem` (one kind). `fontSize` is
-deliberately **excluded**: adfast retires it — the mark is never produced
-(the `:fontSize` directive drops to plain text with a `fontsize-dropped`
-diagnostic), so an `unsupported-in-product` check for it would be moot.
+**excluded** deliberately. adfast retires the mark and never produces it,
+because the `:fontSize` directive drops to plain text with a
+`fontsize-dropped` diagnostic. An `unsupported-in-product` check for it
+would therefore be moot.
 
 > Scratch artifacts: Jira issue `ARCH-506` and Confluence page
-> `1729232906` (ENGINEERING) — safe to delete.
+> `1729232906` (ENGINEERING). Both are safe to erase.
 
 ### Retired marks
 
-- **`fontSize`** — the **only** kind adfast classifies as **dropped** (not
-  `converted`). The empirical probe confirmed neither product supports the
-  mark: Jira's REST endpoint rejects it (`INVALID_INPUT`) and Confluence
-  strips it on save. Because non-support is unanimous, adfast retires it
-  rather than round-tripping it: the `:fontSize[text]{size}` directive still
-  **parses** (so old documents read cleanly), but on ADF encode it unwraps
-  to its plain-text content — no `fontSize` mark is ever produced — and a
-  legacy `fontSize` ADF mark decodes to bare text. Both directions emit a
-  `fontsize-dropped` diagnostic. The text is always preserved; only the
-  size annotation is lost. It is therefore absent from both product
-  `UnsupportedKinds` sets (an `unsupported-in-product` check would be moot).
+- **`fontSize`** — the **only** kind adfast classifies as **dropped**
+  instead of `converted`. The empirical probe confirmed that neither
+  product supports the mark: the REST endpoint of Jira rejects it with
+  `INVALID_INPUT`, and Confluence strips it on save. The non-support is
+  unanimous, so adfast retires the mark instead of a round trip through
+  it. The `:fontSize[text]{size}` directive still **parses**, which keeps
+  old documents readable, but on ADF encode it unwraps to its plain-text
+  content. No `fontSize` mark is ever produced, and a legacy `fontSize`
+  ADF mark decodes to bare text. Both directions emit a
+  `fontsize-dropped` diagnostic. The text is always kept, and only the
+  size annotation is lost. The mark is therefore absent from both
+  product `UnsupportedKinds` sets, where an `unsupported-in-product`
+  check would be moot.
