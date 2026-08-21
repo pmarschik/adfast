@@ -12,6 +12,40 @@ release together, from one commit, with matched version numbers.
 The release tasks discover the modules from `go.work`. A new module
 there is therefore pinned and tagged with no edit to any task.
 
+## Where the tasks live
+
+They are shared with the other Go repos, so they sit in
+[devkit](https://github.com/pmarschik/devkit) under `mise/go-release/`
+rather than in this repo. `.config/mise/config.toml` pulls them in:
+
+```toml
+[task_config]
+includes = [
+  "git::https://github.com/pmarschik/devkit.git//mise/go-release?ref=v1",
+  ".config/mise/tasks",
+]
+```
+
+Fix a task in devkit, then move its `v1` tag. To shadow one task without
+touching devkit, drop a file of the same name into
+`.config/mise/tasks/release/` — the local include is last, so it wins.
+
+The moved tag does not reach this repo on its own. mise clones the
+include once and pins that clone to the commit the ref named at the
+time, so the old task keeps running with a clean exit and no warning.
+Clear the cache here:
+
+```bash
+rm -rf "$(mise cache path)/remote-git-tasks-cache"
+mise tasks ls
+```
+
+`MISE_TASK_REMOTE_NO_CACHE=1` refetches for one invocation only and
+leaves the cache untouched.
+
+This repo supplies what the tasks read: `go.work`, `.config/cliff.toml`
+with `tag_pattern = "^v[0-9]"`, and `CHANGELOG.md`.
+
 ## TL;DR
 
 ```sh
