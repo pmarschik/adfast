@@ -6,9 +6,10 @@
 # - parser     goldmark parser assembly (GFM tweaks, autolinks, strikethrough)
 # - AST      the Markdown AST and goldmark→AST lifting
 # - render     AST→markdown rendering (remark-compatible output)
-# - adf        ADF types, codecs, ADF↔AST converters
+# - adf        ADF types, codecs, the ADF model
 # - assets     assets/ content-addressed media store + upload/sync
 # - directives the directive dialect (media, panels, smart links, …)
+# - convert    convert/ ADF↔AST conversion, both directions
 # - format     the WithPrettierFormat style-preserving formatter mode
 # - jira       jira/ addon module
 # - confluence confluence/ addon module
@@ -27,6 +28,7 @@ scopes = [
   "adf",
   "assets",
   "directives",
+  "convert",
   "format",
   "jira",
   "confluence",

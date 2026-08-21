@@ -74,6 +74,7 @@ create_release_tags() {
 
   if [[ "${VCS}" == "jj" ]]; then
     jj tag set "${RELEASE_TAGS[@]}" -r "${commit}" --allow-move
+    jj tag track "${RELEASE_TAGS[@]}" --remote origin
   else
     git tag --no-sign -f -a "${version}" -m "${HIGHLIGHTS:-${version}}" "${commit}"
     for name in "${RELEASE_TAGS[@]:1}"; do
