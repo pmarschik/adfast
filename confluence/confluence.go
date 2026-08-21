@@ -1,7 +1,8 @@
 // Package confluence provides the Confluence-specific ADF addons for
 // github.com/pmarschik/adfast: page smart links matching Confluence
-// Cloud's URL conventions, the code block macro language set, and named
-// directives for the core Confluence macros (see Macros).
+// Cloud's URL conventions, the code block macro language set, named
+// directives for the core Confluence macros (see Macros), and a repair
+// for what Confluence's ADF page read loses (see RepairReadBack).
 package confluence
 
 import (

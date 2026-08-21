@@ -262,6 +262,15 @@ the key. The submodule also ships `confluence.CodeLanguages`, the
 language set of the code block macro of Confluence Cloud, which is a much
 smaller set than the editor list of Jira.
 
+`confluence.RepairReadBack(doc, storage)` repairs what a page read
+loses. Confluence converts a page to ADF from its own storage format,
+and that conversion drops the `code` mark on link text and the title
+slug of an internal page link. The storage body of the same page version
+holds both, so the repair reads it as the oracle. Call it on the document
+that the read returned, before `FromADF`. A comparison between the local
+document and the page it published then reports no difference that nobody
+made. `docs/design.md` holds the measurements.
+
 Both bundles also install `confluence.Macros()`, named directives for the
 core Confluence macros. The generic `::extension{key type parameters}`
 directive can express each one, but the `parameters` attribute carries a

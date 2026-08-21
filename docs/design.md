@@ -174,6 +174,59 @@ for the product-specific shapes that a per-node decode hook cannot reach.
 Such a shape moves content between a node and the attributes of the
 parent.
 
+## Confluence read-back: a repair with the storage body as the oracle
+
+Confluence stores a page in its own storage format. A page read as
+`atlas_doc_format` is therefore a conversion, and the conversion loses
+information that the submitted document carried. A tool that compares a
+local document against the page it published reports differences that
+nobody made.
+
+Two losses were measured on a live page on 2026-08-21, by comparing the
+two body formats of one page version:
+
+- The `code` mark on link text disappears. Storage holds
+  `<code><a href="X">errors.Is</a></code>`. The ADF read gives a text
+  node with the link mark alone.
+- An internal page link loses its title slug. Storage holds an `ac:link`
+  around an `ri:page` that carries the page title. The ADF read gives
+  `…/pages/443514894`, without the `/BIN+Lookup+Knowledge+Base` that the
+  submitted href held.
+
+`confluence.RepairReadBack` repairs both from the storage body of the
+same page version. The two bodies describe one page, so the storage body
+holds what the ADF read dropped. The repair is additive: it adds a mark
+and it lengthens an href, and it removes nothing.
+
+The alternative is a conversion and not a repair. Confluence converts a
+storage body to ADF through its own `/contentbody/convert` endpoint. That
+route restores the code mark, but it replaces an authored anchor link
+with an `__confluenceADFMigrationUnsupportedContentInternalExtension__`
+placeholder. It loses more than it repairs.
+
+The repair pairs the two sides by key, and position for position inside a
+key. The code-mark side keys on the href and the link text, because
+storage writes one `<a>` for each ADF text node. The page-slug side keys
+on the link text alone, because an `ri:page` carries a page title and no
+page id. A key whose two sides hold a different number of links is
+skipped whole. The repair therefore never guesses, which is the rule
+`LiftAnchors` follows as well. A link that the two formats do not
+describe one for one keeps the shape that the read gave it.
+
+The page title comes from `ri:content-title` and not from the
+`__confluenceMetadata` attribute of the link mark. No link mark of the
+measured page carries that attribute.
+
+The slug rule was measured against the canonical `webui` link of 1237
+live pages, with no mismatch. Every character outside `[A-Za-z0-9._-]`
+becomes a space, runs of whitespace collapse, and the words join with
+`+`. A title is reduced and not URL-encoded, so `Verträge` gives
+`Vertr+ge`.
+
+`RepairReadBack` is not one of the transforms that `MarkdownOptions`
+installs. The storage body is per-page data and not an option, so the
+caller passes it at the call site.
+
 ## Table column alignment: a carrier with no lowering
 
 GFM column alignment (`|:--|--:|:-:|`) is the same shape one layer
