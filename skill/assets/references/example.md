@@ -23,7 +23,7 @@ alerts show in :color[red]{color="#ff5630"} on :bg[highlight]{color="#fff0b3"},
 and queen marks in :u[underline].
 
 Rooftop rules:\
-no open smoker near the door, and new keepers sign the rota as
+no open smoker near the door, and new keepers sign the [rota](#rota) as
 :placeholder[your name here…].
 
 - [ ] assemble the new brood boxes
@@ -67,7 +67,7 @@ if colony.strength() > SPLIT_THRESHOLD:
     apiary.split(colony)
 ```
 
-## Inspection rota
+## Inspection rota {#rota}
 
 ::colwidths[120,80,220]
 

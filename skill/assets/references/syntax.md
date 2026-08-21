@@ -4,8 +4,8 @@ The base dialect is **CommonMark + GFM**: pipe tables (padded to column
 width, plus cell merging — see [Tables](#tables)), task lists (`- [ ]` /
 `- [x]`), strikethrough (`~~text~~`), and autolink literals. On top of
 that: YAML `---` frontmatter (split off before parsing, re-emitted
-verbatim by the formatter), decision lists, and the directive dialect
-below.
+verbatim by the formatter), decision lists, heading anchors
+(`## Title {#id}`), and the directive dialect below.
 
 ## Directive levels
 
@@ -153,6 +153,50 @@ column widths (one entry per **visual** column).
 
 A header row is synthesized when the ADF table has none.
 
+## Heading anchors
+
+A heading can carry an explicit anchor id as a trailing `{#id}` — the
+pandoc / remark-heading-id spelling:
+
+```markdown
+## Release process {#release}
+
+Link to it with [the process](#release).
+```
+
+The parse is deliberately narrow, so that every accepted form renders
+back byte-identically:
+
+- The id must match `[0-9A-Za-z][0-9A-Za-z._-]*`: it opens with an ASCII
+  alphanumeric and continues in alphanumerics, `-`, `_`, `.`. A `:` would
+  open a text directive and a `*`, `` ` `` or `[` an inline span, so an id
+  containing one is not plain text at all and cannot be written back.
+- It must be separated from the heading text by a space or tab, or be the
+  heading's whole content (`## {#solo}` — an anchor-only heading, as in
+  pandoc).
+- It must end the heading line.
+
+Anything else stays **literal text**: `{#}`, `{#a b}`, `{.class}`,
+`{#a b=c}`, `{bare}`, `## Title{#x}` (no space), and an escaped brace
+`## Title \{#lit}`. Escaping is how a literal `{#…}` is written on
+purpose; the renderer adds the backslash itself when heading text would
+otherwise end in the anchor shape.
+
+**ADF has no platform-neutral anchor.** The id rides through the
+conversion as a synthetic attribute that never reaches the wire
+(`adf.Heading.Anchor`; `adf.IsWireSafe` reports one left unresolved), and
+the host product's addon decides what it becomes:
+
+| Host                         | Encode                                                         | Decode                          |
+| ---------------------------- | -------------------------------------------------------------- | ------------------------------- |
+| `confluence.MarkdownOptions` | lowered to the anchor macro inside the heading                 | lifted back to `{#id}`          |
+| `jira.MarkdownOptions`       | dropped, with a `heading-anchor-dropped` diagnostic per anchor | —                               |
+| neither                      | attribute stays (not wire-safe)                                | attribute becomes `{#id}` again |
+
+Confluence anchor names that the `{#id}` surface cannot spell (a space,
+say), and headings carrying more than one anchor, stay as
+`:anchor[name]` macro directives instead — see the macro sugar below.
+
 ## Escaping
 
 - Rendering escapes markdown syntax characters exactly like
@@ -207,6 +251,12 @@ the `[label]`:
 | `:::excerpt{name="…"}` + body | `excerpt`         | Excerpt definition (bodied form) |
 | `::excerptInclude[Page]`      | `excerpt-include` | The label is the target page     |
 | `::includePage[Page]`         | `include`         | The label is the target page     |
+| `:anchor[name]`               | `anchor`          | A link target outside a heading  |
+
+Prefer the `{#id}` heading suffix over `:anchor[name]` on a heading — the
+suffix is what a heading anchor lowers to and lifts back from. `:anchor`
+carries the anchors that sit elsewhere, where there is no heading for a
+suffix to attach to.
 
 Each name also works inline (`:pagetree{…}`) and as a container
 (`:::toc`); the ADF node type decides the form on the way back. Do not

@@ -165,3 +165,36 @@ func TestUnsupportedKinds_WiredIntoMarkdownOptions(t *testing.T) {
 		}
 	}
 }
+
+// TestHeadingAnchors_DroppedForJira pins the Jira half of the heading
+// anchor pair: Jira has no anchor construct, so a "## Title {#id}" suffix
+// cannot be lowered — the anchor drops with a diagnostic naming it, the
+// heading text survives, and the document is wire-safe.
+func TestHeadingAnchors_DroppedForJira(t *testing.T) {
+	var diags []convert.Diagnostic
+	opts := append(MarkdownOptions("", ExpandExplicit),
+		adfast.WithDiagnostics(func(d convert.Diagnostic) { diags = append(diags, d) }))
+
+	doc := adfast.ToADF(adfast.FromMarkdown("## Title {#my-anchor}\n\n### Other {#second}\n", opts...), opts...)
+	if len(diags) != 2 ||
+		diags[0].Code != convert.CodeHeadingAnchorDropped ||
+		diags[0].Message != "heading anchor {#my-anchor} is not available in jira" ||
+		diags[1].Message != "heading anchor {#second} is not available in jira" {
+		t.Fatalf("expected one heading-anchor-dropped diagnostic per anchor: %+v", diags)
+	}
+	if !adf.IsWireSafe(doc) {
+		t.Error("document with dropped anchors is not wire-safe")
+	}
+	// The heading text is untouched; only the anchor is gone.
+	md := adfast.ToMarkdown(adfast.FromADF(doc, RenderOptions()...), RenderOptions()...)
+	if md != "## Title\n\n### Other\n" {
+		t.Errorf("heading text after drop: %q", md)
+	}
+
+	// A document with no anchors reports nothing.
+	diags = nil
+	adfast.ToADF(adfast.FromMarkdown("## Plain\n", opts...), opts...)
+	if len(diags) != 0 {
+		t.Fatalf("anchor-free document must not report: %+v", diags)
+	}
+}

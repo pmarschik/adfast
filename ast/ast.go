@@ -112,10 +112,10 @@ func (*Paragraph) Kind() string { return "paragraph" }
 
 // Heading is an ATX/setext heading.
 type Heading struct {
+	ID       string
 	Children []Node
+	Depth    int
 	BlockSpacing
-	// Depth is the heading level (1–6).
-	Depth int
 }
 
 // Kind implements Node.

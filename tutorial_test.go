@@ -74,6 +74,7 @@ func TestReadmeTutorialRoundTrips(t *testing.T) {
 		":::frame", ":::syncBlock{", "::syncBlock{",
 		":::indent{2}", ":::end", ":::dataConsumer{", ":::fragment{",
 		":::media[hive stand sketch]", ":media{#7c1e0d2a-4b3f-45e8-9a2b-6c5d4e3f2a1b",
+		"## Inspection rota {#rota}", "[rota](#rota)",
 	} {
 		if !strings.Contains(first, want) {
 			t.Errorf("construct lost in round trip: %s", want)

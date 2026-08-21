@@ -90,6 +90,9 @@ var UnsupportedKinds = []string{"blockTaskItem"}
 // "unsupported-code-language" diagnostic when a diagnostics sink is
 // configured; conversion is unchanged), and the product-availability
 // check against UnsupportedKinds (blockTaskItem; see UnsupportedKinds).
+// It also lowers heading anchors — a "## Title {#id}" suffix becomes the
+// anchor macro Confluence stores (see LowerAnchors), which is what makes
+// the encoded document wire-safe.
 //
 // The facade shares one option type, so these compose with RenderOptions
 // and pass to any primitive or to adfast.WithPipelineOptions; each
@@ -100,17 +103,20 @@ func MarkdownOptions(baseURL string) []adfast.Option {
 		adfast.WithCodeLanguages(CodeLanguages),
 		adfast.WithUnsupportedKinds("confluence", UnsupportedKinds),
 		adfast.WithExtensions(Macros()),
+		adfast.WithDocTransforms(LowerAnchors),
 	}
 }
 
 // RenderOptions bundles the Confluence behavior for the decode direction
 // (adfast.FromADF): inline and block smart-link cards pointing at
-// Confluence pages label with the SPACE/pageID key, and the core macros
-// decode to their sugared directives (see Macros). See MarkdownOptions
-// for the encode side.
+// Confluence pages label with the SPACE/pageID key, the core macros
+// decode to their sugared directives (see Macros), and a heading's anchor
+// macro lifts back to its "{#id}" suffix (see LiftAnchors). See
+// MarkdownOptions for the encode side.
 func RenderOptions() []adfast.Option {
 	return []adfast.Option{
 		adfast.WithSmartLinks(SmartLinks("")),
 		adfast.WithExtensions(Macros()),
+		adfast.WithADFTransforms(LiftAnchors),
 	}
 }

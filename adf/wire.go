@@ -17,12 +17,16 @@ package adf
 // IsWireSafe reports whether the document is free of the synthetic,
 // never-wire constructs the markdown conversion can produce:
 //
-//   - the ColwidthsHint placeholder kind, and
-//   - the "tight" list flag written by WithPreserveListTightness.
+//   - the ColwidthsHint placeholder kind,
+//   - the "tight" list flag written by WithPreserveListTightness, and
+//   - the "anchor" heading attribute (ast.Heading.ID; ADF has no neutral
+//     anchor construct, so a product addon must lower or drop it —
+//     confluence.MarkdownOptions lowers it to an anchor-macro
+//     inlineExtension, jira.MarkdownOptions drops it with a diagnostic).
 //
-// Documents produced by the canonical (non-tightness-preserving)
-// conversion are always wire-safe. A false result means tightness
-// preservation was enabled (or a placeholder was built by hand) and the
+// Documents produced by the canonical conversion of markdown without
+// heading anchors, and without tightness preservation, are always
+// wire-safe. A false result means one of the above is present and the
 // document must not be submitted as-is; see StripSynthetic.
 func IsWireSafe(doc Doc) bool {
 	for _, root := range doc.Content {
@@ -40,6 +44,8 @@ func nodeWireSafe(n Node) bool {
 	switch t := n.(type) {
 	case *ColwidthsHint:
 		return false
+	case *Heading:
+		return t.Anchor == ""
 	case *BulletList:
 		return t.Tight == nil
 	case *OrderedList:
@@ -50,7 +56,10 @@ func nodeWireSafe(n Node) bool {
 
 // StripSynthetic returns a copy of the document with every synthetic,
 // never-wire construct removed: ColwidthsHint nodes are dropped (they
-// have no wire form) and the "tight" flag is cleared. The result
+// have no wire form) and the "tight" and heading "anchor" flags are
+// cleared. Clearing an anchor loses it silently — a product addon that
+// can express anchors should lower them first (see
+// confluence.MarkdownOptions). The result
 // satisfies IsWireSafe. The rewrite is copy-on-write; the input
 // document is never mutated.
 func StripSynthetic(doc Doc) Doc {
@@ -93,6 +102,13 @@ func stripNode(n Node) (Node, bool) {
 		}
 	}
 	switch t := n.(type) {
+	case *Heading:
+		if t.Anchor != "" {
+			ensure()
+			if h, ok := n.(*Heading); ok {
+				h.Anchor = ""
+			}
+		}
 	case *BulletList:
 		if t.Tight != nil {
 			ensure()

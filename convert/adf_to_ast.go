@@ -390,7 +390,9 @@ func (v *adfBlockVisitor) VisitParagraph(n *adf.Paragraph) ast.Node {
 // VisitHeading implements adf.Visitor.
 func (v *adfBlockVisitor) VisitHeading(n *adf.Heading) ast.Node {
 	level := min(max(n.Level, 1), 6)
-	return &ast.Heading{Depth: level, Children: convertAdfInlines(n.Content, v.rc)}
+	// Anchor is the synthetic never-wire attribute (see adf.Heading); a
+	// product addon lifts its own anchor construct into it before decode.
+	return &ast.Heading{Depth: level, ID: n.Anchor, Children: convertAdfInlines(n.Content, v.rc)}
 }
 
 // VisitRule implements adf.Visitor.

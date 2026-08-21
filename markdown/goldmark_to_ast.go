@@ -406,7 +406,9 @@ func convertGoldmarkBlock(node gast.Node, src []byte, lc *liftCtx, depth int) as
 		return &ast.Paragraph{Children: convertGoldmarkInlines(n, src, lc, depth+1)}
 
 	case *gast.Heading:
-		return &ast.Heading{Depth: n.Level, Children: convertGoldmarkInlines(n, src, lc, depth+1)}
+		// The anchor strip mutates n, so it must precede the inline read.
+		id := splitHeadingAnchor(n, src)
+		return &ast.Heading{Depth: n.Level, ID: id, Children: convertGoldmarkInlines(n, src, lc, depth+1)}
 
 	case *gast.ThematicBreak:
 		return &ast.ThematicBreak{}

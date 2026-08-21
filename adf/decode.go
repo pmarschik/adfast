@@ -220,7 +220,7 @@ func decodeBlockKind(typ string, r *attrReader, content []Node) Node {
 	case "paragraph":
 		return &Paragraph{Content: content}
 	case "heading":
-		return &Heading{Level: r.intVal("level"), Content: content}
+		return &Heading{Level: r.intVal("level"), Anchor: r.str("anchor"), Content: content}
 	case "blockquote":
 		return &Blockquote{Content: content}
 	case "codeBlock":

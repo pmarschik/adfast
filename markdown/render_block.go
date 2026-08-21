@@ -186,6 +186,25 @@ func (v *blockRenderVisitor) VisitTextDirective(n *ast.TextDirective) struct{} {
 func (r *mdRenderer) renderHeading(b *strings.Builder, node *ast.Heading) {
 	level := min(max(node.Depth, 1), 6)
 	inner := r.renderInlineStringFrom(node.Children, ' ')
+	// The {#id} anchor trails the heading text, separated by a space
+	// (nothing to separate it from when the heading is anchor-only).
+	// Without one, a heading whose own text ends in the anchor shape must
+	// escape its brace or it would re-parse as an anchor.
+	// An id outside ast.HeadingIDPattern has no writable suffix form (it
+	// would not parse back as an anchor), so it drops here rather than
+	// rendering a broken one — the same way ToADF drops a frontmatter node
+	// that has no ADF form. Only a hand-built or decoded tree can hold one;
+	// the parser cannot produce it.
+	suffix := ""
+	switch {
+	case ast.ValidHeadingID(node.ID):
+		suffix = " {#" + node.ID + "}"
+		if inner == "" {
+			suffix = suffix[1:]
+		}
+	default:
+		inner = escapeHeadingAnchorTail(inner)
+	}
 	// ATX headings cannot span lines. A heading containing a hard break
 	// falls back to the setext form for levels 1–2 (remark does the
 	// same); deeper levels encode the line ending as a character
@@ -197,6 +216,7 @@ func (r *mdRenderer) renderHeading(b *strings.Builder, node *ast.Heading) {
 				underline = "-"
 			}
 			b.WriteString(inner)
+			b.WriteString(suffix)
 			b.WriteString("\n")
 			b.WriteString(underline)
 			b.WriteString("\n")
@@ -209,11 +229,13 @@ func (r *mdRenderer) renderHeading(b *strings.Builder, node *ast.Heading) {
 	b.WriteString(strings.Repeat("#", level))
 	b.WriteString(" ")
 	// A trailing '#' would re-parse as an ATX closing sequence; remark
-	// escapes the final one.
-	if strings.HasSuffix(inner, "#") {
+	// escapes the final one. An anchor suffix already ends the line, so
+	// the '#' is no longer final and needs no escape.
+	if suffix == "" && strings.HasSuffix(inner, "#") {
 		inner = inner[:len(inner)-1] + `\#`
 	}
 	b.WriteString(inner)
+	b.WriteString(suffix)
 	b.WriteString("\n")
 }
 

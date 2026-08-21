@@ -16,10 +16,16 @@ import (
 // helper), which owns the decode-failed/unknown-node/unknown-mark/
 // unknown-attr diagnostics.
 //
-// Options read: WithExtensions, WithSmartLinks (KeyFromURL card labels),
-// WithMediaAssets or WithMediaAssetResolver, and WithDiagnostics (the
-// raw-node projection notice).
+// Options read: WithADFTransforms (applied to the document first),
+// WithExtensions, WithSmartLinks (KeyFromURL card labels), WithMediaAssets
+// or WithMediaAssetResolver, and WithDiagnostics (the raw-node projection
+// notice).
 func FromADF(doc adf.Doc, opts ...Option) ast.Node {
 	o := newOptions(opts)
+	// Caller transforms first: they rewrite product-specific shapes into
+	// the ones the conversion understands (see WithADFTransforms).
+	for _, t := range o.adfTransforms {
+		doc = t(doc)
+	}
 	return convert.FromADF(doc, o.convertOptions()...)
 }

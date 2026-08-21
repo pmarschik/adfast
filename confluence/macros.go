@@ -17,6 +17,7 @@ import (
 //	:::excerpt … :::                   ⇄ bodiedExtension  (excerpt)
 //	::excerptInclude[Page] / inline    ⇄ extension        (excerpt-include)
 //	::includePage[Page]                ⇄ extension        (include)
+//	:anchor[name]                      ⇄ inlineExtension  (anchor)
 //
 // Each name registers in all three directive positions (leaf, text,
 // container) because the same macro key genuinely appears as a block, an
@@ -53,6 +54,11 @@ var macroSpecs = map[string]macroSpec{
 	"excerpt":        {key: "excerpt", schemaVersion: "1", title: "Excerpt"},
 	"excerptInclude": {key: "excerpt-include", schemaVersion: "1", title: "Insert excerpt"},
 	"includePage":    {key: "include", schemaVersion: "1", title: "Include Page"},
+	// The anchor macro doubles as the lowering of a heading's {#id}
+	// suffix; the directive form carries the anchors that appear outside a
+	// heading, where there is nothing for a suffix to attach to (see
+	// anchors.go).
+	"anchor": {key: "anchor", schemaVersion: "1", title: "Anchor"},
 }
 
 // macroNames is the reverse index (extensionKey → directive name), built

@@ -717,7 +717,7 @@ func (fn *normalizer) encodeBlockNode(node ast.Node) []encItem {
 		return normalItem(&ast.Paragraph{Children: fn.normalizeInlines(v.Children)})
 	case *ast.Heading:
 		level := min(max(v.Depth, 1), 6)
-		return normalItem(&ast.Heading{Depth: level, Children: fn.normalizeInlines(v.Children)})
+		return normalItem(&ast.Heading{Depth: level, ID: v.ID, Children: fn.normalizeInlines(v.Children)})
 	case *ast.ThematicBreak:
 		return normalItem(&ast.ThematicBreak{})
 	case *ast.Blockquote:

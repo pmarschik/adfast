@@ -49,6 +49,13 @@ const (
 	// treat it as a blocking error before a Jira-targeted push). Emitted
 	// by ToADF, only when a set is configured. See WithUnsupportedKinds.
 	CodeUnsupportedInProduct = "unsupported-in-product"
+	// CodeHeadingAnchorDropped reports a heading's {#id} anchor dropped
+	// because the target product has no anchor construct to lower it to
+	// (see WithoutHeadingAnchors). One diagnostic fires per dropped
+	// anchor, naming the id, because each one is a link target the
+	// rendered page will not have. The heading text is unaffected.
+	// Emitted by ToADF, only when the option is set.
+	CodeHeadingAnchorDropped = "heading-anchor-dropped"
 	// CodeBeforeEncodeFailed reports a BeforeEncode hook error downgraded
 	// to a diagnostic by the infallible facade conversion.
 	CodeBeforeEncodeFailed = "before-encode-failed"

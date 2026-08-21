@@ -176,9 +176,16 @@ fixture corpus, and both are fuzzed continuously
 (`FuzzFormatSemanticsPreserved`).
 
 Canonical `ToADF(FromMarkdown(md))` output is wire-safe unless
-`WithPreserveListTightness` is enabled. Run `adf.IsWireSafe` as the guard
+`WithPreserveListTightness` is enabled, or the source carries a `{#id}`
+heading anchor. Each of these two writes a synthetic attribute, and ADF
+has no wire form for it. Run `adf.IsWireSafe` as the guard
 before you submit a document of uncertain origin, and use
 `adf.StripSynthetic` as the matching cleanup.
+
+For a heading anchor, the product bundles are the better answer.
+`confluence.MarkdownOptions` lowers the anchor to the anchor macro of
+Confluence. `jira.MarkdownOptions` drops the anchor and reports a
+`heading-anchor-dropped` diagnostic.
 
 Media and attachment resolution is pluggable through `WithMediaAssets`,
 `WithAssetIDResolver`, and `WithImageDimsResolver`. If the collection of
@@ -203,7 +210,12 @@ the destination of an ordinary labelled link at the ADF boundary.
 `Encode` maps a Markdown href to its product-facing form, and `Decode`
 restores the stable Markdown href. A resolver miss keeps the original
 destination, and cards and media are unaffected. `WithDocTransforms`
-hooks document-level rewrites. The [`jira/`](jira/) submodule bundles the
+hooks document-level rewrites on the encode side. `WithADFTransforms` is
+the decode-side mirror of this option. Both exist for the
+product-specific shapes that a per-node hook cannot reach. Such a shape
+moves content between a node and the attributes of the parent, as
+`confluence.LowerAnchors` and `confluence.LiftAnchors` do.
+The [`jira/`](jira/) submodule bundles the
 Jira conventions. `jira.MarkdownOptions` and `jira.RenderOptions` each
 return a `[]adfast.Option` slice. Pass the encode-side bundle to both
 halves of the md → adf composition, and the decode-side bundle to both
@@ -363,7 +375,9 @@ recovered situation flows through a diagnostics sink instead:
 - a recovered parser panic (`parse-recovered`),
 - an unknown ADF node that reaches the markdown projection (`raw-node`),
 - a retired `:fontSize` that is dropped to plain text
-  (`fontsize-dropped`).
+  (`fontsize-dropped`),
+- a heading anchor dropped because the target product has no anchor
+  construct (`heading-anchor-dropped`, from `WithoutHeadingAnchors`).
 
 One `WithDiagnostics(func(convert.Diagnostic))` wires the sink into
 whichever primitive emits: parse notices on `FromMarkdown`, encode
@@ -416,11 +430,12 @@ to column width, with the cell merging of
 A cell that holds `>` only merges into the cell to its right, and a cell
 that holds `^` only extends the cell above. Literal `>` and `^` cell
 content is escaped. GFM also gives task lists (`- [ ]` and `- [x]`),
-strikethrough, and autolink literals. On top of that come three things.
+strikethrough, and autolink literals. On top of that come four things.
 The first is decision lists, where a `::decisions` leaf directive marks
 the plain bullet list that follows it, exactly like `::colwidths` marks
 the table that follows. The second is YAML frontmatter, which is
-pluggable through `WithFrontmatterProvider`. The third is the directive
+pluggable through `WithFrontmatterProvider`. The third is heading anchors,
+`## Title {#my-anchor}`, the pandoc spelling. The fourth is the directive
 dialect below: `:name[label]{attrs}` inline, `::name[label]{attrs}` as a
 block leaf, and `:::name … :::` as a container. Everything below
 round-trips losslessly through ADF.
@@ -518,6 +533,17 @@ unknown leaf drops, and an unknown text directive flattens to text.
   `![alt](assets/shot.png)`, and it maps back to its media id on encode.
   Anything richer keeps the `::media` directive: a PDF, resized media, or
   a non-default layout.
+- **Heading anchors** — `## Title {#my-anchor}` gives the heading an
+  explicit anchor id. This is the spelling of pandoc and of
+  remark-heading-id. The id must match `[0-9A-Za-z][0-9A-Za-z._-]*`, and
+  a space must separate it from the heading text. Any other form stays
+  literal text, and an escaped brace (`## Title \{#lit}`) always stays
+  literal. ADF has no platform-neutral anchor, so the id rides as a
+  synthetic never-wire attribute (`adf.Heading.Anchor`) that the addon of
+  the host product resolves. `confluence.MarkdownOptions` lowers it to
+  the anchor macro of Confluence, `confluence.RenderOptions` lifts it
+  back, and `jira.MarkdownOptions` drops it with a
+  `heading-anchor-dropped` diagnostic.
 - **Issue links** — a link whose text equals the resolver-derived key,
   for example `[ABC-123](https://…/browse/ABC-123)`, becomes an
   inlineCard.
@@ -554,7 +580,7 @@ An `info` panel frames helpful context in a colored callout. Everything inside i
 Text marks add formatting inline: **bold** and _italic_ for emphasis, ~~three hives~~ struck through for a retraction, and `varroa` in code for a literal term. A ratio reads :sub[1] as subscript to :sup[1] as superscript; :color[red]{color="#ff5630"} sets the text color and :bg[highlight]{color="#fff0b3"} the background; and :u[underline] underlines a run.
 
 A trailing backslash forces a hard line break:\
-so this clause starts on its own line. New keepers sign the rota where a :placeholder[your name here…] marks an empty template field to fill in later.
+so this clause starts on its own line. New keepers sign the [rota](#rota) where a :placeholder[your name here…] marks an empty template field to fill in later — that link points at a heading's explicit anchor id, written as a `{#rota}` suffix on the heading itself.
 
 A task list tracks work with checkboxes — `[ ]` is open and `[x]` is done:
 
@@ -600,7 +626,7 @@ if colony.strength() > SPLIT_THRESHOLD:
     apiary.split(colony)
 ```
 
-## Inspection rota
+## Inspection rota {#rota}
 
 `::colwidths` pins each column's pixel width for the table that follows; the table itself supports spans, where `>` merges a cell leftward (colspan) and `^` merges it upward (rowspan):
 
@@ -791,7 +817,7 @@ one, so the check would be moot.
 | doc                                           | ✓    | ✓          | converted      | document root                                                                                                                                                                                                                                                    |
 | paragraph                                     | ✓    | ✓          | converted      | paragraph                                                                                                                                                                                                                                                        |
 | text                                          | ✓    | ✓          | converted      | plain text carrying the marks below                                                                                                                                                                                                                              |
-| heading                                       | ✓    | ✓          | converted      | `#`–`######`                                                                                                                                                                                                                                                     |
+| heading                                       | ✓    | ✓          | converted      | `#`–`######`, with a trailing `{#id}` as the explicit anchor id (see Related conventions)                                                                                                                                                                        |
 | blockquote                                    | ✓    | ✓          | converted      | `>`                                                                                                                                                                                                                                                              |
 | rule                                          | ✓    | ✓          | converted      | `---`                                                                                                                                                                                                                                                            |
 | codeBlock                                     | ✓    | ✓          | converted      | fenced code block; fence grows past embedded backtick runs; language survives                                                                                                                                                                                    |

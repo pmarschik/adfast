@@ -9,8 +9,9 @@ package adf
 //     zero value (an empty-but-present "collection" differs from an
 //     absent one, taskItem always carries localId "").
 //   - The Tight list field maps to the synthetic "tight" attribute
-//     WithPreserveListTightness stores; it is internal-only and never
-//     appears in documents sent to Jira (see IsWireSafe).
+//     WithPreserveListTightness stores, and the Heading Anchor field to
+//     the synthetic "anchor" attribute; both are internal-only and never
+//     appear in documents sent to Jira (see IsWireSafe).
 
 // Paragraph is an ADF paragraph block.
 type Paragraph struct {
@@ -20,8 +21,17 @@ type Paragraph struct {
 }
 
 // Heading is an ADF heading block; Level is the "level" attribute (1–6).
+//
+// Anchor is the synthetic "anchor" attribute carrying a markdown heading's
+// explicit {#id} (ast.Heading.ID). ADF has no platform-neutral anchor
+// construct — Confluence spells one as an anchor-macro inlineExtension
+// inside the heading content, and Jira has none at all — so this is a
+// never-wire carrier (see IsWireSafe) that a product addon must lower or
+// drop before submission. It is NOT heading.attrs.localId: that attribute
+// is a node-identity UUID and creates no link target.
 type Heading struct {
 	Extra   map[string]any
+	Anchor  string
 	Content []Node
 	Marks   []Mark
 	Level   int

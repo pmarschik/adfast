@@ -42,6 +42,9 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 		content = []adf.Node{&adf.Paragraph{Content: []adf.Node{}}}
 	}
 	doc := adf.Doc{Type: "doc", Version: 1, Content: content}
+	if cfg.noHeadingAnchors {
+		doc = c.dropHeadingAnchors(doc, cfg.noAnchorsProduct)
+	}
 	c.checkUnsupportedKinds(doc)
 	return doc
 }
@@ -57,6 +60,28 @@ type astConverter struct {
 	unsupportedKind     string
 	preserveTight       bool
 	preserveLocalImages bool
+}
+
+// dropHeadingAnchors clears every heading's synthetic anchor attribute and
+// reports each one (see WithoutHeadingAnchors). It runs before the
+// unsupported-kinds check so that check sees the document as it will be
+// submitted.
+func (c *astConverter) dropHeadingAnchors(doc adf.Doc, product string) adf.Doc {
+	return adf.Transform(doc, func(n adf.Node) ([]adf.Node, bool) {
+		h, ok := n.(*adf.Heading)
+		if !ok || h.Anchor == "" {
+			return nil, false
+		}
+		if c.diagnostics != nil {
+			c.diagnostics(Diagnostic{
+				Code:    CodeHeadingAnchorDropped,
+				Message: "heading anchor {#" + h.Anchor + "} is not available in " + product,
+			})
+		}
+		dropped := *h
+		dropped.Anchor = ""
+		return []adf.Node{&dropped}, true
+	})
 }
 
 // checkUnsupportedKinds walks the produced document over both nodes and
@@ -382,6 +407,7 @@ func (v *astBlockVisitor) VisitHeading(n *ast.Heading) []adf.Node {
 	level := min(max(n.Depth, 1), 6)
 	return singleBlock(&adf.Heading{
 		Level:   level,
+		Anchor:  n.ID,
 		Content: v.c.convertInlines(n.Children),
 	})
 }

@@ -140,6 +140,7 @@ func blockNodeAttrs(n Node, a attrs) (map[string]any, bool) {
 		extra = t.Extra
 	case *Heading:
 		a.num("level", t.Level)
+		a.str("anchor", t.Anchor)
 		extra = t.Extra
 	case *Blockquote:
 		extra = t.Extra

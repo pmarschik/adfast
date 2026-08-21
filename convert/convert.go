@@ -81,7 +81,9 @@ type config struct {
 	codeLanguages         map[string]bool
 	unsupportedKinds      map[string]bool
 	unsupportedProduct    string
+	noAnchorsProduct      string
 	extensions            []extension.Registration
+	noHeadingAnchors      bool
 	preserveListTightness bool
 	preserveLocalImages   bool
 	incrementListMarkers  bool
@@ -206,6 +208,29 @@ func WithUnsupportedKinds(product string, kinds []string) Option {
 		}
 		c.unsupportedProduct = product
 		c.unsupportedKinds = set
+	}
+}
+
+// WithoutHeadingAnchors declares that the target product has no heading
+// anchor construct, so ToADF drops every heading's {#id} anchor and
+// reports each one as a "heading-anchor-dropped" diagnostic naming the
+// product (see CodeHeadingAnchorDropped).
+//
+// The anchor is a synthetic attribute with no wire form of its own (see
+// adf.Heading.Anchor and adf.IsWireSafe): SOMETHING has to resolve it
+// before submission, either by lowering it to the product's own construct
+// (confluence.LowerAnchors) or by dropping it here. This is the second
+// half of that pair, and unlike WithUnsupportedKinds it does change the
+// output — the alternative is a document the product rejects or silently
+// mangles.
+//
+// The mechanism is product-neutral: the caller owns the label and the
+// judgement that the product lacks anchors (jira.MarkdownOptions supplies
+// both). Read by ToADF.
+func WithoutHeadingAnchors(product string) Option {
+	return func(c *config) {
+		c.noHeadingAnchors = true
+		c.noAnchorsProduct = product
 	}
 }
 

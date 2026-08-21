@@ -105,6 +105,75 @@ directive parses but drops to plain text on encode, and a legacy
 diagnostic fires instead. An `unsupported-in-product` check for a kind
 that can never be produced would be moot.
 
+## Heading anchors: one markdown surface, a synthetic carrier, two lowerings
+
+A heading anchor is the `## Title {#my-anchor}` surface, which pandoc and
+remark-heading-id also use. This construct is the only one where the
+markdown surface is universal but the ADF is not. **ADF has no
+heading-anchor attribute.** Confluence spells an anchor as the anchor
+macro. The macro is an `inlineExtension` with the `extensionKey`
+`"anchor"`, and it sits inside the content of the heading. The unnamed
+macro parameter is the name that links use as their URL fragment.
+
+A live page gave this shape on 2026-08-21, through a read-only
+measurement. The anchor is **not** `heading.attrs.localId`. adf-schema
+documents that attribute as an optional UUID for node identity. It
+renders to DOM as `data-local-id`, it creates no link target, and live
+pages carry real UUIDs in it. Jira has no anchor construct at all.
+
+Three layers therefore divide the work:
+
+- The **root module** owns the markdown surface and a neutral carrier.
+  The `{#id}` suffix cannot come from an addon, because `extension/`
+  extends the _directive_ forms only. The parse strip and its exact
+  render inverse live in `markdown/`, and `ast.Heading.ID` carries the id
+  through the pivot AST. On the ADF side the id lands in
+  `adf.Heading.Anchor`. This attribute is **synthetic and never-wire**,
+  exactly as `ColwidthsHint` and the `tight` list attribute already are.
+  It holds the anchor while the document is still product-neutral, and
+  something must resolve it before submission.
+- The **`confluence` module** lowers and lifts. `LowerAnchors` moves the
+  attribute into an anchor-macro `inlineExtension` at the end of the
+  heading content. `LiftAnchors` is the inverse. `MarkdownOptions` wires
+  the first one as a document transform, and `RenderOptions` wires the
+  second one as an ADF transform. A Confluence composition therefore
+  never sees the synthetic attribute.
+- The **`jira` module** drops. `jira.MarkdownOptions` wires
+  `convert.WithoutHeadingAnchors("jira")`, which clears each anchor and
+  emits one `heading-anchor-dropped` diagnostic per id. The
+  `unsupported-in-product` diagnostic of the previous section leaves the
+  output unchanged, but this one _does_ change it. The alternative is a
+  document that the product rejects or silently mangles. The option
+  itself is product-neutral, because the caller owns the label and the
+  caller owns the judgement that the product has no anchors. The core
+  therefore holds the diagnostics sink and no product knowledge.
+
+The round trip adds two constraints. The first constraint is the narrow
+id grammar. `ast.HeadingIDPattern` is the auto-id charset of pandoc:
+alphanumerics, `-`, `_` and `.`, with an alphanumeric first character. A
+`:` opens a text directive, and a `*`, a `` ` `` or a `[` opens an
+inline span. An id with one of these characters cannot reach the renderer
+as plain text. `ast.ValidHeadingID` is the single gate that the parser,
+the renderer and the Confluence lift all read, which keeps the three
+exact mirrors of each other.
+
+The second constraint is that the lift must **decline** in two cases. It
+never guesses. A heading with two anchor macros declines, and a name
+outside the grammar declines. Such a heading keeps its macros and decodes
+through the `:anchor[name]` directive sugar, which is lossless but less
+pretty. The lift drops one parameter instead of a decline. That parameter
+is `legacyAnchorId` (`"<PageTitle>-<name>"`), which comes from a page
+title that the document does not carry and that Confluence regenerates.
+
+`LiftAnchors` also needed a decode-side seam, and no such seam existed.
+`WithDocTransforms` runs after the encode in `ToADF`, and
+`WithASTTransforms` runs in the prettier mode of `ToMarkdown` only.
+`WithADFTransforms` is the mirror of the first one. It applies caller
+transforms to the `adf.Doc` before `FromADF` decodes it. The seam exists
+for the product-specific shapes that a per-node decode hook cannot reach.
+Such a shape moves content between a node and the attributes of the
+parent.
+
 ## Rendering compatibility
 
 The markdown renderer is measured against remark-stringify, and against

@@ -31,12 +31,15 @@ type options struct {
 	printWidth          *int
 	resolveImageDims    convert.ImageDimsResolver
 	resolveAssetID      convert.AssetIDResolver
-	codeLanguages       []string
+	noAnchorsProduct    string
 	unsupportedKind     string
 	unsupportedKinds    []string
+	codeLanguages       []string
 	docTransforms       []func(adf.Doc) adf.Doc
+	adfTransforms       []func(adf.Doc) adf.Doc
 	astTransforms       []func(ast.Node)
 	extensions          []extension.Registration
+	noHeadingAnchors    bool
 	preserveTight       bool
 	preserveLocalImages bool
 	incrementLists      bool
@@ -67,6 +70,9 @@ func (o *options) convertOptions() []convert.Option {
 	}
 	if len(o.unsupportedKinds) > 0 {
 		out = append(out, convert.WithUnsupportedKinds(o.unsupportedKind, o.unsupportedKinds))
+	}
+	if o.noHeadingAnchors {
+		out = append(out, convert.WithoutHeadingAnchors(o.noAnchorsProduct))
 	}
 	if o.preserveTight {
 		out = append(out, convert.WithPreserveListTightness())
@@ -156,6 +162,24 @@ func WithUnsupportedKinds(product string, kinds []string) Option {
 	}
 }
 
+// WithoutHeadingAnchors declares that the target product has no heading
+// anchor construct (see convert.WithoutHeadingAnchors): ToADF drops every
+// heading's {#id} anchor and reports each one as a
+// "heading-anchor-dropped" diagnostic naming the product.
+//
+// A heading anchor has no wire form of its own, so on the encode side it
+// must either be lowered to the product's own construct — Confluence's
+// anchor macro, which confluence.MarkdownOptions installs — or dropped
+// here. jira.MarkdownOptions supplies this half; Jira has no anchors.
+// Unlike WithUnsupportedKinds this is not diagnostic-only: it changes the
+// document. Read by ToADF.
+func WithoutHeadingAnchors(product string) Option {
+	return func(o *options) {
+		o.noHeadingAnchors = true
+		o.noAnchorsProduct = product
+	}
+}
+
 // WithPreserveListTightness stores the source list tightness on ADF list
 // nodes so that FromADF can reproduce tight lists without blank lines.
 // Read by ToADF. Do NOT use when the resulting ADF is diffed against
@@ -204,6 +228,23 @@ func WithAssetIDResolver(r convert.AssetIDResolver) Option {
 // after ToADF's conversion (e.g. bare issue-key expansion). Read by ToADF.
 func WithDocTransforms(ts ...func(adf.Doc) adf.Doc) Option {
 	return func(o *options) { o.docTransforms = append(o.docTransforms, ts...) }
+}
+
+// WithADFTransforms appends ADF document transforms applied, in order,
+// BEFORE FromADF's conversion — the decode-side mirror of
+// WithDocTransforms. Read by FromADF.
+//
+// It exists for the shapes a per-node decode hook cannot reach: an
+// extension.Registration decodes one ADF node into one AST node, so a
+// product construct that is structurally spread across nodes — a
+// Confluence anchor macro sitting inside a heading's content, which has to
+// leave that content and become an attribute of the heading itself —
+// needs a pass over the whole document first. Rewriting the ADF into the
+// shape the conversion already understands keeps such lowerings in the
+// product addon (see confluence.RenderOptions) instead of the neutral
+// core.
+func WithADFTransforms(ts ...func(adf.Doc) adf.Doc) Option {
+	return func(o *options) { o.adfTransforms = append(o.adfTransforms, ts...) }
 }
 
 // WithMediaAssets maps media ids to downloaded local files so file media

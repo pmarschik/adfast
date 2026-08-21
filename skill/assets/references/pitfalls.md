@@ -62,6 +62,13 @@ vocabulary:
   `placeholder`/`multiBodiedExtension`/`extensionFrame`; `confluence`'s =
   `blockTaskItem`). One per distinct kind; conversion output is unchanged
   (diagnostic-only) — the consumer decides severity.
+- `heading-anchor-dropped` — a heading's `{#id}` anchor was dropped
+  because the target product has no anchor construct, per
+  `WithoutHeadingAnchors` (`jira.MarkdownOptions` wires it; Jira has
+  none). One per dropped anchor, naming the id. Unlike
+  `unsupported-in-product` this is NOT diagnostic-only: the anchor is
+  really gone, so the rendered page has no such link target. Heading text
+  is unaffected.
 - `fontsize-dropped` — a retired `:fontSize` construct was dropped to
   plain text: no Atlassian product supports the mark, so adfast never
   produces it. Emitted on encode (`:fontSize[text]{size}` unwraps to its
@@ -85,18 +92,23 @@ Both the markdown parse and the ADF decode cap recursion at 1024 levels
 of nesting; deeper content is truncated with a `depth-exceeded`
 diagnostic instead of crashing.
 
-## Wire safety: tightness-preserving output is NOT pushable
+## Wire safety: tightness-preserving output and heading anchors are NOT pushable
 
 The prettier md → md formatter — the composition
 `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`
 — is a pure md → ast → md pass and never builds an ADF document, so
 formatter output is just markdown. On the conversion side,
 `WithPreserveListTightness` writes the synthetic `tight` attribute onto
-ADF list nodes — such documents **must never be submitted to the host
-product** — check `adf.IsWireSafe` before submitting a document of
-uncertain origin, and use `adf.StripSynthetic` to clean one up.
-Canonical `ToADF(FromMarkdown(md))` output (without tightness
-preservation) is always wire-safe.
+ADF list nodes, and a `## Title {#id}` heading anchor writes the synthetic
+`anchor` attribute onto heading nodes — such documents **must never be
+submitted to the host product** — check `adf.IsWireSafe` before submitting
+a document of uncertain origin, and use `adf.StripSynthetic` to clean one
+up. Heading anchors have a better answer than stripping: the product
+bundles resolve them, `confluence.MarkdownOptions` by lowering the anchor
+to Confluence's anchor macro and `jira.MarkdownOptions` by dropping it
+with a diagnostic. Encoding through either bundle is wire-safe, as is
+canonical `ToADF(FromMarkdown(md))` output over markdown that has no
+anchors and without tightness preservation.
 
 For a lighter touch than the full formatter, `markdown.WrapProse(md,
 width)` rewraps only contiguous prose paragraphs to a width, operating

@@ -216,9 +216,12 @@ var UnsupportedKinds = []string{
 // "unsupported-code-language" diagnostic when a diagnostics sink is
 // configured; conversion is unchanged), the product-availability check
 // against UnsupportedKinds (an "unsupported-in-product" diagnostic for
-// each Confluence-only construct, again diagnostic-only), and — when
-// keyExpansion is not ExpandExplicit and baseURL is set — bare issue-key
-// expansion (ExpandAuto or ExpandAll).
+// each Confluence-only construct, again diagnostic-only), heading-anchor
+// dropping (Jira has no anchor construct at all — a "## Title {#id}"
+// suffix cannot survive, so the anchor drops with a
+// "heading-anchor-dropped" diagnostic and the heading text is kept), and
+// — when keyExpansion is not ExpandExplicit and baseURL is set — bare
+// issue-key expansion (ExpandAuto or ExpandAll).
 //
 // The facade shares one option type, so these compose with RenderOptions
 // and pass to any primitive or to adfast.WithPipelineOptions; each
@@ -229,6 +232,7 @@ func MarkdownOptions(baseURL string, keyExpansion ExpandMode) []adfast.Option {
 		adfast.WithDocTransforms(ConvertIssueLinksToInlineCards),
 		adfast.WithCodeLanguages(CodeLanguages),
 		adfast.WithUnsupportedKinds("jira", UnsupportedKinds),
+		adfast.WithoutHeadingAnchors("jira"),
 	}
 	if keyExpansion != ExpandExplicit && baseURL != "" {
 		opts = append(opts, adfast.WithDocTransforms(func(d adf.Doc) adf.Doc {

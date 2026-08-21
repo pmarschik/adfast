@@ -1,0 +1,2 @@
+go test fuzz v1
+string("###### T {#a.b-c_d9}\n")
