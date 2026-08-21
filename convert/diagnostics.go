@@ -67,6 +67,16 @@ const (
 	// to a media id is unaffected — it becomes a real mediaInline.
 	// Emitted by ToADF, one per degraded image.
 	CodeInlineImageDegraded = "inline-image-degraded"
+	// CodeFootnoteFlattened reports a GFM footnote flattened because ADF
+	// has no footnote construct: the reference becomes its number as
+	// superscript text, and the definition moves into an ordered list
+	// behind a rule at the end of the document (see the footnote section
+	// of the README). Nothing is lost from the page, but the reference is
+	// no longer a link to its definition — ADF has no anchor to link to —
+	// and the md → ADF → md round trip returns the flattened form, not
+	// the footnote. One diagnostic fires per definition, naming its
+	// label and its number. Emitted by ToADF.
+	CodeFootnoteFlattened = "footnote-flattened"
 	// CodeBeforeEncodeFailed reports a BeforeEncode hook error downgraded
 	// to a diagnostic by the infallible facade conversion.
 	CodeBeforeEncodeFailed = "before-encode-failed"

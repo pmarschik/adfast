@@ -204,6 +204,79 @@ follows the alignment: right-aligned content takes all of the padding in
 front, centred content splits it with the odd space in front, and
 everything else trails it.
 
+## Footnotes: a markdown construct with no ADF anywhere
+
+A GFM footnote is the third shape of the same family, one layer simpler
+again. A heading anchor has a product lowering in Confluence. Table
+alignment has a carrier and no lowering. A footnote has **no ADF node,
+no ADF mark and no product form at all**. The markdown surface is the
+pair `[^label]` and `[^label]: content`, and nothing on the wire can hold
+it. The ADF leg therefore does not carry it — it flattens it.
+
+adfast parses footnotes itself instead of through goldmark's
+`extension.Footnote`. The extension is a renderer for HTML output, and it
+rewrites the document to serve that output: it moves every definition to
+a section at the end, it sorts the definitions by first reference, it adds
+backlinks, and it **deletes** a definition that nothing references. The md
+→ md formatter must do none of these things, because the formatter owes
+the user the document the user wrote. The own parsers keep each definition
+where the source put it, nested containers included, and keep the
+unreferenced one. `^[inline footnote]` is not supported, in either parser:
+it has no definition to keep in place, and no separate identity to
+preserve.
+
+The label rules are micromark's, measured against remark-gfm rather than
+inferred from the specification prose. A label holds no whitespace, not
+even an escaped one. An escaped bracket is part of the label, and a raw
+one ends it. The cap is the link-reference cap of 999 raw characters. The
+identifier equality is case-folding, so `[^Ref]` pairs with `[^ref]`, and
+both ends keep their source spelling. A shape that breaks one of these
+rules is not a footnote but a link reference definition, which is why the
+rules must be exact: the two constructs share the `[…]:` surface, and the
+one adfast rejects the other one claims.
+
+`ast.Visitor[T]` is exhaustive and consumer-implemented, so a new method
+on it is a breaking change. The two node kinds therefore ride an additive
+**companion** interface, `ast.FootnoteVisitor[T]`, which `ast.Visit`
+reaches by a type assertion. A visitor that does not implement it sees a
+footnote as an extension node, which is the behavior it had before the
+kinds existed. Every in-repo visitor implements the companion, and a
+`var _` assertion next to each one turns a missed case back into a
+compile error.
+
+The flattening is one shape, chosen so that nothing leaves the page:
+
+- Each reference becomes its number as `text` under a `subsup` `sup`
+  mark, and it keeps the marks the source put around it.
+- The definitions become one `orderedList` behind a `rule` at the end of
+  the document.
+- The numbering is **definition order**, which is the order of the list
+  the reader sees. Every definition is numbered, duplicate labels
+  included, so a duplicate is still visible and the superscripts still
+  match the list positions. A reference resolves to the **first**
+  definition that shares its normalized label, as GFM does.
+- A reference carries **no link** to its definition. ADF has no anchor
+  construct, so an `#fn-1` href would be a fabricated dead link.
+- One `footnote-flattened` diagnostic fires per definition, naming the
+  label and the number. The flattening is the only construct that does
+  not decode back, so the caller needs the notice.
+
+`convert.Normalize` keeps both kinds, which is what makes the md → md
+formatter footnote-preserving, and it holds the invariant it owes `ToADF`
+because a kept definition encodes the same either way. A reference is an
+opaque inline atom, because the label is the identifier the definition
+pairs on and no part of it may be rewritten. It is the one opaque atom
+that keeps its inherited marks: an image carries none in ADF, but the
+marks around a reference are the source's own, and the encode puts them on
+the superscript.
+
+Two render outputs diverge from remark, and neither is a footnote rule.
+A continuation line joins its paragraph as prose, where remark keeps the
+source line break, which is the general soft-break behavior of the
+renderer. A list inside a definition uses the `-` bullet of adfast, where
+remark uses `*`. The measured pins in `markdown/footnote_test.go` name
+both causes.
+
 ## Rendering compatibility
 
 The markdown renderer is measured against remark-stringify, and against

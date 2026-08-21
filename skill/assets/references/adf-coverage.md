@@ -72,6 +72,19 @@ documents no product-specific availability.
 | fragment        | —    | ✓          | converted      | `:::fragment{localId name?}` wrapper around the block                                                                                                                                                                 |
 | fontSize        | —    | —          | dropped        | **Retired** — no product supports the mark. `:fontSize[text]{size}` parses but unwraps to plain text (encode) and a legacy mark decodes to bare text, each with a `fontsize-dropped` diagnostic. Text kept, size lost |
 
+## Markdown with no ADF kind
+
+One construct goes the other way: the dialect accepts it, and ADF has
+nothing to hold it.
+
+| Markdown                         | adfast support | ADF mapping / notes                                                                                                                                                                                                                                                                          |
+| -------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| footnote (`[^1]` / `[^1]: note`) | flattened      | each reference becomes its number as `text` under a `subsup` `sup` mark; the definitions become a `rule` plus one `orderedList` at the end of the document, in definition order. No link to the definition — ADF has no anchor construct. One `footnote-flattened` diagnostic per definition |
+
+The flattening is one-way: nothing in ADF decodes back to a footnote, so
+the md → ADF → md round trip returns the flattened form. The md → md
+formatter preserves footnotes untouched.
+
 In short: unknown or undocumented ADF content survives ADF-level round
 trips losslessly and can be reported through diagnostics; only the
 markdown projection reduces it. Every kind in the tables has a markdown

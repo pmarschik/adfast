@@ -22,6 +22,10 @@ the `varroa` monitoring plan. Sugar syrup is mixed :sub[1] / :sup[1] in spring,
 alerts show in :color[red]{color="#ff5630"} on :bg[highlight]{color="#fff0b3"},
 and queen marks in :u[underline].
 
+Syrup ratios follow the club handbook[^syrup].
+
+[^syrup]: Spring 1:1 by weight, autumn 2:1 — handbook page 14.
+
 Rooftop rules:\
 no open smoker near the door, and new keepers sign the [rota](#rota) as
 :placeholder[your name here…].

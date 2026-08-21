@@ -246,6 +246,11 @@ func (fn *normalizer) flattenInline(n ast.Node, ctx fmtMarks) []fmtAtom {
 		// carried them as a synthetic node without a mark slot).
 		img := &ast.Image{URL: v.URL, Title: v.Title, Children: fn.normalizeInlines(v.Children)}
 		return []fmtAtom{{node: img}}
+	case *ast.FootnoteRef:
+		// A reference rides as an opaque atom under its marks: the label
+		// is the identifier the definition pairs on, so nothing in it may
+		// be rewritten (see footnote.go).
+		return []fmtAtom{{node: &ast.FootnoteRef{Label: v.Label}, m: ctx}}
 	case *ast.Break:
 		return []fmtAtom{{isBreak: true, spacesBreak: v.Value == "  "}}
 	case *ast.HTML:
@@ -371,6 +376,15 @@ func atomLeaf(item fmtAtom) ast.Node {
 		return &ast.Break{}
 	}
 	if item.node != nil {
+		if ref, isRef := item.node.(*ast.FootnoteRef); isRef {
+			// A footnote reference keeps its inherited marks, unlike the
+			// other opaque atoms (an image carries none in ADF): the
+			// marks around a reference are the source's own, and the ADF
+			// encode puts them on the superscript the reference becomes,
+			// so dropping them here would break the invariant Normalize
+			// owes ToADF.
+			return wrapAtomMarks(ref, item.m)
+		}
 		return item.node
 	}
 
@@ -380,32 +394,38 @@ func atomLeaf(item fmtAtom) ast.Node {
 	} else {
 		node = &ast.Text{Value: item.text}
 	}
-	if item.m.link {
+	return wrapAtomMarks(node, item.m)
+}
+
+// wrapAtomMarks wraps a leaf in the atom's non-native marks, in convert's
+// canonical nesting order (see atomLeaf).
+func wrapAtomMarks(node ast.Node, m fmtMarks) ast.Node {
+	if m.link {
 		node = &ast.Link{
-			URL:      item.m.href,
-			Title:    item.m.linkTitle,
-			Bare:     item.m.linkBare,
-			Explicit: item.m.linkExplicit,
+			URL:      m.href,
+			Title:    m.linkTitle,
+			Bare:     m.linkBare,
+			Explicit: m.linkExplicit,
 			Children: []ast.Node{node},
 		}
 	}
-	if item.m.subsup != "" {
-		if item.m.subsup == "sup" {
+	if m.subsup != "" {
+		if m.subsup == "sup" {
 			node = &dialect.Sup{Children: []ast.Node{node}}
 		} else {
 			node = &dialect.Sub{Children: []ast.Node{node}}
 		}
 	}
-	if item.m.underline {
+	if m.underline {
 		node = &dialect.Underline{Children: []ast.Node{node}}
 	}
-	if item.m.bgColor != "" {
-		node = &dialect.Bg{Color: item.m.bgColor, Attrs: map[string]string{"color": item.m.bgColor}, Children: []ast.Node{node}}
+	if m.bgColor != "" {
+		node = &dialect.Bg{Color: m.bgColor, Attrs: map[string]string{"color": m.bgColor}, Children: []ast.Node{node}}
 	}
-	if item.m.textColor != "" {
-		node = &dialect.Color{Color: item.m.textColor, Attrs: map[string]string{"color": item.m.textColor}, Children: []ast.Node{node}}
+	if m.textColor != "" {
+		node = &dialect.Color{Color: m.textColor, Attrs: map[string]string{"color": m.textColor}, Children: []ast.Node{node}}
 	}
-	for _, a := range slices.Backward(item.m.annotations) {
+	for _, a := range slices.Backward(m.annotations) {
 		node = &dialect.Annotation{
 			ID:       a.ID,
 			Attrs:    map[string]string{"id": a.ID, "annotationType": a.AnnotationType},
@@ -722,6 +742,12 @@ func (fn *normalizer) encodeBlockNode(node ast.Node) []encItem {
 		return normalItem(&ast.ThematicBreak{})
 	case *ast.Blockquote:
 		return normalItem(&ast.Blockquote{Children: fn.normalizeBlocks(v.Children)})
+	case *ast.FootnoteDef:
+		// Footnotes survive Normalize: only the ADF leg flattens them
+		// (see footnote.go), and the invariant Normalize owes ToADF holds
+		// because the definition passes through unchanged. Keeping it is
+		// what makes the md → md formatter footnote-preserving.
+		return normalItem(&ast.FootnoteDef{Label: v.Label, Children: fn.normalizeBlocks(v.Children)})
 	case *ast.Code:
 		fn.checkCodeLanguage(v.Lang)
 		return normalItem(&ast.Code{Lang: v.Lang, Value: strings.TrimRight(v.Value, "\n")})

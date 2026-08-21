@@ -164,6 +164,10 @@ type inlineWriteVisitor struct {
 	i     int
 }
 
+// The optional visitor interfaces are asserted, not inferred: without
+// this the footnote kinds would silently fall through to VisitExtension.
+var _ ast.FootnoteVisitor[struct{}] = (*inlineWriteVisitor)(nil)
+
 // VisitText implements ast.Visitor.
 func (v *inlineWriteVisitor) VisitText(*ast.Text) struct{} {
 	v.r.writeTextInline(v.b, v.nodes, v.i, v.st)
@@ -219,6 +223,30 @@ func (v *inlineWriteVisitor) VisitLink(n *ast.Link) struct{} {
 // VisitTextDirective implements ast.Visitor.
 func (v *inlineWriteVisitor) VisitTextDirective(n *ast.TextDirective) struct{} {
 	v.r.writeTextDirective(v.b, n, v.st)
+	return struct{}{}
+}
+
+// VisitFootnoteDef implements ast.FootnoteVisitor: a definition is a
+// block, so in inline position it degrades to its content.
+func (v *inlineWriteVisitor) VisitFootnoteDef(n *ast.FootnoteDef) struct{} {
+	return v.inlineFallback(n)
+}
+
+// VisitFootnoteRef implements ast.FootnoteVisitor. The label is written
+// verbatim — it is the identifier the definition pairs on, so nothing in
+// it may be escaped away — with its spaces masked against wrapping (a
+// line break inside the brackets would not re-parse as a reference) and
+// its pipes escaped inside a table cell.
+func (v *inlineWriteVisitor) VisitFootnoteRef(n *ast.FootnoteRef) struct{} {
+	label := n.Label
+	if v.st.pipes {
+		label = strings.ReplaceAll(label, "|", `\|`)
+	}
+	label = strings.ReplaceAll(label, " ", string(wrapMask))
+	label = strings.ReplaceAll(label, "\t", string(wrapMaskTab))
+	v.b.WriteString("[^" + label + "]")
+	v.st.prev, v.st.hasPrev = ']', true
+	v.st.prevRune, v.st.encodeLead = ']', false
 	return struct{}{}
 }
 

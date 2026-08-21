@@ -79,6 +79,12 @@ vocabulary:
   `unsupported-in-product` this is NOT diagnostic-only: the anchor is
   really gone, so the rendered page has no such link target. Heading text
   is unaffected.
+- `footnote-flattened` — a GFM footnote was flattened because ADF has no
+  footnote construct: the reference became its number as superscript
+  text, and the definition moved into an ordered list behind a rule at
+  the end of the document. One per definition, naming its label and its
+  number. Nothing is lost from the page, but the reference no longer
+  links to its definition and the round trip returns the flattened form.
 - `fontsize-dropped` — a retired `:fontSize` construct was dropped to
   plain text: no Atlassian product supports the mark, so adfast never
   produces it. Emitted on encode (`:fontSize[text]{size}` unwraps to its
@@ -140,6 +146,20 @@ mark decodes to bare text; the prettier formatter rewrites the directive
 to plain text. Every path emits a `fontsize-dropped` diagnostic. The text
 survives; the size annotation is lost. Do not add new `:fontSize`
 directives — use a preset text style in the product instead.
+
+## Footnotes are the one construct that does not come back
+
+A GFM footnote survives md → md untouched, but ADF has no footnote of any
+kind, so the ADF leg flattens it: every reference becomes its number as
+superscript text, and every definition becomes an item of one
+`orderedList` behind a `rule` at the end of the document, in definition
+order. Nothing is lost from the page, and the flattened form is stable,
+but the pair does not decode back — `ToMarkdown(FromADF(…))` returns
+`:sup[1]` and a numbered list, not `[^1]`. A reference also carries no
+link to its definition, because ADF has no anchor construct to link to. A
+`footnote-flattened` diagnostic fires per definition; use it to warn
+before a push if authors expect footnotes to survive a product round
+trip.
 
 ## Raw HTML has no ADF mapping
 

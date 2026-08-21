@@ -396,7 +396,9 @@ recovered situation flows through a diagnostics sink instead:
 - a heading anchor dropped because the target product has no anchor
   construct (`heading-anchor-dropped`, from `WithoutHeadingAnchors`),
 - an inline `![alt](https://…)` rewritten as a link because ADF has no
-  inline image for an external URL (`inline-image-degraded`).
+  inline image for an external URL (`inline-image-degraded`),
+- a GFM footnote flattened to a superscript and a list at the end of the
+  document, because ADF has no footnote (`footnote-flattened`).
 
 One `WithDiagnostics(func(convert.Diagnostic))` wires the sink into
 whichever primitive emits: parse notices on `FromMarkdown`, encode
@@ -449,7 +451,8 @@ to column width, with the cell merging of
 A cell that holds `>` only merges into the cell to its right, and a cell
 that holds `^` only extends the cell above. Literal `>` and `^` cell
 content is escaped. GFM also gives task lists (`- [ ]` and `- [x]`),
-strikethrough, and autolink literals. On top of that come four things.
+strikethrough, autolink literals, and footnotes (`[^1]` and
+`[^1]: note`). On top of that come four things.
 The first is decision lists, where a `::decisions` leaf directive marks
 the plain bullet list that follows it, exactly like `::colwidths` marks
 the table that follows. The second is YAML frontmatter, which is
@@ -564,6 +567,21 @@ unknown leaf drops, and an unknown text directive flattens to text.
   href — with an `inline-image-degraded` diagnostic. Any other path is
   an asset not in the store yet, so it drops with an `unresolved-asset`
   diagnostic that an upload flow can act on.
+- **Footnotes** — GFM footnotes, `a[^1]` with `[^1]: the note`. The
+  label rules are micromark's: no whitespace inside it, not even escaped
+  (`[^a b]:` is a link reference definition), an escaped `\[` allowed
+  where a raw one is not, and a reference with no definition in the same
+  document stays literal text. The md → md route keeps both ends where
+  the source put them, so the formatter never moves, sorts, or deletes a
+  definition. ADF has no footnote of any kind, so the ADF route
+  **flattens**: each reference becomes its number as superscript text,
+  and every definition collects at the end of the document behind a
+  `rule`, as one `orderedList` whose item numbers are those numbers. The
+  numbering is definition order, the order of that list. A reference
+  carries no link to its definition, because ADF has no anchor to link
+  to. This is the one construct that does not come back: `adf → md`
+  returns the flattened form, and each flattened footnote reports a
+  `footnote-flattened` diagnostic.
 - **Heading anchors** — `## Title {#my-anchor}` gives the heading an
   explicit anchor id. This is the spelling of pandoc and of
   remark-heading-id. The id must match `[0-9A-Za-z][0-9A-Za-z._-]*`, and

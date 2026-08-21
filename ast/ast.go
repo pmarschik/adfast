@@ -410,6 +410,8 @@ func Children(n Node) []Node {
 		return v.Children
 	case *Blockquote:
 		return v.Children
+	case *FootnoteDef:
+		return v.Children
 	case *List:
 		return v.Children
 	case *ListItem:
@@ -453,6 +455,8 @@ func SetChildren(n Node, kids []Node) {
 	case *Heading:
 		v.Children = kids
 	case *Blockquote:
+		v.Children = kids
+	case *FootnoteDef:
 		v.Children = kids
 	case *List:
 		v.Children = kids

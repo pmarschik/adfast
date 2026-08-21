@@ -31,6 +31,10 @@ type blockRenderVisitor struct {
 	depth int
 }
 
+// The optional visitor interfaces are asserted, not inferred: without
+// this the footnote kinds would silently fall through to VisitExtension.
+var _ ast.FootnoteVisitor[struct{}] = (*blockRenderVisitor)(nil)
+
 // VisitParagraph implements ast.Visitor.
 func (v *blockRenderVisitor) VisitParagraph(n *ast.Paragraph) struct{} {
 	inner := v.r.renderInlineString(n.Children)
@@ -90,6 +94,18 @@ func (v *blockRenderVisitor) VisitContainerDirective(n *ast.ContainerDirective) 
 func (v *blockRenderVisitor) VisitLeafDirective(n *ast.LeafDirective) struct{} {
 	renderLeafDirective(v.b, n)
 	return struct{}{}
+}
+
+// VisitFootnoteDef implements ast.FootnoteVisitor.
+func (v *blockRenderVisitor) VisitFootnoteDef(n *ast.FootnoteDef) struct{} {
+	v.r.renderFootnoteDef(v.b, n)
+	return struct{}{}
+}
+
+// VisitFootnoteRef implements ast.FootnoteVisitor: a reference is inline
+// content, so in block position it degrades like the other inline kinds.
+func (v *blockRenderVisitor) VisitFootnoteRef(n *ast.FootnoteRef) struct{} {
+	return v.blockFallback(n)
 }
 
 // VisitTable implements ast.Visitor.
@@ -288,6 +304,39 @@ func (r *mdRenderer) renderCodeBlock(b *strings.Builder, node *ast.Code) {
 	}
 	b.WriteString(fence)
 	b.WriteString("\n")
+}
+
+// renderFootnoteDef renders a footnote definition: the "[^label]:" marker
+// carries the first rendered line, and every following line indents by
+// four spaces — the continuation width the parser accepts. A blank line
+// inside stays empty (no trailing spaces), like the blockquote render.
+// remark writes the same shape ("[^1]: a\n    b\n" for a two-line
+// paragraph, measured with remark-gfm).
+func (r *mdRenderer) renderFootnoteDef(b *strings.Builder, node *ast.FootnoteDef) {
+	const indent = "    "
+	var inner strings.Builder
+	r.prefixWidth += len(indent)
+	defer func() { r.prefixWidth -= len(indent) }()
+	r.renderBlockSequence(&inner, node.Children, "\n")
+	marker := "[^" + node.Label + "]:"
+	body := strings.TrimRight(inner.String(), "\n")
+	if body == "" {
+		// An empty definition is legal ("[^1]:") and re-parses as one.
+		b.WriteString(marker)
+		b.WriteString("\n")
+		return
+	}
+	for i, line := range strings.Split(body, "\n") {
+		switch {
+		case i == 0:
+			b.WriteString(marker)
+			b.WriteString(" ")
+		case line != "":
+			b.WriteString(indent)
+		}
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
 }
 
 func (r *mdRenderer) renderBlockquote(b *strings.Builder, content []ast.Node) {

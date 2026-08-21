@@ -462,6 +462,12 @@ func convertGoldmarkBlock(node gast.Node, src []byte, lc *liftCtx, depth int) as
 	case *east.Table:
 		return convertGoldmarkTable(n, src, lc, depth)
 
+	case *footnoteDefBlock:
+		return &ast.FootnoteDef{
+			Label:    n.Label,
+			Children: convertGoldmarkBlocks(n, src, lc, depth+1),
+		}
+
 	default:
 		// Unknown block — try children
 		if node.HasChildren() {
@@ -1042,6 +1048,9 @@ func convertGoldmarkInline(node gast.Node, src []byte, lc *liftCtx, depth int) [
 
 	case *directive.TextDirective:
 		return convertGoldmarkTextDirective(n, lc, depth)
+
+	case *footnoteRefInline:
+		return []ast.Node{&ast.FootnoteRef{Label: n.Label}}
 
 	case *gast.RawHTML:
 		var buf bytes.Buffer

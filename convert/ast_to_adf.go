@@ -39,7 +39,12 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 		unsupportedKind:     cfg.unsupportedProduct,
 		unsupportedKinds:    cfg.unsupportedKinds,
 	}
+	// The footnote index is built before the conversion: a reference
+	// flattens to the number of its definition, which may sit anywhere in
+	// the tree (see footnote.go).
+	c.footnotes = collectFootnotes(root)
 	content := c.convertBlocks(ast.Children(root))
+	content = append(content, c.footnoteTail()...)
 	if len(content) == 0 {
 		content = []adf.Node{&adf.Paragraph{Content: []adf.Node{}}}
 	}
@@ -61,6 +66,7 @@ type astConverter struct {
 	codeLanguages       map[string]bool
 	unsupportedKinds    map[string]bool
 	unsupportedKind     string
+	footnotes           footnoteIndex
 	preserveTight       bool
 	preserveLocalImages bool
 }

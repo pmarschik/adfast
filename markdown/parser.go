@@ -119,9 +119,15 @@ func NewParser() parser.Parser {
 				util.Prioritized(directive.NewDirectiveParser(), 50),
 				util.Prioritized(directive.NewCloseFenceParser(), 55),
 				util.Prioritized(directive.NewLeafDirectiveParser(), 60),
+				// Ahead of the paragraph parser (1000), which would
+				// otherwise read "[^1]: note" as a link reference
+				// definition (see footnote.go).
+				util.Prioritized(&footnoteDefParser{}, 999),
 			),
 			parser.WithInlineParsers(
 				util.Prioritized(&strictTaskCheckBoxParser{}, 0),
+				// Ahead of goldmark's link parser (200).
+				util.Prioritized(&footnoteRefParser{}, 101),
 				util.Prioritized(newAngleAutoLinkParser(), 299),
 				util.Prioritized(newStrikethroughParser(), 500),
 				util.Prioritized(directive.NewTextDirectiveParser(NewParser), 800),

@@ -7,9 +7,10 @@ description: Writing or editing markdown destined for Jira/Confluence via adfast
 
 adfast converts markdown to and from ADF (the Atlassian document format
 behind Jira Cloud and Confluence Cloud). The dialect is **CommonMark +
-GFM** (pipe tables, task lists, strikethrough, autolinks, YAML
+GFM** (pipe tables, task lists, strikethrough, autolinks, footnotes, YAML
 frontmatter) plus **remark-directive-style directives** for ADF features
-without native syntax. Everything below round-trips losslessly.
+without native syntax. Everything below round-trips losslessly, except
+footnotes (see What to avoid).
 
 ## The directive level rule
 
@@ -50,6 +51,12 @@ cell ABOVE (rowspan). Literal `>` / `^` cell content is escaped as
 - **Local image paths** (`![alt](assets/x.png)`) drop from the ADF
   payload unless an asset store is wired in
   (see references/pitfalls.md).
+- **Footnotes** (`[^1]` with `[^1]: note`) parse and survive md → md
+  untouched, but ADF has no footnote: the ADF route flattens each
+  reference to a superscript number and collects the definitions in an
+  ordered list behind a rule at the end of the document
+  (`footnote-flattened`). Use one only when that reading is acceptable —
+  it is the one construct that does not come back.
 - **Brackets inside directive labels** cannot nest; keep labels flat.
 - A `:` directly before a letter reads as a directive start; adfast
   escapes it as `\:` when rendering — do the same when writing by hand

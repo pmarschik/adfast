@@ -435,7 +435,7 @@ func peekLead(node ast.Node) byte {
 		return 0
 	case *ast.Emphasis, *ast.Strong, *ast.Delete:
 		return emphasisMarkerByte(node)
-	case *ast.Link:
+	case *ast.Link, *ast.FootnoteRef:
 		return '['
 	case *ast.Image:
 		return '!'

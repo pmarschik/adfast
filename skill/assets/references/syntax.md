@@ -2,7 +2,8 @@
 
 The base dialect is **CommonMark + GFM**: pipe tables (padded to column
 width, plus cell merging — see [Tables](#tables)), task lists (`- [ ]` /
-`- [x]`), strikethrough (`~~text~~`), and autolink literals. On top of
+`- [x]`), strikethrough (`~~text~~`), autolink literals, and footnotes
+(`[^1]` / `[^1]: note` — see [Footnotes](#footnotes)). On top of
 that: YAML `---` frontmatter (split off before parsing, re-emitted
 verbatim by the formatter), decision lists, heading anchors
 (`## Title {#id}`), and the directive dialect below.
@@ -203,6 +204,48 @@ the host product's addon decides what it becomes:
 Confluence anchor names that the `{#id}` surface cannot spell (a space,
 say), and headings carrying more than one anchor, stay as
 `:anchor[name]` macro directives instead — see the macro sugar below.
+
+## Footnotes
+
+GFM footnotes: a `[^label]` reference and a `[^label]: content`
+definition.
+
+```markdown
+The hive needs a spring check[^1].
+
+[^1]: Weather permitting, in the first warm week.
+```
+
+The label rules are micromark's, and a shape that breaks one is not a
+footnote at all:
+
+- No whitespace inside the label, not even escaped: `[^a b]: x` is a
+  **link reference definition**, and `a[^a b]` a link reference.
+- An escaped bracket is part of the label (`[^a\[b]`); a raw one ends it,
+  so `[^a[b]]: x` is a paragraph.
+- The identifier case-folds, so `[^Ref]` pairs with `[^ref]`.
+- A reference with no definition in the same document is literal text
+  (rendered back as `a\[^1]`).
+- At most 999 characters between `[^` and `]`.
+
+A definition stays where the source put it, nested containers included,
+and one nothing references is kept. Continuation lines indent by four
+spaces.
+
+**ADF has no footnote of any kind**, so the ADF leg flattens, and this is
+the one construct that does not come back:
+
+| Direction | Result                                                                                                                                   |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| md → md   | unchanged — the formatter never moves, sorts, or deletes a definition                                                                    |
+| md → ADF  | each reference becomes its number as superscript text; the definitions become a `rule` plus one `orderedList` at the end of the document |
+| ADF → md  | the flattened form (a `:sup[1]` and a numbered list), never a footnote                                                                   |
+
+The numbering is definition order — the order of the list a reader sees
+at the end of the document. A reference carries no link to its
+definition, because ADF has no anchor to link to. Every flattened
+footnote reports a `footnote-flattened` diagnostic naming the label and
+the number.
 
 ## Escaping
 

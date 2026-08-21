@@ -26,6 +26,14 @@ var fuzzSeeds = []string{
 	"| a |\n|:-:|\n| bbbb |",
 	"Some **bold** and _italic_ and ~~strike~~ text.",
 	"Use `code` here and [link](https://example.com).",
+	// GFM footnotes: the pair, a reference under marks, a definition the
+	// source nested, and the label shapes that are NOT footnotes
+	"a[^1]\n\n[^1]: note",
+	"a[^one] b[^two] c[^one]\n\n[^two]: second\n\n[^one]: first",
+	"**a[^1]** and `b`[^1]\n\n[^1]: x",
+	"a[^1]\n\n> [^1]: quoted\n\n- [^2]: listed\n\nb[^2]",
+	"a[^1]\n\n[^1]: one\n\n    two\n\n[^1]: duplicate",
+	"a[^a b] c[^]\n\n[^a b]: not a footnote\n\n[^]: neither",
 	// escape sequences
 	"\\`backtick\\` and \\_underscore\\_",
 	// colon-after-backtick (the remark-directive trap)
