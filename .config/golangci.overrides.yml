@@ -1,0 +1,53 @@
+# Overrides on devkit's shared golangci-lint config.
+# `mise run sync-golangci` deep-merges this file over the base and writes
+# .config/golangci.yml. A value here wins, and an array replaces the base array
+# rather than extending it. linters.enable is the exception: it is the union of
+# both files, minus anything under linters.disable.
+
+linters:
+  settings:
+    # Complexity budgets are higher than app code: this library is a
+    # measured parser/renderer — functions mirror remark's rule tables.
+    cyclop:
+      max-complexity: 25
+      package-average: 10.0
+
+    gocognit:
+      min-complexity: 80
+
+    funlen:
+      lines: 130
+      statements: 80
+
+    nestif:
+      min-complexity: 6
+
+  exclusions:
+    rules:
+      # The visitor dispatchers are one case per node kind by design —
+      # the single maintained switch that gives visitors their
+      # compile-time exhaustiveness. Branch count == kind count.
+      - path: (ast|adf|dialect)/visitor\.go
+        linters:
+          - cyclop
+          - gocyclo
+          - funlen
+      # The formatter normalization's dispatch switches mirror the AST
+      # kind set the same way the visitors do (one branch per kind).
+      - path: format_normalize\.go
+        linters:
+          - cyclop
+          - gocyclo
+          - funlen
+      # gosec's G703 (path traversal via taint analysis) cannot see the
+      # containment proof for the store's write paths: every write
+      # target is produced by securePath (Base + Join + prefix check
+      # against the assets/blob dir), index records are vetted by
+      # validIndexEntry on load, and the copy fallbacks create with
+      # O_EXCL via writeExclusive so a planted symlink is never
+      # followed or overwritten. Covered by the path-traversal, symlink,
+      # and index-sanitization tests in assets/security_test.go.
+      - path: assets/assets\.go
+        text: "G703"
+        linters:
+          - gosec

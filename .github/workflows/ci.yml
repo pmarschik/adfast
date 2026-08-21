@@ -1,3 +1,6 @@
+# Lint, test, coverage and govulncheck live in devkit's reusable workflow. The
+# two jobs below stay here because they have no counterpart there: they exercise
+# code paths specific to this repo.
 name: ci
 
 on:
@@ -8,64 +11,25 @@ on:
 permissions:
   contents: read
 
+# A new push cancels the run it superseded, except on main.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
-  test:
+  ci:
+    uses: pmarschik/devkit/.github/workflows/go-ci.yml@v1
+    with:
+      coverage-floor: 75
+
+  # Fuzz targets never run under `go test ./...`, which executes the seed corpus
+  # only. Thirty seconds each is a smoke test, not a campaign: it catches a
+  # target that stopped compiling or started failing on its first mutation.
+  fuzz:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      # go.work is committed, so ./... from the root covers the workspace;
-      # each submodule still runs on its own to catch anything the
-      # workspace resolution would paper over.
-      - name: Test
-        run: go test ./...
-
-      - name: Test (race)
-        run: go test -race ./...
-
-      - name: Test jira module
-        working-directory: jira
-        run: |
-          go test ./...
-          go test -race ./...
-
-      - name: Test confluence module
-        working-directory: confluence
-        run: |
-          go test ./...
-          go test -race ./...
-
-      - name: Test skill module
-        working-directory: skill
-        run: |
-          go test ./...
-          go test -race ./...
-
-      - name: Test frontmatter module
-        working-directory: frontmatter
-        run: |
-          go test ./...
-          go test -race ./...
-
-      # api.go carries every decision the wasm module makes and has no
-      # build tag, so it tests like any other package here. The js-tagged
-      # glue is covered by the `wasm` job's Node smoke test instead.
-      - name: Test wasm module
-        working-directory: wasm
-        run: |
-          go test ./...
-          go test -race ./...
-
-      - name: Coverage floor (75%)
-        run: |
-          go test -coverprofile=coverage.out -coverpkg=./... ./...
-          total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')
-          echo "total coverage: ${total}%"
-          awk -v total="$total" 'BEGIN { exit (total + 0 < 75) ? 1 : 0 }'
+      - uses: jdx/mise-action@v4
 
       - name: Fuzz smoke
         run: go test -run=^$ -fuzz=FuzzRoundTripIdempotent -fuzztime=30s .
@@ -82,13 +46,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v7
-        with:
-          # Pinned to the toolchain wasm/wasm_exec.js was vendored from —
-          # that file is coupled to the runtime that built the binary. Keep
-          # in sync with .config/mise/config.toml and wasm/README.md; the
-          # drift check below fails loudly if they ever separate.
-          go-version: "1.27.0"
+      # mise installs the Go version .config/mise/config.toml pins, which is the
+      # toolchain wasm/wasm_exec.js was vendored from — that file is coupled to
+      # the runtime that built the binary. One pin, checked by the drift step
+      # below. Keep wasm/README.md's version table in step with it.
+      - uses: jdx/mise-action@v4
 
       - uses: actions/setup-node@v6
         with:
@@ -114,29 +76,3 @@ jobs:
       - name: Node smoke test
         working-directory: wasm
         run: node smoke.mjs
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      - uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.13.0 # keep in sync with .config/mise/config.toml
-          args: -c .config/golangci.yml
-
-  vuln:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

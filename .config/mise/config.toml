@@ -8,7 +8,6 @@ git-cliff = "2.13.1"
 typos = "1.47.2"
 go = "1.27.0"
 golangci-lint = "2.13.0"
-goreleaser = "2.15.4"
 dprint = "0.55.1"
 gofumpt = "0.9.2"
 cocogitto = "7.0.0"
@@ -20,13 +19,13 @@ HK_MISE = "1"
 # Tasks are file-based in .config/mise/tasks/
 # See assets/go/tasks/ for the task scripts
 
-# The release:* tasks are shared with the other Go repos, so they live in
+# The shared Go tasks live with the other Go repos, so they live in
 # devkit rather than here. Setting includes replaces the default discovery,
 # which is why the local directory needs its own entry, and it goes last so a
 # local file still wins on a name clash. An include mise cannot parse is
 # skipped in silence — after a change here, check `mise tasks ls`.
 [task_config]
 includes = [
-  "git::https://github.com/pmarschik/devkit.git//mise/go-release?ref=v1",
+  "git::https://github.com/pmarschik/devkit.git//mise/go?ref=v1",
   ".config/mise/tasks",
 ]
