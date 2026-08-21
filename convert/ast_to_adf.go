@@ -862,7 +862,7 @@ func (c *astConverter) convertTable(node *ast.Table) adf.Node {
 	if len(rows) == 0 {
 		return nil
 	}
-	return &adf.Table{Content: rows}
+	return &adf.Table{Content: rows, Align: lowerTableAlign(node.Align)}
 }
 
 // spanAttr keeps a colspan/rowspan only when it spans (>1), matching the

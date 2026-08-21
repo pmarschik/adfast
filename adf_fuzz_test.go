@@ -20,6 +20,10 @@ var fuzzSeeds = []string{
 	"> blockquote\n> second line",
 	":::note\nBe careful\n:::",
 	"| A | B |\n| --- | --- |\n| 1 | 2 |",
+	// table column alignment (the synthetic never-wire carrier): every
+	// alignment, and a column narrower than its own colons
+	"| A | B | C | D |\n|:-|-:|:-:|-|\n| 1 | 2 | 3 | 4 |",
+	"| a |\n|:-:|\n| bbbb |",
 	"Some **bold** and _italic_ and ~~strike~~ text.",
 	"Use `code` here and [link](https://example.com).",
 	// escape sequences

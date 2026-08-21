@@ -102,23 +102,27 @@ Both the markdown parse and the ADF decode cap recursion at 1024 levels
 of nesting; deeper content is truncated with a `depth-exceeded`
 diagnostic instead of crashing.
 
-## Wire safety: tightness-preserving output and heading anchors are NOT pushable
+## Wire safety: tightness, heading anchors and table alignment are NOT pushable
 
 The prettier md → md formatter — the composition
 `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`
 — is a pure md → ast → md pass and never builds an ADF document, so
 formatter output is just markdown. On the conversion side,
 `WithPreserveListTightness` writes the synthetic `tight` attribute onto
-ADF list nodes, and a `## Title {#id}` heading anchor writes the synthetic
-`anchor` attribute onto heading nodes — such documents **must never be
-submitted to the host product** — check `adf.IsWireSafe` before submitting
-a document of uncertain origin, and use `adf.StripSynthetic` to clean one
-up. Heading anchors have a better answer than stripping: the product
-bundles resolve them, `confluence.MarkdownOptions` by lowering the anchor
-to Confluence's anchor macro and `jira.MarkdownOptions` by dropping it
-with a diagnostic. Encoding through either bundle is wire-safe, as is
-canonical `ToADF(FromMarkdown(md))` output over markdown that has no
-anchors and without tightness preservation.
+ADF list nodes, a `## Title {#id}` heading anchor writes the synthetic
+`anchor` attribute onto heading nodes, and a table with alignment colons
+in its delimiter row (`|:--|--:|`) writes the synthetic `align` attribute
+onto table nodes — such documents **must never be submitted to the host
+product** — check `adf.IsWireSafe` before submitting a document of
+uncertain origin, and use `adf.StripSynthetic` to clean one up. Heading
+anchors have a better answer than stripping: the product bundles resolve
+them, `confluence.MarkdownOptions` by lowering the anchor to Confluence's
+anchor macro and `jira.MarkdownOptions` by dropping it with a diagnostic.
+Table alignment has no such answer — no product has a table alignment
+attribute, so stripping is the only outcome. Encoding through either
+bundle is wire-safe, as is canonical `ToADF(FromMarkdown(md))` output over
+markdown that has no anchors and no table alignment, and without
+tightness preservation.
 
 For a lighter touch than the full formatter, `markdown.WrapProse(md,
 width)` rewraps only contiguous prose paragraphs to a width, operating

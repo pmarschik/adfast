@@ -241,6 +241,7 @@ func decodeBlockKind(typ string, r *attrReader, content []Node) Node {
 		return &DecisionItem{LocalID: r.strPtr("localId"), State: r.str("state"), Content: content}
 	case "table":
 		return &Table{
+			Align:  r.strs("align"),
 			Layout: r.str("layout"), Width: r.floatPtr("width"),
 			IsNumberColumnEnabled: r.boolPtr("isNumberColumnEnabled"),
 			LocalID:               r.str("localId"), DisplayMode: r.str("displayMode"),

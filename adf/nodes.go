@@ -9,8 +9,9 @@ package adf
 //     zero value (an empty-but-present "collection" differs from an
 //     absent one, taskItem always carries localId "").
 //   - The Tight list field maps to the synthetic "tight" attribute
-//     WithPreserveListTightness stores, and the Heading Anchor field to
-//     the synthetic "anchor" attribute; both are internal-only and never
+//     WithPreserveListTightness stores, the Heading Anchor field to the
+//     synthetic "anchor" attribute, and the Table Align field to the
+//     synthetic "align" attribute; all three are internal-only and never
 //     appear in documents sent to Jira (see IsWireSafe).
 
 // Paragraph is an ADF paragraph block.
@@ -124,6 +125,16 @@ type DecisionItem struct {
 
 // Table is an ADF table; the layout attributes are carried for
 // losslessness (the markdown projection does not read them).
+//
+// Align is the synthetic "align" attribute carrying a GFM table's column
+// alignment (ast.Table.Align), one entry per visual column from the left:
+// "left", "right", "center", or "" for a column the delimiter row leaves
+// bare. ADF tables have no alignment attribute of any kind — the only
+// alignment in the schema is the paragraph/heading Alignment mark, which
+// is not a table column property — so this is a never-wire carrier (see
+// IsWireSafe) that keeps md → adf → md faithful and that a consumer must
+// strip before submission. It is nil for a table without alignment, which
+// is why an unaligned table's wire payload is unchanged.
 type Table struct {
 	Width                 *float64
 	IsNumberColumnEnabled *bool
@@ -131,6 +142,7 @@ type Table struct {
 	Layout                string
 	LocalID               string
 	DisplayMode           string
+	Align                 []string
 	Content               []Node
 	Marks                 []Mark
 }

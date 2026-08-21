@@ -153,6 +153,13 @@ column widths (one entry per **visual** column).
 
 A header row is synthesized when the ADF table has none.
 
+Column alignment in the delimiter row (`|:--|--:|:-:|`) survives the ADF
+route, and the cell padding follows it (right-aligned content sits at the
+right of its column, centred content splits the padding). ADF tables have
+no alignment attribute of any kind, so the per-column list rides as the
+synthetic never-wire `align` attribute — no product addon can lower it,
+and a document carrying it is not wire-safe (see the pitfalls reference).
+
 ## Heading anchors
 
 A heading can carry an explicit anchor id as a trailing `{#id}` — the

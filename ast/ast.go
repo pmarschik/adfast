@@ -216,6 +216,13 @@ func (*Frontmatter) Kind() string { return "yaml" }
 // Table is a GFM table.
 type Table struct {
 	Children []Node
+	// Align is the per-visual-column alignment the delimiter row spells,
+	// leftmost column first (mdast's table `align`). It is nil when no
+	// column asks for one, and may be shorter than the table is wide —
+	// read it with ColumnAlign. ADF tables have no alignment attribute,
+	// so this rides the ADF leg as a synthetic never-wire carrier
+	// (adf.Table.Align; see adf.IsWireSafe).
+	Align []Alignment
 	BlockSpacing
 }
 

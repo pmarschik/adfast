@@ -864,7 +864,7 @@ func convertAdfTable(node *adf.Table, rc renderCtx) ast.Node {
 		}
 	}
 
-	return &ast.Table{Children: mdRows}
+	return &ast.Table{Children: mdRows, Align: liftTableAlign(node.Align)}
 }
 
 // ---------------------------------------------------------------------------

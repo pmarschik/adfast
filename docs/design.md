@@ -174,6 +174,36 @@ for the product-specific shapes that a per-node decode hook cannot reach.
 Such a shape moves content between a node and the attributes of the
 parent.
 
+## Table column alignment: a carrier with no lowering
+
+GFM column alignment (`|:--|--:|:-:|`) is the same shape one layer
+simpler. ADF has **no table alignment attribute at all** — the only
+alignment in the schema is the `alignment` block mark, which applies to a
+paragraph or a heading and is not a table column property — so no product
+addon can lower it, and the three-layer division of the previous section
+collapses to its first layer. `ast.Table.Align` carries the per-column
+list through the pivot AST, `adf.Table.Align` is the synthetic never-wire
+attribute that holds it across the ADF leg, and `adf.StripSynthetic`
+clears it before submission. There is no `WithoutTableAlignment` option
+and no diagnostic: dropping the alignment costs the document nothing the
+product could have rendered, unlike a dropped heading anchor, which costs
+it a link target.
+
+The alignment is per **visual** column, the same unit `::colwidths` uses,
+so a colspan cell does not shift it. The list is `nil` whenever no column
+asks for anything, which is what keeps an unaligned table's ADF payload
+byte-identical to what it was before alignment existed — and keeps
+`adf.IsWireSafe` true for it.
+
+Two render rules come with the alignment, both measured against
+markdown-table (the serializer behind mdast-util-gfm-table) rather than
+guessed. The delimiter cell is the column's colons around at least one
+`-`, and it **widens** a column narrower than the colons themselves, so
+`:-:` turns a one-character column into three. The cell padding then
+follows the alignment: right-aligned content takes all of the padding in
+front, centred content splits it with the odd space in front, and
+everything else trails it.
+
 ## Rendering compatibility
 
 The markdown renderer is measured against remark-stringify, and against

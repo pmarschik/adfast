@@ -31,9 +31,12 @@
 // A few constructs are internal to the markdown conversion and never
 // appear in wire documents sent to Jira: ColwidthsHint is the
 // placeholder the ::colwidths directive encodes to before the convert
-// package resolves it onto the following table, and the "tight"
+// package resolves it onto the following table, the "tight"
 // list-tightness attribute (a typed field on the list kinds) records
-// source looseness for WithPreserveListTightness.
+// source looseness for WithPreserveListTightness, the heading "anchor"
+// attribute carries a markdown {#id}, and the table "align" attribute
+// carries a GFM table's column alignment. IsWireSafe and StripSynthetic
+// are the guard and the cleanup for all of them.
 //
 // Builders/constructors beyond plain struct literals can come later; the
 // struct literals double as the documentation of each kind's shape.

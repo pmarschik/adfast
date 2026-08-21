@@ -177,15 +177,18 @@ fixture corpus, and both are fuzzed continuously
 
 Canonical `ToADF(FromMarkdown(md))` output is wire-safe unless
 `WithPreserveListTightness` is enabled, or the source carries a `{#id}`
-heading anchor. Each of these two writes a synthetic attribute, and ADF
-has no wire form for it. Run `adf.IsWireSafe` as the guard
+heading anchor, or a table whose delimiter row carries alignment colons.
+Each of these three writes a synthetic attribute, and ADF has no wire form
+for it. Run `adf.IsWireSafe` as the guard
 before you submit a document of uncertain origin, and use
 `adf.StripSynthetic` as the matching cleanup.
 
 For a heading anchor, the product bundles are the better answer.
 `confluence.MarkdownOptions` lowers the anchor to the anchor macro of
 Confluence. `jira.MarkdownOptions` drops the anchor and reports a
-`heading-anchor-dropped` diagnostic.
+`heading-anchor-dropped` diagnostic. Table alignment has no such answer:
+no product has a table alignment attribute at all, so `adf.StripSynthetic`
+simply clears it.
 
 Media and attachment resolution is pluggable through `WithMediaAssets`,
 `WithAssetIDResolver`, and `WithImageDimsResolver`. If the collection of
@@ -579,7 +582,12 @@ unknown leaf drops, and an unknown text directive flattens to text.
   to a mediaSingle caption child. A richer caption, with formatting or a
   hard break, uses the `:::media` container form.
 - **Tables** — GFM pipe tables. A header row is synthesized when the ADF
-  table has none.
+  table has none. Column alignment (`|:--|--:|:-:|`) survives the ADF
+  route: ADF tables have no alignment attribute of any kind, so the
+  per-column list rides as a synthetic never-wire attribute
+  (`adf.Table.Align`), and the render places the colons and the cell
+  padding exactly where remark-stringify does. No product addon can lower
+  it, so `adf.StripSynthetic` clears it before submission.
 
 ## A complete example
 
@@ -853,7 +861,7 @@ one, so the check would be moot.
 | taskList / taskItem                           | ✓    | ✓          | converted      | `- [ ]` / `- [x]`; `localId` regenerates as empty on encode                                                                                                                                                                                                                 |
 | blockTaskItem                                 | ✓    | —          | converted      | `- [ ]` + indented blocks; a single-paragraph item re-encodes as the inline taskItem. Jira renders it first-class; Confluence downgrades it to a plain taskItem                                                                                                             |
 | decisionList / decisionItem                   | ✓    | ✓          | converted      | `::decisions` + following plain bullet list; encodes with state DECIDED; Jira renders decisions first-class (live 2026-07-22)                                                                                                                                               |
-| table / tableRow / tableHeader / tableCell    | ✓    | ✓          | converted      | GFM pipe table; colspan/rowspan via `>`/`^` markers; colwidth attrs via `::colwidths`                                                                                                                                                                                       |
+| table / tableRow / tableHeader / tableCell    | ✓    | ✓          | converted      | GFM pipe table; colspan/rowspan via `>`/`^` markers; colwidth attrs via `::colwidths`; column alignment rides the synthetic never-wire `align` attribute (ADF has none)                                                                                                     |
 | panel                                         | ✓    | ✓          | converted      | `:::info` …; unknown panelType degrades to `info`                                                                                                                                                                                                                           |
 | expand / nestedExpand                         | ✓    | ✓          | converted      | `:::expand[Title]` …; encode always emits `expand` (Jira nests it as nestedExpand itself)                                                                                                                                                                                   |
 | mediaSingle / mediaGroup / media              | ✓    | ✓          | converted      | `![alt](path)` or `::media`; plain image only when fully expressible; groups fan out to `group="true"` items                                                                                                                                                                |

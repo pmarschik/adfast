@@ -173,6 +173,7 @@ func blockNodeAttrs(n Node, a attrs) (map[string]any, bool) {
 		a.str("state", t.State)
 		extra = t.Extra
 	case *Table:
+		a.strs("align", t.Align)
 		a.str("layout", t.Layout)
 		a.floatPtr("width", t.Width)
 		a.boolPtr("isNumberColumnEnabled", t.IsNumberColumnEnabled)

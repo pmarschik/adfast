@@ -793,7 +793,30 @@ func convertGoldmarkTable(table *east.Table, src []byte, lc *liftCtx, depth int)
 	for i, row := range rows {
 		children[i] = row
 	}
-	return &ast.Table{Children: children}
+	return &ast.Table{Children: children, Align: liftTableAlign(table.Alignments)}
+}
+
+// liftTableAlign maps goldmark's per-column alignments onto the pivot AST's.
+// It answers nil when no column asks for one, so a delimiter row without a
+// colon leaves no trace to carry (see ast.AnyAligned).
+func liftTableAlign(alignments []east.Alignment) []ast.Alignment {
+	out := make([]ast.Alignment, len(alignments))
+	for i, a := range alignments {
+		switch a {
+		case east.AlignLeft:
+			out[i] = ast.AlignLeft
+		case east.AlignRight:
+			out[i] = ast.AlignRight
+		case east.AlignCenter:
+			out[i] = ast.AlignCenter
+		case east.AlignNone:
+			out[i] = ast.AlignNone
+		}
+	}
+	if !ast.AnyAligned(out) {
+		return nil
+	}
+	return out
 }
 
 // spanMarkerCell is the intermediate node for a remark-extended-table merge

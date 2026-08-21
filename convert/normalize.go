@@ -1196,7 +1196,10 @@ func (fn *normalizer) normalizeTable(v *ast.Table) ast.Node {
 	for _, row := range rows {
 		mdRows = append(mdRows, convertRow(row))
 	}
-	return &ast.Table{Children: mdRows}
+	// Alignment survives the ADF leg on the synthetic carrier, so the
+	// formatter must carry it too or format and conversion would disagree
+	// (see format_contract_test.go).
+	return &ast.Table{Children: mdRows, Align: v.Align}
 }
 
 // spanValue keeps a span only when it spans (>1).

@@ -3,8 +3,9 @@ package adf
 // Wire safety: the markdown conversion can leave a small number of
 // synthetic, never-wire constructs on a document — the ColwidthsHint
 // placeholder (::colwidths before its table resolves; it never appears
-// in convert output but can be built by hand) and the "tight"
-// list-tightness attribute written by WithPreserveListTightness. Such
+// in convert output but can be built by hand), the "tight"
+// list-tightness attribute written by WithPreserveListTightness, the
+// heading "anchor" and the table "align" attribute. Such
 // documents must not be submitted to the host product as-is: IsWireSafe
 // is the guard consumers can run before submission, and StripSynthetic
 // the corresponding cleanup.
@@ -18,16 +19,20 @@ package adf
 // never-wire constructs the markdown conversion can produce:
 //
 //   - the ColwidthsHint placeholder kind,
-//   - the "tight" list flag written by WithPreserveListTightness, and
+//   - the "tight" list flag written by WithPreserveListTightness,
 //   - the "anchor" heading attribute (ast.Heading.ID; ADF has no neutral
 //     anchor construct, so a product addon must lower or drop it —
 //     confluence.MarkdownOptions lowers it to an anchor-macro
-//     inlineExtension, jira.MarkdownOptions drops it with a diagnostic).
+//     inlineExtension, jira.MarkdownOptions drops it with a diagnostic),
+//     and
+//   - the "align" table attribute (ast.Table.Align, a GFM table's column
+//     alignment; ADF tables have no alignment attribute at all, so no
+//     product addon can lower it and StripSynthetic simply drops it).
 //
 // Documents produced by the canonical conversion of markdown without
-// heading anchors, and without tightness preservation, are always
-// wire-safe. A false result means one of the above is present and the
-// document must not be submitted as-is; see StripSynthetic.
+// heading anchors or table alignment, and without tightness preservation,
+// are always wire-safe. A false result means one of the above is present
+// and the document must not be submitted as-is; see StripSynthetic.
 func IsWireSafe(doc Doc) bool {
 	for _, root := range doc.Content {
 		for n := range Walk(root) {
@@ -46,6 +51,8 @@ func nodeWireSafe(n Node) bool {
 		return false
 	case *Heading:
 		return t.Anchor == ""
+	case *Table:
+		return t.Align == nil
 	case *BulletList:
 		return t.Tight == nil
 	case *OrderedList:
@@ -56,10 +63,11 @@ func nodeWireSafe(n Node) bool {
 
 // StripSynthetic returns a copy of the document with every synthetic,
 // never-wire construct removed: ColwidthsHint nodes are dropped (they
-// have no wire form) and the "tight" and heading "anchor" flags are
-// cleared. Clearing an anchor loses it silently — a product addon that
-// can express anchors should lower them first (see
-// confluence.MarkdownOptions). The result
+// have no wire form) and the "tight", heading "anchor" and table "align"
+// flags are cleared. Clearing an anchor loses it silently — a product
+// addon that can express anchors should lower them first (see
+// confluence.MarkdownOptions); table alignment has nowhere to go in any
+// product, so clearing it is the only outcome. The result
 // satisfies IsWireSafe. The rewrite is copy-on-write; the input
 // document is never mutated.
 func StripSynthetic(doc Doc) Doc {
@@ -107,6 +115,13 @@ func stripNode(n Node) (Node, bool) {
 			ensure()
 			if h, ok := n.(*Heading); ok {
 				h.Anchor = ""
+			}
+		}
+	case *Table:
+		if t.Align != nil {
+			ensure()
+			if tbl, ok := n.(*Table); ok {
+				tbl.Align = nil
 			}
 		}
 	case *BulletList:
