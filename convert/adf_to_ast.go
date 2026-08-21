@@ -1,6 +1,7 @@
 package convert
 
 import (
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -95,6 +96,7 @@ func smartLinkLabel(rc renderCtx, url string) string {
 type renderCtx struct {
 	smartLinks          SmartLinks
 	linkResolver        LinkResolver
+	fileCards           FileCards
 	assets              mediaAssets
 	diagnostics         func(Diagnostic)
 	blockHooks          []func(adf.Node, extension.DecodeContext) (ast.Node, bool)
@@ -103,6 +105,31 @@ type renderCtx struct {
 	markHooks           []func(adf.Mark, []ast.Node) (ast.Node, bool)
 	preserveLocalImages bool
 	incrementLists      bool
+}
+
+// fileCardLink answers with the link a card reads back as: what the resolver
+// says, then the link resolver's own way home, and a label that falls back to
+// the card's alt text and then to the filename the href ends in.
+func (rc renderCtx) fileCardLink(n *adf.MediaInline) (FileCardLink, bool) {
+	if rc.fileCards.Link == nil || n.ID == "" {
+		return FileCardLink{}, false
+	}
+	link, ok := rc.fileCards.Link(n.ID)
+	if !ok || link.Href == "" {
+		return FileCardLink{}, false
+	}
+	if rc.linkResolver.Decode != nil {
+		if resolved, decoded := rc.linkResolver.Decode(link.Href); decoded {
+			link.Href = resolved
+		}
+	}
+	if link.Label == "" {
+		link.Label = n.Alt
+	}
+	if link.Label == "" {
+		link.Label = path.Base(link.Href)
+	}
+	return link, true
 }
 
 // reportRawNode emits the raw-node diagnostic: the markdown projection
@@ -245,6 +272,7 @@ func FromADF(doc adf.Doc, opts ...Option) ast.Node {
 	}
 	rc := renderCtx{
 		assets: newMediaAssets(cfg), smartLinks: cfg.smartLinks, linkResolver: cfg.linkResolver,
+		fileCards:           cfg.fileCards,
 		diagnostics:         cfg.diagnostics,
 		preserveLocalImages: cfg.preserveLocalImages, incrementLists: cfg.incrementListMarkers,
 	}
@@ -1087,8 +1115,12 @@ func (v *adfInlineVisitor) VisitMention(n *adf.Mention) []flatInline { return v.
 // VisitStatus implements adf.Visitor.
 func (v *adfInlineVisitor) VisitStatus(n *adf.Status) []flatInline { return v.inlineFallback(n) }
 
-// VisitMediaInline implements adf.Visitor.
+// VisitMediaInline implements adf.Visitor. A card the host product owns reads
+// back as the link it stands for; every other one stays a :media directive.
 func (v *adfInlineVisitor) VisitMediaInline(n *adf.MediaInline) []flatInline {
+	if link, ok := v.rc.fileCardLink(n); ok {
+		return []flatInline{{text: link.Label, href: link.Href, isLink: true}}
+	}
 	return v.inlineFallback(n)
 }
 

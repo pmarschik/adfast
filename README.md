@@ -209,7 +209,21 @@ key. `WithLinkResolver(convert.LinkResolver{Encode, Decode})` rewrites
 the destination of an ordinary labelled link at the ADF boundary.
 `Encode` maps a Markdown href to its product-facing form, and `Decode`
 restores the stable Markdown href. A resolver miss keeps the original
-destination, and cards and media are unaffected. `WithDocTransforms`
+destination, and cards and media are unaffected.
+
+`WithFileCards(convert.FileCards{Card, Link})` publishes a labelled link
+as the inline file card the host editor writes for an attached file.
+`Card` answers with the media id of the attachment, and with the
+collection it hangs off. `Link` reads a card back as the link it stands
+for, so the round trip returns the Markdown unchanged. The card resolver
+sees the href that `LinkResolver.Encode` produced, and `Link` gives its
+href to `LinkResolver.Decode`. One link becomes one card, however many
+nodes its label was split across. A card holds no label, so a label of
+`Link` stands in, and then the alt text of the card, and then the last
+segment of the href. A resolver miss keeps the link, and a card the
+resolver does not know stays a `::media` directive.
+
+`WithDocTransforms`
 hooks document-level rewrites on the encode side. `WithADFTransforms` is
 the decode-side mirror of this option. Both exist for the
 product-specific shapes that a per-node hook cannot reach. Such a shape

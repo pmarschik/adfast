@@ -30,6 +30,7 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 		preserveLocalImages: cfg.preserveLocalImages,
 		smartLinks:          cfg.smartLinks,
 		linkResolver:        cfg.linkResolver,
+		fileCards:           cfg.fileCards,
 		resolveImageDims:    cfg.resolveImageDims,
 		resolveAssetID:      cfg.resolveAssetID,
 		diagnostics:         cfg.diagnostics,
@@ -52,6 +53,7 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 type astConverter struct {
 	smartLinks          SmartLinks
 	linkResolver        LinkResolver
+	fileCards           FileCards
 	resolveImageDims    ImageDimsResolver
 	resolveAssetID      AssetIDResolver
 	diagnostics         func(Diagnostic)
@@ -1083,6 +1085,18 @@ func (c *astConverter) flattenLink(node *ast.Link, ctx markCtx) []adf.Node {
 	if c.linkResolver.Encode != nil {
 		if resolved, ok := c.linkResolver.Encode(href); ok {
 			href = resolved
+		}
+	}
+	// A file the host product attached publishes as the card it shows there, and
+	// the label goes with it: a card has nowhere to put one. One link is one
+	// card, however many nodes its label was split across.
+	if c.fileCards.Card != nil {
+		if card, ok := c.fileCards.Card(href); ok {
+			inline := &adf.MediaInline{ID: card.ID, Type: "file"}
+			if card.Collection != "" {
+				inline.Collection = new(card.Collection)
+			}
+			return []adf.Node{inline}
 		}
 	}
 	next := ctx

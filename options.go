@@ -23,6 +23,7 @@ type Option func(*options)
 type options struct {
 	smartLinks          convert.SmartLinks
 	linkResolver        convert.LinkResolver
+	fileCards           convert.FileCards
 	mediaAssets         map[string]convert.MediaAsset
 	resolveMediaAsset   convert.MediaAssetResolver
 	frontmatter         FrontmatterProvider
@@ -64,6 +65,9 @@ func (o *options) convertOptions() []convert.Option {
 	}
 	if o.linkResolver.Encode != nil || o.linkResolver.Decode != nil {
 		out = append(out, convert.WithLinkResolver(o.linkResolver))
+	}
+	if o.fileCards.Card != nil || o.fileCards.Link != nil {
+		out = append(out, convert.WithFileCards(o.fileCards))
 	}
 	if len(o.codeLanguages) > 0 {
 		out = append(out, convert.WithCodeLanguages(o.codeLanguages))
@@ -132,6 +136,14 @@ func WithSmartLinks(sl convert.SmartLinks) Option {
 // unaffected.
 func WithLinkResolver(r convert.LinkResolver) Option {
 	return func(o *options) { o.linkResolver = r }
+}
+
+// WithFileCards publishes the links a host product owns as the inline file
+// cards its own editor writes for an attached file, and reads those cards back
+// as the same links (see convert.FileCards). Read by ToADF and FromADF. Only
+// the links the resolver answers for are affected.
+func WithFileCards(f convert.FileCards) Option {
+	return func(o *options) { o.fileCards = f }
 }
 
 // WithCodeLanguages declares the code-block languages the host product

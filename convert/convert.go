@@ -48,6 +48,42 @@ type LinkResolver struct {
 	Decode func(href string) (resolved string, ok bool)
 }
 
+// FileCard is the inline file card a link publishes as: an attachment of the
+// host document, named by its media id and by the collection it hangs off.
+type FileCard struct {
+	// ID is the media id of the attachment the card shows.
+	ID string
+	// Collection is the media collection the attachment lives in. Confluence
+	// needs it — a card without one renders as nothing at all.
+	Collection string
+}
+
+// FileCardLink is the link a card reads back as. An empty Label falls back to
+// the card's own alt text, and then to the last segment of Href.
+type FileCardLink struct {
+	Href  string
+	Label string
+}
+
+// FileCards decides which ordinary labeled links are inline file cards, in
+// both directions. The zero value is inert and either func may be nil.
+//
+// It exists because the two forms mean the same thing to a reader and not to
+// the wire: Confluence writes a mediaInline card for a file somebody drops on
+// a page, and a labeled link for one somebody typed. A product that publishes
+// its own attachments wants the first form on the way out and the second on
+// the way back, and only the product knows the media id an href stands for.
+type FileCards struct {
+	// Card answers for a link href that names an attachment of the host
+	// document. Read by ToADF, after LinkResolver.Encode — the href it sees is
+	// the one the ADF stores.
+	Card func(href string) (FileCard, bool)
+	// Link answers with the link a card reads back as. Read by FromADF, before
+	// LinkResolver.Decode, so returning the ADF-side href is enough when a
+	// resolver already maps that href home.
+	Link func(id string) (FileCardLink, bool)
+}
+
 // ImageDimsResolver resolves a local image path (relative to the markdown
 // file) to its intrinsic pixel dimensions.
 type ImageDimsResolver func(path string) (width, height int, ok bool)
@@ -73,6 +109,7 @@ type MediaAsset = extension.MediaAsset
 type config struct {
 	smartLinks            SmartLinks
 	linkResolver          LinkResolver
+	fileCards             FileCards
 	resolveImageDims      ImageDimsResolver
 	resolveAssetID        AssetIDResolver
 	diagnostics           func(Diagnostic)
@@ -108,6 +145,14 @@ func WithSmartLinks(sl SmartLinks) Option {
 // affected.
 func WithLinkResolver(r LinkResolver) Option {
 	return func(c *config) { c.linkResolver = r }
+}
+
+// WithFileCards publishes the links a host product owns as inline file cards
+// and reads them back as those links (see FileCards). Read by ToADF and
+// FromADF. Links the resolver does not answer for, smart-link cards, and block
+// media are not affected.
+func WithFileCards(f FileCards) Option {
+	return func(c *config) { c.fileCards = f }
 }
 
 // WithPreserveListTightness stores the source list tightness on ADF list
