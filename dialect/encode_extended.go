@@ -150,6 +150,19 @@ func (n *BodiedExtension) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 			Content:       content,
 		}}
 	}
+	if len(content) == 0 {
+		// The body is what makes a bodiedExtension one, and the schema requires
+		// it. An empty container is the bodiless extension written the long way,
+		// so it publishes as one rather than as a node the renderer discards.
+		return []adf.Node{&adf.Extension{
+			ExtensionType: n.Attrs["type"],
+			ExtensionKey:  n.Attrs["key"],
+			Parameters:    parametersFromAttrs(n.Attrs),
+			Text:          n.Attrs["text"],
+			Layout:        n.Attrs["layout"],
+			LocalID:       n.Attrs["localId"],
+		}}
+	}
 	return []adf.Node{&adf.BodiedExtension{
 		ExtensionType: n.Attrs["type"],
 		ExtensionKey:  n.Attrs["key"],

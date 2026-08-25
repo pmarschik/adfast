@@ -94,6 +94,15 @@ func TestMacroEncodeShape(t *testing.T) {
 			},
 		},
 		{
+			name: "an empty container is the bodiless macro",
+			md:   ":::toc\n:::\n",
+			want: []string{
+				`"type":"extension"`,
+				`"extensionKey":"toc"`,
+				`"macroParams":{}`,
+			},
+		},
+		{
 			name: "a divergent schema version is written, not defaulted",
 			md:   "::toc{schemaVersion=\"9\" title=\"Contents\"}\n",
 			want: []string{
@@ -147,6 +156,27 @@ func TestMacroRoundTrip(t *testing.T) {
 		t.Run(strings.TrimSpace(md), func(t *testing.T) {
 			if got := adfToMD(t, mdToADF(t, md)); got != md {
 				t.Errorf("round trip = %q, want %q", got, md)
+			}
+		})
+	}
+}
+
+// TestEmptyContainerMacroPublishesBodiless: `:::toc\n:::` is the toc
+// macro written in the container position, and it holds nothing. ADF
+// gives bodiedExtension a required body, and Confluence answers an empty
+// one by dropping the macro — the page returns without it and the
+// document differs for good. So the empty container encodes as the
+// bodiless extension, and the markdown settles on the leaf form.
+func TestEmptyContainerMacroPublishesBodiless(t *testing.T) {
+	for _, md := range []string{":::toc\n:::\n", ":::toc{maxLevel=\"3\"}\n:::\n"} {
+		t.Run(strings.TrimSpace(md), func(t *testing.T) {
+			doc := mdToADF(t, md)
+			if js := docJSON(t, doc); strings.Contains(js, "bodiedExtension") {
+				t.Errorf("an empty container published a bodied macro:\n%s", js)
+			}
+			want := strings.ReplaceAll(strings.TrimSuffix(md, ":::\n"), ":::toc", "::toc")
+			if got := adfToMD(t, doc); got != want {
+				t.Errorf("back = %q, want %q", got, want)
 			}
 		})
 	}

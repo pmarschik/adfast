@@ -110,12 +110,17 @@ func (n *Macro) EncodeADF(_ extension.EncodeContext) []adf.Node {
 	if !ok {
 		return nil
 	}
+	return bodilessMacro(spec, n.Attrs, ast.PlainText(n.Children))
+}
+
+// bodilessMacro is the block macro with nothing in it — an ADF extension.
+func bodilessMacro(spec macroSpec, attrs map[string]string, label string) []adf.Node {
 	return []adf.Node{&adf.Extension{
 		ExtensionType: MacroExtensionType,
 		ExtensionKey:  spec.key,
-		Parameters:    macroParameters(spec, n.Attrs, ast.PlainText(n.Children)),
-		Layout:        n.Attrs["layout"],
-		LocalID:       n.Attrs["localId"],
+		Parameters:    macroParameters(spec, attrs, label),
+		Layout:        attrs["layout"],
+		LocalID:       attrs["localId"],
 	}}
 }
 
@@ -200,13 +205,22 @@ func (n *BodiedMacro) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 		label = ast.PlainText(p.Children)
 		children = children[1:]
 	}
+	body := ctx.EncodeBlocks(children)
+	if len(body) == 0 {
+		// A container with nothing in it is not a bodied macro. ADF gives
+		// bodiedExtension a required body, and Confluence answers an empty one
+		// by dropping the macro, so the page comes back without it and the
+		// document never stops differing. The bodiless form is what the macro
+		// is: `:::toc\n:::` publishes exactly as `::toc` does.
+		return bodilessMacro(spec, n.Attrs, label)
+	}
 	return []adf.Node{&adf.BodiedExtension{
 		ExtensionType: MacroExtensionType,
 		ExtensionKey:  spec.key,
 		Parameters:    macroParameters(spec, n.Attrs, label),
 		Layout:        n.Attrs["layout"],
 		LocalID:       n.Attrs["localId"],
-		Content:       ctx.EncodeBlocks(children),
+		Content:       body,
 	}}
 }
 

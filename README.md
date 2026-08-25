@@ -293,7 +293,10 @@ Macro parameters ride as directive attributes, and the unnamed parameter
 of the macro is the `[label]`. Every name registers in all three
 directive positions (`::name`, `:name`, `:::name`). The same macro key
 genuinely appears as a block, an inline, and a bodied node in live pages,
-and the ADF node type decides the form on the way back.
+and the ADF node type decides the form on the way back. A container that
+holds nothing, such as `:::toc` with an empty body, encodes as the
+bodiless macro: ADF gives `bodiedExtension` a required body, and
+Confluence answers an empty one by dropping the macro.
 
 Everything that Confluence derives is left out of the markdown. `macroId`
 is server-generated, so a macro written without one comes back with one
@@ -476,19 +479,19 @@ round-trips losslessly through ADF.
 
 ### Container directives (block elements)
 
-| Markdown                               | ADF                          | Notes                                                                                                                                                                  |
-| -------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `:::info` … `:::`                      | panel                        | Also `note`, `warning`, `success`, `error`                                                                                                                             |
-| `:::expand[Title]` … `:::`             | expand                       | Title is optional; nests inside panels as nestedExpand                                                                                                                 |
-| `:::media[alt]{…}` … `:::`             | mediaSingle + caption        | The `::media` attrs on the fence line, the caption as the body; a plain-text caption on image-expressible media uses the image title instead: `![alt](path "caption")` |
-| `:::extension{…}` … `:::`              | bodiedExtension              | Same attrs as `::extension`; when every child is a `:::frame` container (extensionFrame) it encodes as multiBodiedExtension (a frameless one carries the bare `multi`) |
-| `:::syncBlock{resourceId localId}` …   | bodiedSyncBlock              | The source body of a synced block                                                                                                                                      |
-| `:::section` + `:::column{width="…"}`  | layoutSection / layoutColumn | Page layouts; `columnRuleStyle`/`localId` on the section, `width`/`valign`/`localId` on each column                                                                    |
-| `:::center` / `:::end` … `:::`         | alignment mark               | Block mark on each wrapped paragraph/heading                                                                                                                           |
-| `:::indent{2}` … `:::`                 | indentation mark             | The bare value is the level (1–6)                                                                                                                                      |
-| `:::breakout{wide}` … `:::`            | breakout mark                | Modes `wide`/`full-width`; optional `width="1200"`                                                                                                                     |
-| `:::dataConsumer{sources="id1,id2"}` … | dataConsumer mark            | `sources` is a comma-separated list of source ids (opaque strings; parsed by splitting on commas and trimming)                                                         |
-| `:::fragment{localId="…" name?}` …     | fragment mark                | Stable references to tables/extensions                                                                                                                                 |
+| Markdown                               | ADF                          | Notes                                                                                                                                                                                                                   |
+| -------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `:::info` … `:::`                      | panel                        | Also `note`, `warning`, `success`, `error`                                                                                                                                                                              |
+| `:::expand[Title]` … `:::`             | expand                       | Title is optional; nests inside panels as nestedExpand                                                                                                                                                                  |
+| `:::media[alt]{…}` … `:::`             | mediaSingle + caption        | The `::media` attrs on the fence line, the caption as the body; a plain-text caption on image-expressible media uses the image title instead: `![alt](path "caption")`                                                  |
+| `:::extension{…}` … `:::`              | bodiedExtension              | Same attrs as `::extension`; when every child is a `:::frame` container (extensionFrame) it encodes as multiBodiedExtension (a frameless one carries the bare `multi`); an empty body encodes as the bodiless extension |
+| `:::syncBlock{resourceId localId}` …   | bodiedSyncBlock              | The source body of a synced block                                                                                                                                                                                       |
+| `:::section` + `:::column{width="…"}`  | layoutSection / layoutColumn | Page layouts; `columnRuleStyle`/`localId` on the section, `width`/`valign`/`localId` on each column                                                                                                                     |
+| `:::center` / `:::end` … `:::`         | alignment mark               | Block mark on each wrapped paragraph/heading                                                                                                                                                                            |
+| `:::indent{2}` … `:::`                 | indentation mark             | The bare value is the level (1–6)                                                                                                                                                                                       |
+| `:::breakout{wide}` … `:::`            | breakout mark                | Modes `wide`/`full-width`; optional `width="1200"`                                                                                                                                                                      |
+| `:::dataConsumer{sources="id1,id2"}` … | dataConsumer mark            | `sources` is a comma-separated list of source ids (opaque strings; parsed by splitting on commas and trimming)                                                                                                          |
+| `:::fragment{localId="…" name?}` …     | fragment mark                | Stable references to tables/extensions                                                                                                                                                                                  |
 
 A nested container grows the outer fence (`::::`), like remark. The
 mark-wrapper containers (`:::center` and `:::end`, `:::indent`,

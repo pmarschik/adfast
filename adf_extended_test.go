@@ -267,6 +267,20 @@ func TestExtended_ExtensionFamily(t *testing.T) {
 		":::extension{key=\"tabs\" multi type=\"com.example\"}\n:::\n", nil)
 }
 
+// An empty :::extension container is the bodiless extension written the long
+// way. The ADF schema gives bodiedExtension a required body, and a renderer
+// answers an empty one by dropping the node, so the encode settles on the form
+// that survives.
+func TestExtended_EmptyExtensionContainerEncodesBodiless(t *testing.T) {
+	got := mdToADF(":::extension{key=\"toc\" type=\"com.example\"}\n:::\n")
+	if len(got.Content) != 1 {
+		t.Fatalf("content = %d nodes, want 1", len(got.Content))
+	}
+	if _, ok := got.Content[0].(*adf.Extension); !ok {
+		t.Errorf("node = %T, want *adf.Extension", got.Content[0])
+	}
+}
+
 func TestExtended_NastyExtensionParameters(t *testing.T) {
 	params := map[string]any{
 		"quote":   `he said "hi" & 'bye'`,
