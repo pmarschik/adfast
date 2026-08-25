@@ -219,9 +219,11 @@ var UnsupportedKinds = []string{
 // each Confluence-only construct, again diagnostic-only), heading-anchor
 // dropping (Jira has no anchor construct at all — a "## Title {#id}"
 // suffix cannot survive, so the anchor drops with a
-// "heading-anchor-dropped" diagnostic and the heading text is kept), and
-// — when keyExpansion is not ExpandExplicit and baseURL is set — bare
-// issue-key expansion (ExpandAuto or ExpandAll).
+// "heading-anchor-dropped" diagnostic and the heading text is kept),
+// table column alignment lowered to the alignment block mark on the
+// blocks in each aligned column (see adf.LowerTableAlign), and — when
+// keyExpansion is not ExpandExplicit and baseURL is set — bare issue-key
+// expansion (ExpandAuto or ExpandAll).
 //
 // The facade shares one option type, so these compose with RenderOptions
 // and pass to any primitive or to adfast.WithPipelineOptions; each
@@ -233,6 +235,7 @@ func MarkdownOptions(baseURL string, keyExpansion ExpandMode) []adfast.Option {
 		adfast.WithCodeLanguages(CodeLanguages),
 		adfast.WithUnsupportedKinds("jira", UnsupportedKinds),
 		adfast.WithoutHeadingAnchors("jira"),
+		adfast.WithDocTransforms(adf.LowerTableAlign),
 	}
 	if keyExpansion != ExpandExplicit && baseURL != "" {
 		opts = append(opts, adfast.WithDocTransforms(func(d adf.Doc) adf.Doc {
@@ -244,7 +247,12 @@ func MarkdownOptions(baseURL string, keyExpansion ExpandMode) []adfast.Option {
 
 // RenderOptions bundles the Jira behavior for the decode direction
 // (adfast.FromADF): inline and block smart-link cards label with the bare
-// issue key. See MarkdownOptions for the encode side.
+// issue key, and a table column whose cells all carry the same alignment
+// mark lifts back to a GFM delimiter row (see adf.LiftTableAlign). See
+// MarkdownOptions for the encode side.
 func RenderOptions() []adfast.Option {
-	return []adfast.Option{adfast.WithSmartLinks(SmartLinks(""))}
+	return []adfast.Option{
+		adfast.WithSmartLinks(SmartLinks("")),
+		adfast.WithADFTransforms(adf.LiftTableAlign),
+	}
 }

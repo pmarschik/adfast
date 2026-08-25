@@ -222,7 +222,9 @@ type Table struct {
 	// column asks for one, and may be shorter than the table is wide —
 	// read it with ColumnAlign. ADF tables have no alignment attribute,
 	// so this rides the ADF leg as a synthetic never-wire carrier
-	// (adf.Table.Align; see adf.IsWireSafe).
+	// (adf.Table.Align; see adf.IsWireSafe), which the product bundles
+	// lower onto the alignment block mark of each column's blocks before
+	// submission (adf.LowerTableAlign).
 	Align []Alignment
 	BlockSpacing
 }

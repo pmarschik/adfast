@@ -26,8 +26,10 @@ package adf
 //     inlineExtension, jira.MarkdownOptions drops it with a diagnostic),
 //     and
 //   - the "align" table attribute (ast.Table.Align, a GFM table's column
-//     alignment; ADF tables have no alignment attribute at all, so no
-//     product addon can lower it and StripSynthetic simply drops it).
+//     alignment; ADF tables have no alignment attribute, so it must be
+//     lowered onto the alignment block mark of the blocks in each column
+//     — see LowerTableAlign, which both products' MarkdownOptions
+//     install — or dropped by StripSynthetic).
 //
 // Documents produced by the canonical conversion of markdown without
 // heading anchors or table alignment, and without tightness preservation,
@@ -83,10 +85,11 @@ func nodeWireSafe(n Node) bool {
 // StripSynthetic returns a copy of the document with every synthetic,
 // never-wire construct removed: ColwidthsHint nodes are dropped (they
 // have no wire form) and the "tight", heading "anchor" and table "align"
-// flags are cleared. Clearing an anchor loses it silently — a product
-// addon that can express anchors should lower them first (see
-// confluence.MarkdownOptions); table alignment has nowhere to go in any
-// product, so clearing it is the only outcome. The result
+// flags are cleared. Clearing an anchor or a table alignment loses it
+// silently, so lower them first: confluence.MarkdownOptions lowers
+// anchors to the anchor macro, and both products' MarkdownOptions lower
+// table alignment to the alignment block mark (see LowerTableAlign). The
+// result
 // satisfies IsWireSafe. The rewrite is copy-on-write; the input
 // document is never mutated.
 func StripSynthetic(doc Doc) Doc {

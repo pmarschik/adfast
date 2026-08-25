@@ -186,9 +186,10 @@ before you submit a document of uncertain origin, and use
 For a heading anchor, the product bundles are the better answer.
 `confluence.MarkdownOptions` lowers the anchor to the anchor macro of
 Confluence. `jira.MarkdownOptions` drops the anchor and reports a
-`heading-anchor-dropped` diagnostic. Table alignment has no such answer:
-no product has a table alignment attribute at all, so `adf.StripSynthetic`
-simply clears it.
+`heading-anchor-dropped` diagnostic. For table alignment, both bundles
+install `adf.LowerTableAlign`, which gives every alignable block of an
+aligned column the ADF alignment mark. `adf.StripSynthetic` clears the
+attribute for a document that no bundle touches.
 
 Media and attachment resolution is pluggable through `WithMediaAssets`,
 `WithAssetIDResolver`, and `WithImageDimsResolver`. If the collection of
@@ -231,7 +232,9 @@ hooks document-level rewrites on the encode side. `WithADFTransforms` is
 the decode-side mirror of this option. Both exist for the
 product-specific shapes that a per-node hook cannot reach. Such a shape
 moves content between a node and the attributes of the parent, as
-`confluence.LowerAnchors` and `confluence.LiftAnchors` do.
+`confluence.LowerAnchors` and `confluence.LiftAnchors` do, or between a
+table and the blocks of its cells, as `adf.LowerTableAlign` and
+`adf.LiftTableAlign` do.
 The [`jira/`](jira/) submodule bundles the
 Jira conventions. `jira.MarkdownOptions` and `jira.RenderOptions` each
 return a `[]adfast.Option` slice. Pass the encode-side bundle to both
@@ -613,8 +616,11 @@ unknown leaf drops, and an unknown text directive flattens to text.
   route: ADF tables have no alignment attribute of any kind, so the
   per-column list rides as a synthetic never-wire attribute
   (`adf.Table.Align`), and the render places the colons and the cell
-  padding exactly where remark-stringify does. No product addon can lower
-  it, so `adf.StripSynthetic` clears it before submission.
+  padding exactly where remark-stringify does. Both product bundles
+  lower the attribute onto the ADF alignment mark of each cell block
+  (`adf.LowerTableAlign`), and read it back (`adf.LiftTableAlign`).
+  The mark spells only center and end, so a left-aligned column comes
+  back unaligned, which is what it renders as.
 
 ## A complete example
 
@@ -888,7 +894,7 @@ one, so the check would be moot.
 | taskList / taskItem                           | ✓    | ✓          | converted      | `- [ ]` / `- [x]`; `localId` regenerates as empty on encode                                                                                                                                                                                                                 |
 | blockTaskItem                                 | ✓    | —          | converted      | `- [ ]` + indented blocks; a single-paragraph item re-encodes as the inline taskItem. Jira renders it first-class; Confluence downgrades it to a plain taskItem                                                                                                             |
 | decisionList / decisionItem                   | ✓    | ✓          | converted      | `::decisions` + following plain bullet list; encodes with state DECIDED; Jira renders decisions first-class (live 2026-07-22)                                                                                                                                               |
-| table / tableRow / tableHeader / tableCell    | ✓    | ✓          | converted      | GFM pipe table; colspan/rowspan via `>`/`^` markers; colwidth attrs via `::colwidths`; column alignment rides the synthetic never-wire `align` attribute (ADF has none)                                                                                                     |
+| table / tableRow / tableHeader / tableCell    | ✓    | ✓          | converted      | GFM pipe table; colspan/rowspan via `>`/`^` markers; colwidth attrs via `::colwidths`; column alignment rides the synthetic never-wire `align` attribute (ADF has none), which the product bundles lower onto the alignment mark of each cell block                         |
 | panel                                         | ✓    | ✓          | converted      | `:::info` …; unknown panelType degrades to `info`                                                                                                                                                                                                                           |
 | expand / nestedExpand                         | ✓    | ✓          | converted      | `:::expand[Title]` …; encode always emits `expand` (Jira nests it as nestedExpand itself)                                                                                                                                                                                   |
 | mediaSingle / mediaGroup / media              | ✓    | ✓          | converted      | `![alt](path)` or `::media`; plain image only when fully expressible; groups fan out to `group="true"` items                                                                                                                                                                |

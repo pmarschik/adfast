@@ -5,7 +5,10 @@ import "github.com/pmarschik/adfast/ast"
 // GFM table column alignment across the ADF leg. ADF tables have no
 // alignment attribute, so the alignment rides as adf.Table.Align, the
 // synthetic never-wire carrier (see adf.IsWireSafe and the same pattern
-// in ast.Heading.ID ↔ adf.Heading.Anchor). Both directions answer nil for
+// in ast.Heading.ID ↔ adf.Heading.Anchor). Turning the carrier into
+// something a product stores is the job of adf.LowerTableAlign, which
+// both product bundles install; this file only moves the value between
+// the two trees. Both directions answer nil for
 // a table with no alignment, so an unaligned table's ADF payload is
 // exactly what it was before alignment existed.
 

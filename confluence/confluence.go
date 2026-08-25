@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/pmarschik/adfast"
+	"github.com/pmarschik/adfast/adf"
 	"github.com/pmarschik/adfast/convert"
 )
 
@@ -91,9 +92,11 @@ var UnsupportedKinds = []string{"blockTaskItem"}
 // "unsupported-code-language" diagnostic when a diagnostics sink is
 // configured; conversion is unchanged), and the product-availability
 // check against UnsupportedKinds (blockTaskItem; see UnsupportedKinds).
-// It also lowers heading anchors — a "## Title {#id}" suffix becomes the
-// anchor macro Confluence stores (see LowerAnchors), which is what makes
-// the encoded document wire-safe.
+// It also lowers the two constructs ADF has no attribute for, which is
+// what makes the encoded document wire-safe: a heading's "{#id}" suffix
+// becomes the anchor macro Confluence stores (see LowerAnchors), and a
+// table's column alignment becomes the alignment block mark on the
+// blocks in each aligned column (see adf.LowerTableAlign).
 //
 // The facade shares one option type, so these compose with RenderOptions
 // and pass to any primitive or to adfast.WithPipelineOptions; each
@@ -104,20 +107,22 @@ func MarkdownOptions(baseURL string) []adfast.Option {
 		adfast.WithCodeLanguages(CodeLanguages),
 		adfast.WithUnsupportedKinds("confluence", UnsupportedKinds),
 		adfast.WithExtensions(Macros()),
-		adfast.WithDocTransforms(LowerAnchors),
+		adfast.WithDocTransforms(LowerAnchors, adf.LowerTableAlign),
 	}
 }
 
 // RenderOptions bundles the Confluence behavior for the decode direction
 // (adfast.FromADF): inline and block smart-link cards pointing at
 // Confluence pages label with the SPACE/pageID key, the core macros
-// decode to their sugared directives (see Macros), and a heading's anchor
-// macro lifts back to its "{#id}" suffix (see LiftAnchors). See
-// MarkdownOptions for the encode side.
+// decode to their sugared directives (see Macros), a heading's anchor
+// macro lifts back to its "{#id}" suffix (see LiftAnchors), and a table
+// column whose cells all carry the same alignment mark lifts back to a
+// GFM delimiter row (see adf.LiftTableAlign). See MarkdownOptions for
+// the encode side.
 func RenderOptions() []adfast.Option {
 	return []adfast.Option{
 		adfast.WithSmartLinks(SmartLinks("")),
 		adfast.WithExtensions(Macros()),
-		adfast.WithADFTransforms(LiftAnchors),
+		adfast.WithADFTransforms(LiftAnchors, adf.LiftTableAlign),
 	}
 }

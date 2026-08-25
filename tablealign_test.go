@@ -61,9 +61,12 @@ func TestTableAlignmentIsTheSyntheticTableAttribute(t *testing.T) {
 	}
 }
 
-// Alignment has no ADF form at all, so a document carrying it is not
-// wire-safe and StripSynthetic must clear it — the same contract as the
-// heading anchor.
+// An ADF table has no alignment attribute, so a document carrying the
+// synthetic one is not wire-safe: a product bundle must lower it to the
+// alignment block mark (adf.LowerTableAlign, which both
+// confluence.MarkdownOptions and jira.MarkdownOptions install), or
+// StripSynthetic must clear it. The neutral core does neither, which is
+// what this pins — the same contract as the heading anchor.
 func TestTableAlignmentIsNotWireSafe(t *testing.T) {
 	doc := ToADF(FromMarkdown("| a | b |\n|:--|--:|\n| 1 | 2 |\n"))
 	if adf.IsWireSafe(doc) {
