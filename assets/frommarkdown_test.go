@@ -54,6 +54,76 @@ func TestSyncOnEncode_SingleBatchReferencedOnly(t *testing.T) {
 	wantMedia(t, doc, uuidA)
 }
 
+// TestSyncOnEncode_DotSlashReference: the only reference in the document
+// is "./assets/x.png". The worklist says "assets/x.png", and the two
+// spellings address one file, so it must upload and resolve.
+func TestSyncOnEncode_DotSlashReference(t *testing.T) {
+	mdDir := t.TempDir()
+	dir := mustMkdir(t, filepath.Join(mdDir, "assets"))
+	mustDo(t, os.WriteFile(filepath.Join(dir, "one.png"), tinyPNG(t, 1, 1), 0o600))
+	store := mustStore(t, mdDir)
+
+	var calls int
+	up := mappedUploader(t, &calls, map[string]string{"assets/one.png": uuidA})
+
+	docs := mustPushAll(t, PushPipeline(t.Context(), store, up), []string{
+		"![a](./assets/one.png)\n",
+	})
+	if calls != 1 {
+		t.Errorf("uploader calls = %d, want 1 batch", calls)
+	}
+	wantMedia(t, docs[0], uuidA)
+	wantPending(t, store)
+}
+
+// TestSyncOnEncode_MixedSpellingsUploadOnce: two documents name the same
+// file with different spellings. It goes up once, and both resolve.
+func TestSyncOnEncode_MixedSpellingsUploadOnce(t *testing.T) {
+	mdDir := t.TempDir()
+	dir := mustMkdir(t, filepath.Join(mdDir, "assets"))
+	mustDo(t, os.WriteFile(filepath.Join(dir, "one.png"), tinyPNG(t, 1, 1), 0o600))
+	store := mustStore(t, mdDir)
+
+	var calls int
+	seen := 0
+	up := UploaderFunc(func(ctx context.Context, batch []PendingAsset) ([]UploadResult, error) {
+		seen += len(batch)
+		return mappedUploader(t, &calls, map[string]string{"assets/one.png": uuidA}).Upload(ctx, batch)
+	})
+
+	docs := mustPushAll(t, PushPipeline(t.Context(), store, up), []string{
+		"![a](./assets/one.png)\n",
+		"![b](assets/one.png)\n",
+	})
+	if seen != 1 {
+		t.Errorf("uploaded assets = %d, want 1", seen)
+	}
+	wantMedia(t, docs[0], uuidA)
+	wantMedia(t, docs[1], uuidA)
+}
+
+// TestSyncOnEncode_ParentReference: a store whose assets folder sits
+// above the document is addressed with "../assets/…", which is already
+// the spelling Pending reports. It must keep working.
+func TestSyncOnEncode_ParentReference(t *testing.T) {
+	root := t.TempDir()
+	dir := mustMkdir(t, filepath.Join(root, "assets"))
+	mustDo(t, os.WriteFile(filepath.Join(dir, "one.png"), tinyPNG(t, 1, 1), 0o600))
+	docDir := mustMkdir(t, filepath.Join(root, "docs"))
+	store := mustStoreAt(t, root, docDir)
+
+	var calls int
+	up := mappedUploader(t, &calls, map[string]string{"../assets/one.png": uuidA})
+
+	docs := mustPushAll(t, PushPipeline(t.Context(), store, up), []string{
+		"![a](../assets/one.png)\n",
+	})
+	if calls != 1 {
+		t.Errorf("uploader calls = %d, want 1 batch", calls)
+	}
+	wantMedia(t, docs[0], uuidA)
+}
+
 // TestSyncOnEncode_ErrorHandling: MarkdownToADFAll aborts on an upload
 // failure; the infallible MarkdownToADF downgrades it to a
 // before-encode-failed diagnostic and proceeds.

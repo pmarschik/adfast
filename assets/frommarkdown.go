@@ -2,6 +2,8 @@ package assets
 
 import (
 	"context"
+	"path"
+	"path/filepath"
 	"strings"
 
 	adfast "github.com/pmarschik/adfast"
@@ -62,7 +64,7 @@ func syncReferenced(ctx context.Context, store Store, up Uploader, docs []ast.No
 	}
 	var paths []string
 	for _, p := range pending {
-		if referenced[p] {
+		if referenced[normalizeRef(p)] {
 			paths = append(paths, p)
 		}
 	}
@@ -72,13 +74,22 @@ func syncReferenced(ctx context.Context, store Store, up Uploader, docs []ast.No
 
 // collectLocalImages walks a parsed document for image destinations that
 // are local paths (not URLs) — the references an upload could resolve.
+// The destinations are normalized, because the worklist they meet is.
 func collectLocalImages(n ast.Node, out map[string]bool) {
 	if img, ok := n.(*ast.Image); ok && img.URL != "" && !isRemoteURL(img.URL) {
-		out[img.URL] = true
+		out[normalizeRef(img.URL)] = true
 	}
 	for _, c := range ast.Children(n) {
 		collectLocalImages(c, out)
 	}
+}
+
+// normalizeRef reduces a reference path to one spelling per file, so an
+// author's "./assets/x.png" meets the worklist's "assets/x.png". Pending
+// reports the path the store builds itself — always clean — while a
+// document says whatever its author typed.
+func normalizeRef(ref string) string {
+	return path.Clean(filepath.ToSlash(ref))
 }
 
 func isRemoteURL(u string) bool {
