@@ -22,117 +22,96 @@ func WrapProse(md string, width int) string {
 	}
 	lines := strings.Split(md, "\n")
 	var out []string
-	i := 0
-
-	for i < len(lines) {
-		line := lines[i]
-
-		// Frontmatter block (---)
-		if i == 0 && line == "---" {
-			out = append(out, line)
-			i++
-			for i < len(lines) {
-				out = append(out, lines[i])
-				if lines[i] == "---" {
-					i++
-					break
-				}
-				i++
-			}
-			continue
-		}
-
-		// Fenced code block
-		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
-			fence := line[:3]
-			out = append(out, line)
-			i++
-			for i < len(lines) {
-				out = append(out, lines[i])
-				if strings.HasPrefix(lines[i], fence) && strings.TrimSpace(lines[i]) == fence {
-					i++
-					break
-				}
-				i++
-			}
-			continue
-		}
-
-		// HTML comment (single or multi-line)
-		if strings.HasPrefix(strings.TrimSpace(line), "<!--") {
-			out = append(out, line)
-			if !strings.Contains(line, "-->") {
-				i++
-				for i < len(lines) {
-					out = append(out, lines[i])
-					if strings.Contains(lines[i], "-->") {
-						i++
-						break
-					}
-					i++
-				}
-				continue
-			}
-			i++
-			continue
-		}
-
-		// Non-wrappable lines: headings, lists, tables, blockquotes, blank, thematic breaks
-		if isNonWrappable(line) {
-			out = append(out, line)
-			i++
-			continue
-		}
-
-		// Paragraph: collect contiguous prose lines and wrap
-		var para []string
-		for i < len(lines) && !isNonWrappable(lines[i]) && !isFence(lines[i]) && !isHTMLComment(lines[i]) {
-			para = append(para, lines[i])
-			i++
-		}
-		wrapped := wrapWords(strings.Join(para, " "), width)
-		out = append(out, wrapped...)
+	for i := 0; i < len(lines); {
+		out, i = wrapProseBlock(out, lines, i, width)
 	}
-
 	return strings.Join(out, "\n")
 }
 
+// wrapProseBlock consumes one block starting at lines[i] — a verbatim
+// region, a single non-wrappable line, or a prose paragraph — appends its
+// output form to out and returns the index just past it.
+func wrapProseBlock(out, lines []string, i, width int) (appended []string, next int) {
+	line := lines[i]
+	switch {
+	case i == 0 && line == "---":
+		// Frontmatter block: verbatim through the closing fence.
+		out = append(out, line)
+		return copyVerbatim(out, lines, i+1, func(l string) bool { return l == "---" })
+	case isFence(line):
+		fence := line[:3]
+		out = append(out, line)
+		return copyVerbatim(out, lines, i+1, func(l string) bool {
+			return strings.HasPrefix(l, fence) && strings.TrimSpace(l) == fence
+		})
+	case isHTMLComment(line):
+		out = append(out, line)
+		if strings.Contains(line, "-->") {
+			return out, i + 1
+		}
+		return copyVerbatim(out, lines, i+1, func(l string) bool { return strings.Contains(l, "-->") })
+	case isNonWrappable(line):
+		// Headings, lists, tables, blockquotes, blank lines, thematic breaks.
+		return append(out, line), i + 1
+	}
+	// Paragraph: collect the contiguous prose lines and wrap them as one.
+	var para []string
+	for i < len(lines) && !isNonWrappable(lines[i]) && !isFence(lines[i]) && !isHTMLComment(lines[i]) {
+		para = append(para, lines[i])
+		i++
+	}
+	return append(out, wrapWords(strings.Join(para, " "), width)...), i
+}
+
+// copyVerbatim appends lines from `from` onward, through the first line
+// closes accepts (the closer included), and returns the index just past
+// it. An unterminated region runs to the end of the input.
+func copyVerbatim(out, lines []string, from int, closes func(string) bool) (appended []string, next int) {
+	for from < len(lines) {
+		line := lines[from]
+		out = append(out, line)
+		from++
+		if closes(line) {
+			break
+		}
+	}
+	return out, from
+}
+
+// isNonWrappable reports whether the line is one the rewrap leaves
+// byte-for-byte alone.
 func isNonWrappable(line string) bool {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
 		return true
 	}
 	// Indented lines (list continuations, etc.) — preserve as-is
-	if line != "" && (line[0] == ' ' || line[0] == '\t') {
+	if line[0] == ' ' || line[0] == '\t' {
 		return true
 	}
-	// Headings
-	if strings.HasPrefix(trimmed, "#") {
-		return true
-	}
-	// Lists (ordered and unordered)
+	return isListLine(trimmed) || isBlockSyntaxLine(trimmed)
+}
+
+// isListLine reports whether the trimmed line opens a list item.
+func isListLine(trimmed string) bool {
 	if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") || strings.HasPrefix(trimmed, "+ ") {
 		return true
 	}
 	// Ordered lists: a digit-led line with ". " in the first four characters.
 	// The len>=4 guard keeps trimmed[:4] in bounds — a bare "1. " (three
 	// chars) would otherwise slice past the string and panic.
-	if len(trimmed) >= 4 && trimmed[0] >= '0' && trimmed[0] <= '9' && strings.Contains(trimmed[:4], ". ") {
+	return len(trimmed) >= 4 && trimmed[0] >= '0' && trimmed[0] <= '9' && strings.Contains(trimmed[:4], ". ")
+}
+
+// isBlockSyntaxLine reports whether the trimmed line opens one of the
+// remaining block constructs: a heading, a table, a blockquote, or a
+// thematic break.
+func isBlockSyntaxLine(trimmed string) bool {
+	switch trimmed[0] {
+	case '#', '|', '>':
 		return true
 	}
-	// Tables
-	if strings.HasPrefix(trimmed, "|") {
-		return true
-	}
-	// Blockquotes
-	if strings.HasPrefix(trimmed, ">") {
-		return true
-	}
-	// Thematic breaks
-	if trimmed == "---" || trimmed == "***" || trimmed == "___" {
-		return true
-	}
-	return false
+	return trimmed == "---" || trimmed == "***" || trimmed == "___"
 }
 
 func isFence(line string) bool {

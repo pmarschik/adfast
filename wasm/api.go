@@ -109,8 +109,17 @@ const (
 // CodeMirror's RangeSetBuilder wants. A container is emitted before the
 // directives nested inside it.
 //
-//nolint:govet // fieldalignment: the declaration order IS the published JSON key order (start, end, level, name, attrs); saving 8 bytes on a struct that exists to be marshaled is not worth reordering a documented wire surface.
+// The field order is the one govet's fieldalignment wants, not the JSON
+// key order: a JSON object is unordered, so the `json` tags alone define
+// the wire surface and the struct is free to pack tightly.
 type Span struct {
+	// Attrs are the directive's parsed attributes, exactly as the dialect
+	// grammar reads them (quoting, escaping, and `#id`/bare shorthands
+	// already resolved). Never nil — a directive without attributes has an
+	// empty object, so `span.attrs.color` needs no guard.
+	Attrs map[string]string `json:"attrs"`
+	// Name is the directive name, without its colons ("info", "status", …).
+	Name string `json:"name"`
 	// Start is the UTF-16 code unit offset of the directive's first
 	// character.
 	Start int `json:"start"`
@@ -119,13 +128,6 @@ type Span struct {
 	End int `json:"end"`
 	// Level is LevelContainer (3), LevelLeaf (2), or LevelText (1).
 	Level int `json:"level"`
-	// Name is the directive name, without its colons ("info", "status", …).
-	Name string `json:"name"`
-	// Attrs are the directive's parsed attributes, exactly as the dialect
-	// grammar reads them (quoting, escaping, and `#id`/bare shorthands
-	// already resolved). Never nil — a directive without attributes has an
-	// empty object, so `span.attrs.color` needs no guard.
-	Attrs map[string]string `json:"attrs"`
 }
 
 // CatalogEntry names one directive the dialect registers, at one level.
@@ -140,21 +142,21 @@ type Span struct {
 // Attribute schemas are deliberately out of scope: they live inside the
 // promote functions, not in the registration, so an entry describes the
 // directive's identity (name, level, ADF kind) and nothing more.
-//
-//nolint:govet // fieldalignment: as with Span, the declaration order is the published JSON key order.
+// As with Span, the field order is fieldalignment's rather than the JSON
+// key order.
 type CatalogEntry struct {
 	// Name is the directive name, without its colons ("info", "status", …)
 	// — the same value Span.Name carries.
 	Name string `json:"name"`
+	// Kind is the dialect kind the directive promotes to
+	// (extension.Registration.Kind), e.g. "panel" for every panel name.
+	Kind string `json:"kind"`
 	// Level is LevelContainer (3), LevelLeaf (2), or LevelText (1). A name
 	// can be registered at more than one level, with a different kind at
 	// each ("media" is the media kind as a leaf or container and the
 	// mediaInline kind as a text directive), so (name, level) — the pair a
 	// span carries — is what identifies an entry.
 	Level int `json:"level"`
-	// Kind is the dialect kind the directive promotes to
-	// (extension.Registration.Kind), e.g. "panel" for every panel name.
-	Kind string `json:"kind"`
 	// DecodedByCore reports that the ADF → Markdown direction is handled
 	// structurally by convert rather than by the kind's own decode hook
 	// (extension.Registration.DecodedByCore) — true for the cross-sibling
@@ -179,13 +181,22 @@ func Catalog() []CatalogEntry {
 	seen := map[key]CatalogEntry{}
 	for _, reg := range dialect.Registrations() {
 		for name := range reg.Texts {
-			seen[key{name, LevelText}] = CatalogEntry{name, LevelText, reg.Kind, reg.DecodedByCore}
+			seen[key{name, LevelText}] = CatalogEntry{
+				Name: name, Kind: reg.Kind, Level: LevelText,
+				DecodedByCore: reg.DecodedByCore,
+			}
 		}
 		for name := range reg.Leaves {
-			seen[key{name, LevelLeaf}] = CatalogEntry{name, LevelLeaf, reg.Kind, reg.DecodedByCore}
+			seen[key{name, LevelLeaf}] = CatalogEntry{
+				Name: name, Kind: reg.Kind, Level: LevelLeaf,
+				DecodedByCore: reg.DecodedByCore,
+			}
 		}
 		for name := range reg.Containers {
-			seen[key{name, LevelContainer}] = CatalogEntry{name, LevelContainer, reg.Kind, reg.DecodedByCore}
+			seen[key{name, LevelContainer}] = CatalogEntry{
+				Name: name, Kind: reg.Kind, Level: LevelContainer,
+				DecodedByCore: reg.DecodedByCore,
+			}
 		}
 	}
 	out := make([]CatalogEntry, 0, len(seen))
@@ -205,18 +216,18 @@ func Catalog() []CatalogEntry {
 // none. They are declared so positioned diagnostics can arrive later
 // without changing the JS surface; when present they follow Span's
 // UTF-16 code unit contract.
-//
-//nolint:govet // fieldalignment: as with Span, the declaration order is the published JSON key order.
+// As with Span, the field order is fieldalignment's rather than the JSON
+// key order.
 type Diagnostic struct {
+	// Start is the diagnostic's UTF-16 start offset when known.
+	Start *int `json:"start,omitempty"`
+	// End is the diagnostic's UTF-16 end offset when known.
+	End *int `json:"end,omitempty"`
 	// Code is the stable diagnostic code (convert.Code* / adf.Code*), e.g.
 	// "unsupported-in-product" or "unknown-node".
 	Code string `json:"code"`
 	// Message is the human-readable explanation.
 	Message string `json:"message"`
-	// Start is the diagnostic's UTF-16 start offset when known.
-	Start *int `json:"start,omitempty"`
-	// End is the diagnostic's UTF-16 end offset when known.
-	End *int `json:"end,omitempty"`
 }
 
 // Product names accepted by Options.Product.

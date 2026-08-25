@@ -63,6 +63,18 @@ type Node interface {
 	// for RawNode it is the verbatim unknown type.
 	Kind() string
 	adfNode()
+
+	// slots and shallowCopy are the generic tree access every walk-style
+	// helper builds on; slots.go implements them per kind. They sit on the
+	// interface, not in a type switch, so that a new kind cannot reach the
+	// tree helpers without declaring what it holds.
+	slots() nodeSlots
+	shallowCopy() Node
+
+	// writeAttrs is the encoder's per-kind half: it fills a with the
+	// kind's typed attributes and returns its Extra overlay
+	// (node_attrs.go).
+	writeAttrs(a attrs) map[string]any
 }
 
 // Mark is an inline mark (bold, italic, link, …) on a text node: one Go
@@ -72,6 +84,12 @@ type Mark interface {
 	// Kind returns the ADF mark type string ("strong", "link", …).
 	Kind() string
 	adfMark()
+
+	// writeAttrs and setExtra are the per-kind halves of the mark codec
+	// (mark_attrs.go); like Node's, they sit on the interface so a new
+	// mark kind cannot be encoded or decoded without declaring them.
+	writeAttrs(a attrs) map[string]any
+	setExtra(extra map[string]any)
 }
 
 // Diagnostic reports a non-fatal issue: input that was accepted but

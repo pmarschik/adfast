@@ -10,75 +10,97 @@ import (
 	"github.com/pmarschik/adfast/convert"
 )
 
+// transformCase is one markdown → ADF expectation for the Jira
+// transforms: the encoded document must contain every fragment in
+// contains and none of the ones in notContain.
+type transformCase struct {
+	name       string
+	baseURL    string
+	mode       ExpandMode
+	md         string
+	contains   []string
+	notContain []string
+}
+
 func TestTransforms(t *testing.T) {
-	t.Run("turns Jira issue links into inline cards", func(t *testing.T) {
-		adfDoc := adfast.ToADF(adfast.FromMarkdown("See [INFRA-891](https://ixolit.atlassian.net/browse/INFRA-891)."), MarkdownOptions("", "explicit")...)
-		js, marshalErr := json.Marshal(adfDoc)
-		if marshalErr != nil {
-			t.Fatal(marshalErr)
-		}
-		if !strings.Contains(string(js), `"type":"inlineCard"`) {
-			t.Errorf("expected inlineCard in %s", js)
-		}
-	})
+	const base = "https://ixolit.atlassian.net"
+	cases := []transformCase{
+		{
+			name:     "turns Jira issue links into inline cards",
+			mode:     ExpandExplicit,
+			md:       "See [INFRA-891](" + base + "/browse/INFRA-891).",
+			contains: []string{`"type":"inlineCard"`},
+		},
+		{
+			name:       "does not expand bare issue keys with explicit mode (default)",
+			mode:       ExpandExplicit,
+			md:         "See INFRA-123 for details.",
+			contains:   []string{"INFRA-123"},
+			notContain: []string{`"type":"inlineCard"`},
+		},
+		{
+			name:     "expands bare issue keys with all mode",
+			baseURL:  base,
+			mode:     ExpandAll,
+			md:       "See INFRA-123 for details.",
+			contains: []string{`"type":"inlineCard"`, base + "/browse/INFRA-123"},
+		},
+		{
+			name:       "does not expand issue keys in inline code",
+			baseURL:    base,
+			mode:       ExpandAll,
+			md:         "Code: `INFRA-123` should not expand.",
+			contains:   []string{`"type":"code"`},
+			notContain: []string{`"type":"inlineCard"`},
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			js := adfJSON(t, tt.md, tt.baseURL, tt.mode)
+			for _, want := range tt.contains {
+				if !strings.Contains(js, want) {
+					t.Errorf("expected %s in %s", want, js)
+				}
+			}
+			for _, unwanted := range tt.notContain {
+				if strings.Contains(js, unwanted) {
+					t.Errorf("did not expect %s in %s", unwanted, js)
+				}
+			}
+		})
+	}
+}
 
-	t.Run("does not expand bare issue keys with explicit mode (default)", func(t *testing.T) {
-		adfDoc := adfast.ToADF(adfast.FromMarkdown("See INFRA-123 for details."), MarkdownOptions("", "explicit")...)
-		js, marshalErr := json.Marshal(adfDoc)
-		if marshalErr != nil {
-			t.Fatal(marshalErr)
-		}
-		if strings.Contains(string(js), `"type":"inlineCard"`) {
-			t.Errorf("should not have inlineCard in %s", js)
-		}
-		if !strings.Contains(string(js), "INFRA-123") {
-			t.Errorf("expected bare text preserved in %s", js)
-		}
-	})
+// TestTransforms_PunctuationSurvivesExpansion: an expanded key becomes a
+// card, and the punctuation that followed it in the source is still
+// there on the way back to markdown.
+func TestTransforms_PunctuationSurvivesExpansion(t *testing.T) {
+	const base = "https://ixolit.atlassian.net"
+	md := "Fixed in INFRA-123, INFRA-456."
+	adfDoc := adfast.ToADF(adfast.FromMarkdown(md), MarkdownOptions(base, ExpandAll)...)
+	if js := mustJSON(t, adfDoc); !strings.Contains(js, `"type":"inlineCard"`) {
+		t.Errorf("expected inlineCard in %s", js)
+	}
+	if out := adfast.ToMarkdown(adfast.FromADF(adfDoc, RenderOptions()...), RenderOptions()...); !strings.Contains(out, ",") {
+		t.Errorf("expected comma in %q", out)
+	}
+}
 
-	t.Run("expands bare issue keys with all mode", func(t *testing.T) {
-		adfDoc := adfast.ToADF(adfast.FromMarkdown("See INFRA-123 for details."), MarkdownOptions("https://ixolit.atlassian.net", "all")...)
-		js, marshalErr := json.Marshal(adfDoc)
-		if marshalErr != nil {
-			t.Fatal(marshalErr)
-		}
-		if !strings.Contains(string(js), `"type":"inlineCard"`) {
-			t.Errorf("expected inlineCard in %s", js)
-		}
-		if !strings.Contains(string(js), "https://ixolit.atlassian.net/browse/INFRA-123") {
-			t.Errorf("expected Jira URL in %s", js)
-		}
-	})
+// adfJSON converts markdown to ADF through the Jira markdown options and
+// returns the encoded document — what the transform assertions match on.
+func adfJSON(t *testing.T, md, baseURL string, mode ExpandMode) string {
+	t.Helper()
+	return mustJSON(t, adfast.ToADF(adfast.FromMarkdown(md), MarkdownOptions(baseURL, mode)...))
+}
 
-	t.Run("preserves punctuation after expanded issue keys", func(t *testing.T) {
-		adfDoc := adfast.ToADF(adfast.FromMarkdown("Fixed in INFRA-123, INFRA-456."), MarkdownOptions("https://ixolit.atlassian.net", "all")...)
-		js, marshalErr := json.Marshal(adfDoc)
-		if marshalErr != nil {
-			t.Fatal(marshalErr)
-		}
-		if !strings.Contains(string(js), `"type":"inlineCard"`) {
-			t.Errorf("expected inlineCard in %s", js)
-		}
-		md := adfast.ToMarkdown(adfast.FromADF(adfDoc, RenderOptions()...), RenderOptions()...)
-		if !strings.Contains(md, ",") {
-			t.Errorf("expected comma in %q", md)
-		}
-	})
-
-	t.Run("does not expand issue keys in inline code", func(t *testing.T) {
-		adfDoc := adfast.ToADF(adfast.FromMarkdown("Code: `INFRA-123` should not expand."), MarkdownOptions("https://ixolit.atlassian.net", "all")...)
-		js, marshalErr := json.Marshal(adfDoc)
-		if marshalErr != nil {
-			t.Fatal(marshalErr)
-		}
-		if !strings.Contains(string(js), `"type":"code"`) {
-			t.Errorf("expected code mark in %s", js)
-		}
-		count := strings.Count(string(js), `"type":"inlineCard"`)
-		if count != 0 {
-			t.Errorf("expected no inlineCard in code, got %d: %s", count, js)
-		}
-	})
+// mustJSON encodes a document, failing the test when it cannot.
+func mustJSON(t *testing.T, doc adf.Doc) string {
+	t.Helper()
+	js, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(js)
 }
 
 func TestSmartLinks(t *testing.T) {

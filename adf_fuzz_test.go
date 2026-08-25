@@ -166,7 +166,7 @@ var linkDigitDirectiveRe = regexp.MustCompile(`:\d|^:[A-Za-z]`)
 // The directive-form wrappers (:u/:sub/:color/:bg/:fontSize/:annotation)
 // used to be skipped here too. They are fixed rather than skipped: their
 // labels escape every colon that could open a nested text directive (see
-// markdown.writeColonEscapePrefix). Probes: ":u[0:0:0]", ":sup[:a:b]".
+// markdown.escapesColon). Probes: ":u[0:0:0]", ":sup[:a:b]".
 func hasDigitDirectiveInLink(nodes []adf.Node) bool {
 	for i := range nodes {
 		if text, ok := nodes[i].(*adf.Text); ok && linkDigitDirectiveRe.MatchString(text.Text) {
@@ -978,6 +978,39 @@ func skipRenderedTokenClasses(first string) (reason string, skip bool) {
 	if reason, skip := skipRenderedURLClasses(first); skip {
 		return reason, skip
 	}
+	if reason, skip := skipRenderedLabelClasses(first); skip {
+		return reason, skip
+	}
+	if reason, skip := skipRenderedLayoutClasses(first); skip {
+		return reason, skip
+	}
+	// A digit-led ":name{…}"/":name[…]" token in plain text re-parses
+	// as a text directive and sheds its braces; the reference pipeline
+	// degrades it identically (probe: ":0{}00{}").
+	if digitDirectiveTokenRe.MatchString(first) {
+		return "digit-led directive token in text; the reference pipeline is equally unstable", true
+	}
+	// The three interior-space skip classes that used to live here —
+	// dropped empty links leaving "x  y", the same run with one space
+	// boundary-encoded, and the same at a line start — are fixed rather
+	// than skipped: adf.NormalizeTextNewlines now collapses a space run
+	// across the junction of two adjacent same-mark text nodes, which is
+	// exactly what a dropped construct leaves behind. Probes: "x []() y",
+	// "[]() []() 0", "*0aaa[0 :u ]*".
+	// A link destination that is (or starts with) a literal "<" renders
+	// as "](<...)" — an unterminated angle destination that fails to
+	// re-parse as a link; remark renders the identical bytes and is
+	// equally unstable (probe: [0](\\<)).
+	if unterminatedAngleDestRe.MatchString(first) {
+		return "unterminated angle link destination; remark is equally unstable", true
+	}
+	return "", false
+}
+
+// skipRenderedLabelClasses covers the rendered tokens whose re-parse
+// diverges because of what sits inside a directive label or next to a
+// character reference.
+func skipRenderedLabelClasses(first string) (reason string, skip bool) {
 	// A directive label starting with block syntax (tab-indented code,
 	// heading, list, quote) block-parses inside the label — goldmark
 	// parses label content as blocks where remark treats labels as
@@ -993,6 +1026,13 @@ func skipRenderedTokenClasses(first string) (reason string, skip bool) {
 	if strings.Contains(first, "@&#x") || strings.Contains(first, ":&#x") || strings.Contains(first, "&&#x") {
 		return "escapable punctuation adjoining a character reference; remark is equally unstable", true
 	}
+	return "", false
+}
+
+// skipRenderedLayoutClasses covers the rendered shapes the line layout
+// itself creates — wrapped lines, trailing breaks, and blank runs — where
+// the reference pipeline is equally unstable.
+func skipRenderedLayoutClasses(first string) (reason string, skip bool) {
 	// Wrapping can start a continuation line with block syntax, which
 	// re-parses as a block; the reference pipeline wraps identically without
 	// re-escaping and is equally unstable.
@@ -1014,26 +1054,6 @@ func skipRenderedTokenClasses(first string) (reason string, skip bool) {
 	// renders the identical bytes (probe: ":u\r\r0").
 	if strings.HasPrefix(first, "\n") || strings.Contains(first, "\n\n\n") || strings.Contains(first, "\n\n:::") {
 		return "empty paragraph renders as blank lines; remark is equally unstable", true
-	}
-	// A digit-led ":name{…}"/":name[…]" token in plain text re-parses
-	// as a text directive and sheds its braces; the reference pipeline
-	// degrades it identically (probe: ":0{}00{}").
-	if digitDirectiveTokenRe.MatchString(first) {
-		return "digit-led directive token in text; the reference pipeline is equally unstable", true
-	}
-	// The three interior-space skip classes that used to live here —
-	// dropped empty links leaving "x  y", the same run with one space
-	// boundary-encoded, and the same at a line start — are fixed rather
-	// than skipped: adf.NormalizeTextNewlines now collapses a space run
-	// across the junction of two adjacent same-mark text nodes, which is
-	// exactly what a dropped construct leaves behind. Probes: "x []() y",
-	// "[]() []() 0", "*0aaa[0 :u ]*".
-	// A link destination that is (or starts with) a literal "<" renders
-	// as "](<...)" — an unterminated angle destination that fails to
-	// re-parse as a link; remark renders the identical bytes and is
-	// equally unstable (probe: [0](\\<)).
-	if unterminatedAngleDestRe.MatchString(first) {
-		return "unterminated angle link destination; remark is equally unstable", true
 	}
 	return "", false
 }

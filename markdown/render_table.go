@@ -98,61 +98,85 @@ func tableCellPad(align ast.Alignment, pad int) (lead, trail int) {
 // rowspan continues as "^" markers in the following rows, and literal
 // ">"/"^" cell texts are escaped so they don't read as markers.
 func (r *mdRenderer) expandTableSpans(rows []ast.Node) (visual [][]string, colCount int) {
-	type carry struct {
-		rowsLeft int
-		width    int
-	}
-	pending := map[int]carry{}
+	ex := &spanExpander{pending: map[int]rowspanRun{}}
 	visual = make([][]string, len(rows))
 	for ri := range rows {
-		var cells []string
-		col := 0
-		drain := func() {
-			for {
-				c, ok := pending[col]
-				if !ok {
-					break
-				}
-				start := col
-				for range c.width {
-					cells = append(cells, "^")
-					col++
-				}
-				if c.rowsLeft > 1 {
-					pending[start] = carry{rowsLeft: c.rowsLeft - 1, width: c.width}
-				} else {
-					delete(pending, start)
-				}
-			}
-		}
+		ex.startRow()
 		for _, rowChild := range ast.Children(rows[ri]) {
 			cell, ok := rowChild.(*ast.TableCell)
 			if !ok {
 				continue
 			}
-			drain()
-			content := r.renderCellString(cell.Children)
-			if content == ">" || content == "^" {
-				content = `\` + content
-			}
-			content = bareDelimiterAmbiguousCell(content)
-			span := max(cell.ColSpan, 1)
-			start := col
-			for range span - 1 {
-				cells = append(cells, ">")
-				col++
-			}
-			cells = append(cells, content)
-			col++
-			if cell.RowSpan > 1 {
-				pending[start] = carry{rowsLeft: cell.RowSpan - 1, width: span}
-			}
+			ex.drain()
+			ex.place(r.renderCellString(cell.Children), cell)
 		}
-		drain()
-		visual[ri] = cells
-		colCount = max(colCount, col)
+		ex.drain()
+		visual[ri] = ex.cells
+		colCount = max(colCount, ex.col)
 	}
 	return visual, colCount
+}
+
+// spanExpander is expandTableSpans' running state: the rowspan
+// continuations owed to the rows below (keyed by the visual column each
+// starts at) plus the cursor into the row being built.
+type spanExpander struct {
+	pending map[int]rowspanRun
+	cells   []string
+	col     int
+}
+
+// rowspanRun is one rowspan still owed to the rows below: how many more rows
+// it covers, and how many visual columns wide it is.
+type rowspanRun struct {
+	rowsLeft int
+	width    int
+}
+
+// startRow resets the per-row cursor.
+func (ex *spanExpander) startRow() {
+	ex.cells, ex.col = nil, 0
+}
+
+// drain emits the "^" continuation markers owed at the current column,
+// advancing past every rowspan that reaches it.
+func (ex *spanExpander) drain() {
+	for {
+		run, ok := ex.pending[ex.col]
+		if !ok {
+			return
+		}
+		start := ex.col
+		for range run.width {
+			ex.cells = append(ex.cells, "^")
+			ex.col++
+		}
+		if run.rowsLeft > 1 {
+			ex.pending[start] = rowspanRun{rowsLeft: run.rowsLeft - 1, width: run.width}
+		} else {
+			delete(ex.pending, start)
+		}
+	}
+}
+
+// place emits one cell: the ">" markers its colspan needs, the content
+// itself, and the rowspan continuation it owes the rows below.
+func (ex *spanExpander) place(content string, cell *ast.TableCell) {
+	if content == ">" || content == "^" {
+		content = `\` + content
+	}
+	content = bareDelimiterAmbiguousCell(content)
+	span := max(cell.ColSpan, 1)
+	start := ex.col
+	for range span - 1 {
+		ex.cells = append(ex.cells, ">")
+		ex.col++
+	}
+	ex.cells = append(ex.cells, content)
+	ex.col++
+	if cell.RowSpan > 1 {
+		ex.pending[start] = rowspanRun{rowsLeft: cell.RowSpan - 1, width: span}
+	}
 }
 
 // bareDelimiterAmbiguousCell strips the line-start backslash that

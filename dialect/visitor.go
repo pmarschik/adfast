@@ -55,81 +55,128 @@ type Visitor[T any] interface {
 	VisitOther(ast.Node) T
 }
 
-// Visit dispatches n to the matching Visitor method. This switch is the
-// single dispatch point, maintained in-package next to the kind list.
+// Visit dispatches n to the matching Visitor method. The kind list is
+// split by category across the visit*Kind helpers below; each answers
+// ok=false for a kind outside its category, and the fallthrough is the
+// escape-and-chain contract: anything none of them claims is not a
+// dialect kind.
 func Visit[T any](n ast.Node, v Visitor[T]) T {
+	if r, ok := visitBlockKind(n, v); ok {
+		return r
+	}
+	if r, ok := visitInlineKind(n, v); ok {
+		return r
+	}
+	if r, ok := visitExtensionKind(n, v); ok {
+		return r
+	}
+	if r, ok := visitBlockMarkKind(n, v); ok {
+		return r
+	}
+	return v.VisitOther(n)
+}
+
+// visitBlockKind dispatches the block-level directives.
+func visitBlockKind[T any](n ast.Node, v Visitor[T]) (T, bool) {
 	switch n := n.(type) {
 	case *Panel:
-		return v.VisitPanel(n)
+		return v.VisitPanel(n), true
 	case *Expand:
-		return v.VisitExpand(n)
+		return v.VisitExpand(n), true
 	case *Media:
-		return v.VisitMedia(n)
+		return v.VisitMedia(n), true
 	case *JQL:
-		return v.VisitJQL(n)
+		return v.VisitJQL(n), true
 	case *LinkCard:
-		return v.VisitLinkCard(n)
+		return v.VisitLinkCard(n), true
 	case *LinkEmbed:
-		return v.VisitLinkEmbed(n)
+		return v.VisitLinkEmbed(n), true
 	case *Colwidths:
-		return v.VisitColwidths(n)
+		return v.VisitColwidths(n), true
 	case *Decisions:
-		return v.VisitDecisions(n)
-	case *Mention:
-		return v.VisitMention(n)
-	case *Status:
-		return v.VisitStatus(n)
-	case *MediaInline:
-		return v.VisitMediaInline(n)
-	case *Color:
-		return v.VisitColor(n)
-	case *Bg:
-		return v.VisitBg(n)
-	case *Underline:
-		return v.VisitUnderline(n)
-	case *Sub:
-		return v.VisitSub(n)
-	case *Sup:
-		return v.VisitSup(n)
-	case *Date:
-		return v.VisitDate(n)
-	case *Placeholder:
-		return v.VisitPlaceholder(n)
-	case *Emoji:
-		return v.VisitEmoji(n)
-	case *Annotation:
-		return v.VisitAnnotation(n)
-	case *FontSize:
-		return v.VisitFontSize(n)
-	case *InlineExtension:
-		return v.VisitInlineExtension(n)
-	case *Extension:
-		return v.VisitExtension(n)
-	case *BodiedExtension:
-		return v.VisitBodiedExtension(n)
-	case *Frame:
-		return v.VisitFrame(n)
-	case *SyncBlock:
-		return v.VisitSyncBlock(n)
-	case *BodiedSyncBlock:
-		return v.VisitBodiedSyncBlock(n)
-	case *Section:
-		return v.VisitSection(n)
-	case *Column:
-		return v.VisitColumn(n)
-	case *MediaCaption:
-		return v.VisitMediaCaption(n)
-	case *Align:
-		return v.VisitAlign(n)
-	case *Indent:
-		return v.VisitIndent(n)
-	case *Breakout:
-		return v.VisitBreakout(n)
-	case *DataConsumer:
-		return v.VisitDataConsumer(n)
-	case *Fragment:
-		return v.VisitFragment(n)
-	default:
-		return v.VisitOther(n)
+		return v.VisitDecisions(n), true
 	}
+	var zero T
+	return zero, false
+}
+
+// visitInlineKind dispatches the inline directives: the atoms and the
+// text-span decorations.
+func visitInlineKind[T any](n ast.Node, v Visitor[T]) (T, bool) {
+	switch n := n.(type) {
+	case *Mention:
+		return v.VisitMention(n), true
+	case *Status:
+		return v.VisitStatus(n), true
+	case *MediaInline:
+		return v.VisitMediaInline(n), true
+	case *Color:
+		return v.VisitColor(n), true
+	case *Bg:
+		return v.VisitBg(n), true
+	case *Underline:
+		return v.VisitUnderline(n), true
+	case *Sub:
+		return v.VisitSub(n), true
+	case *Sup:
+		return v.VisitSup(n), true
+	case *Date:
+		return v.VisitDate(n), true
+	case *Placeholder:
+		return v.VisitPlaceholder(n), true
+	case *Emoji:
+		return v.VisitEmoji(n), true
+	case *Annotation:
+		return v.VisitAnnotation(n), true
+	case *FontSize:
+		return v.VisitFontSize(n), true
+	}
+	var zero T
+	return zero, false
+}
+
+// visitExtensionKind dispatches the ADF extension points and the layout
+// wrappers built on them.
+func visitExtensionKind[T any](n ast.Node, v Visitor[T]) (T, bool) {
+	switch n := n.(type) {
+	case *InlineExtension:
+		return v.VisitInlineExtension(n), true
+	case *Extension:
+		return v.VisitExtension(n), true
+	case *BodiedExtension:
+		return v.VisitBodiedExtension(n), true
+	case *Frame:
+		return v.VisitFrame(n), true
+	case *SyncBlock:
+		return v.VisitSyncBlock(n), true
+	case *BodiedSyncBlock:
+		return v.VisitBodiedSyncBlock(n), true
+	case *Section:
+		return v.VisitSection(n), true
+	case *Column:
+		return v.VisitColumn(n), true
+	case *MediaCaption:
+		return v.VisitMediaCaption(n), true
+	}
+	var zero T
+	return zero, false
+}
+
+// visitBlockMarkKind dispatches the directives that decorate a whole
+// block rather than standing on their own.
+func visitBlockMarkKind[T any](n ast.Node, v Visitor[T]) (T, bool) {
+	switch n := n.(type) {
+	case *Align:
+		return v.VisitAlign(n), true
+	case *Indent:
+		return v.VisitIndent(n), true
+	case *Breakout:
+		return v.VisitBreakout(n), true
+	case *DataConsumer:
+		return v.VisitDataConsumer(n), true
+	case *Fragment:
+		return v.VisitFragment(n), true
+	}
+	var zero T
+	return zero, false
 }

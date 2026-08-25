@@ -1,6 +1,7 @@
 package adf
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -102,5 +103,56 @@ func TestVisitDispatchADF(t *testing.T) {
 	}
 	if got := VisitMark[int](&RawMark{Type: "sparkles"}, markCounter{}); got != 0 {
 		t.Errorf("raw mark: %d", got)
+	}
+}
+
+// TestVisitDispatchIsExhaustive guards the dispatch, which the compiler
+// cannot: Visit and VisitMark route through several switches grouped by
+// content category, and a kind with no case in any of them degrades to
+// VisitRaw/VisitRawMark in silence. adfKindNamer answers with the kind's
+// own name, so a node that comes back "raw:..." — or under a name that is
+// not its own — is a kind that fell through.
+func TestVisitDispatchIsExhaustive(t *testing.T) {
+	// One instance per Visitor method, in interface order.
+	nodes := []Node{
+		&Paragraph{}, &Heading{}, &Blockquote{}, &Rule{}, &CodeBlock{},
+		&BulletList{}, &OrderedList{}, &ListItem{}, &TaskList{}, &TaskItem{},
+		&DecisionList{}, &DecisionItem{}, &Table{}, &TableRow{}, &TableCell{},
+		&TableHeader{}, &Panel{}, &Expand{}, &NestedExpand{}, &MediaSingle{},
+		&MediaGroup{}, &Media{}, &BlockCard{}, &EmbedCard{}, &InlineCard{},
+		&Text{}, &HardBreak{}, &Emoji{}, &Mention{}, &Status{},
+		&MediaInline{}, &ColwidthsHint{}, &Date{}, &Placeholder{}, &Caption{},
+		&BlockTaskItem{}, &LayoutSection{}, &LayoutColumn{}, &Extension{},
+		&InlineExtension{}, &BodiedExtension{}, &MultiBodiedExtension{},
+		&ExtensionFrame{}, &SyncBlock{}, &BodiedSyncBlock{},
+	}
+
+	seen := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		want := reflect.TypeOf(n).Elem().Name()
+		got := Visit[string](n, adfKindNamer{})
+		if got != want {
+			t.Errorf("Visit(%s) dispatched to %q, want %q", want, got, want)
+		}
+		if seen[got] {
+			t.Errorf("Visit(%s) shares a Visitor method with an earlier kind", want)
+		}
+		seen[got] = true
+	}
+
+	// A mark counter cannot name its kinds, so the marks are checked for
+	// reaching a real method rather than the RawMark escape, which is the
+	// only method that answers 0.
+	marks := []Mark{
+		&Strong{}, &Em{}, &Strike{}, &Code{}, &Underline{}, &Link{},
+		&TextColor{}, &BackgroundColor{}, &SubSup{}, &Alignment{},
+		&Indentation{}, &Breakout{}, &Border{}, &Annotation{},
+		&DataConsumer{}, &Fragment{}, &FontSize{},
+	}
+	for _, m := range marks {
+		if got := VisitMark[int](m, markCounter{}); got == 0 {
+			t.Errorf("VisitMark(%s) fell through to VisitRawMark",
+				reflect.TypeOf(m).Elem().Name())
+		}
 	}
 }

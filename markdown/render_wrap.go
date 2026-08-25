@@ -64,53 +64,73 @@ const wrapMaskTab = '\x01'
 // length (CommonMark). Escaped backticks (\`) outside spans are skipped.
 func maskCodeSpanSpaces(s string) string {
 	b := []byte(s)
-	i := 0
-	for i < len(b) {
+	for i := 0; i < len(b); {
 		switch b[i] {
 		case '\\':
 			i += 2
 		case '`':
-			n := 0
-			for i+n < len(b) && b[i+n] == '`' {
-				n++
-			}
-			j := i + n
-			for j < len(b) {
-				if b[j] == '\\' {
-					j += 2
-					continue
-				}
-				if b[j] != '`' {
-					j++
-					continue
-				}
-				m := 0
-				for j+m < len(b) && b[j+m] == '`' {
-					m++
-				}
-				if m == n {
-					break
-				}
-				j += m
-			}
-			if j < len(b) {
-				for k := i; k < j; k++ {
-					switch b[k] {
-					case ' ':
-						b[k] = byte(wrapMask)
-					case '\t':
-						b[k] = byte(wrapMaskTab)
-					}
-				}
-				i = j + n
-			} else {
-				i += n
-			}
+			i = maskOneCodeSpan(b, i)
 		default:
 			i++
 		}
 	}
 	return string(b)
+}
+
+// maskOneCodeSpan handles the backtick run at i. When the run opens a span
+// that closes, the span's spaces and tabs are masked and the returned index
+// lands just past the closing fence; an unclosed run is merely skipped.
+func maskOneCodeSpan(b []byte, i int) int {
+	n := backtickRun(b, i)
+	end := findCodeSpanClose(b, i+n, n)
+	if end >= len(b) {
+		return i + n
+	}
+	maskWrapBytes(b[i:end])
+	return end + n
+}
+
+// backtickRun counts the backticks starting at i.
+func backtickRun(b []byte, i int) int {
+	n := 0
+	for i+n < len(b) && b[i+n] == '`' {
+		n++
+	}
+	return n
+}
+
+// findCodeSpanClose returns the index of the run of exactly n backticks that
+// closes the span, scanning from j; at or past len(b) when it never closes.
+// Escaped backticks are skipped.
+func findCodeSpanClose(b []byte, j, n int) int {
+	for j < len(b) {
+		switch {
+		case b[j] == '\\':
+			j += 2
+		case b[j] != '`':
+			j++
+		default:
+			m := backtickRun(b, j)
+			if m == n {
+				return j
+			}
+			j += m
+		}
+	}
+	return j
+}
+
+// maskWrapBytes replaces every space and tab in the region with its wrap
+// mask, so wrapping cannot break a line there.
+func maskWrapBytes(region []byte) {
+	for k := range region {
+		switch region[k] {
+		case ' ':
+			region[k] = byte(wrapMask)
+		case '\t':
+			region[k] = byte(wrapMaskTab)
+		}
+	}
 }
 
 // wrapText wraps a string at maxWidth characters, breaking on word boundaries.

@@ -37,10 +37,11 @@ type Node interface {
 	Kind() string
 }
 
-// Parent is the child-access hook for foreign node kinds (see the
-// extension package): container kinds defined outside this package
-// implement it so the kind-agnostic Children and SetChildren helpers —
-// and every walk built on them — work on their subtrees too.
+// Parent is the child-access contract of every container kind: the
+// kind-agnostic Children and SetChildren helpers — and every walk built
+// on them — reach a subtree through it and nothing else. The container
+// kinds in this package implement it in parent.go; a foreign kind (see
+// the extension package) joins the walks by implementing it too.
 type Parent interface {
 	Node
 	// ChildNodes returns the node's child list.
@@ -399,93 +400,20 @@ func (*TextDirective) Kind() string { return "textDirective" }
 // Generic access
 // ---------------------------------------------------------------------------
 
-// Children returns n's child list; nil for leaf kinds and foreign nodes.
+// Children returns n's child list; nil for leaf kinds and for foreign
+// nodes that do not implement Parent.
 func Children(n Node) []Node {
-	switch v := n.(type) {
-	case *Root:
-		return v.Children
-	case *Paragraph:
-		return v.Children
-	case *Heading:
-		return v.Children
-	case *Blockquote:
-		return v.Children
-	case *FootnoteDef:
-		return v.Children
-	case *List:
-		return v.Children
-	case *ListItem:
-		return v.Children
-	case *Table:
-		return v.Children
-	case *TableRow:
-		return v.Children
-	case *TableCell:
-		return v.Children
-	case *ContainerDirective:
-		return v.Children
-	case *LeafDirective:
-		return v.Children
-	case *Emphasis:
-		return v.Children
-	case *Strong:
-		return v.Children
-	case *Delete:
-		return v.Children
-	case *Link:
-		return v.Children
-	case *Image:
-		return v.Children
-	case *TextDirective:
-		return v.Children
-	case Parent:
-		return v.ChildNodes()
+	if p, ok := n.(Parent); ok {
+		return p.ChildNodes()
 	}
 	return nil
 }
 
-// SetChildren replaces n's child list; a no-op for leaf kinds and foreign
-// nodes.
+// SetChildren replaces n's child list; a no-op for leaf kinds and for
+// foreign nodes that do not implement Parent.
 func SetChildren(n Node, kids []Node) {
-	switch v := n.(type) {
-	case *Root:
-		v.Children = kids
-	case *Paragraph:
-		v.Children = kids
-	case *Heading:
-		v.Children = kids
-	case *Blockquote:
-		v.Children = kids
-	case *FootnoteDef:
-		v.Children = kids
-	case *List:
-		v.Children = kids
-	case *ListItem:
-		v.Children = kids
-	case *Table:
-		v.Children = kids
-	case *TableRow:
-		v.Children = kids
-	case *TableCell:
-		v.Children = kids
-	case *ContainerDirective:
-		v.Children = kids
-	case *LeafDirective:
-		v.Children = kids
-	case *Emphasis:
-		v.Children = kids
-	case *Strong:
-		v.Children = kids
-	case *Delete:
-		v.Children = kids
-	case *Link:
-		v.Children = kids
-	case *Image:
-		v.Children = kids
-	case *TextDirective:
-		v.Children = kids
-	case Parent:
-		v.SetChildNodes(kids)
+	if p, ok := n.(Parent); ok {
+		p.SetChildNodes(kids)
 	}
 }
 

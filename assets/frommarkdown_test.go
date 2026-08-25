@@ -18,62 +18,32 @@ import (
 // both docs encode with media nodes afterwards.
 func TestSyncOnEncode_SingleBatchReferencedOnly(t *testing.T) {
 	mdDir := t.TempDir()
-	dir := filepath.Join(mdDir, "assets")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		t.Fatal(err)
-	}
+	dir := mustMkdir(t, filepath.Join(mdDir, "assets"))
 	for i, name := range []string{"one.png", "two.png", "scratch.png"} {
-		if err := os.WriteFile(filepath.Join(dir, name), tinyPNG(t, i+1, i+1), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		mustDo(t, os.WriteFile(filepath.Join(dir, name), tinyPNG(t, i+1, i+1), 0o600))
 	}
-	store, err := NewFSStore(mdDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := mustStore(t, mdDir)
 
 	var calls int
-	up := UploaderFunc(func(_ context.Context, batch []PendingAsset) ([]UploadResult, error) {
-		calls++
-		ids := map[string]string{"assets/one.png": uuidA, "assets/two.png": uuidB}
-		results := make([]UploadResult, 0, len(batch))
-		for _, p := range batch {
-			id, ok := ids[p.Path]
-			if !ok {
-				t.Errorf("unexpected upload of %s", p.Path)
-				continue
-			}
-			results = append(results, UploadResult{Path: p.Path, MediaID: id})
-		}
-		return results, nil
+	up := mappedUploader(t, &calls, map[string]string{
+		"assets/one.png": uuidA,
+		"assets/two.png": uuidB,
 	})
 
-	docs, err := PushPipeline(t.Context(), store, up).MarkdownToADFAll([]string{
+	docs := mustPushAll(t, PushPipeline(t.Context(), store, up), []string{
 		"![a](assets/one.png)\n",
 		"![b](assets/two.png)\n",
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	if calls != 1 {
 		t.Errorf("uploader calls = %d, want 1 batch", calls)
 	}
 	if len(docs) != 2 {
 		t.Fatalf("docs = %d", len(docs))
 	}
-	for i, id := range []string{uuidA, uuidB} {
-		if !hasMedia(docs[i].Content, id) {
-			t.Errorf("doc %d: no media node for %s", i, id)
-		}
-	}
+	wantMedia(t, docs[0], uuidA)
+	wantMedia(t, docs[1], uuidB)
 	// The unreferenced scratch file must still be pending.
-	pending, err := store.Pending("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pending) != 1 || pending[0] != "assets/scratch.png" {
-		t.Errorf("pending after = %v", pending)
-	}
+	wantPending(t, store, "assets/scratch.png")
 
 	// Nothing new referenced: FromMarkdown must not call the uploader.
 	calls = 0
@@ -81,9 +51,7 @@ func TestSyncOnEncode_SingleBatchReferencedOnly(t *testing.T) {
 	if calls != 0 {
 		t.Errorf("uploader calls on already-synced doc = %d, want 0", calls)
 	}
-	if !hasMedia(doc.Content, uuidA) {
-		t.Error("re-encode lost the media node")
-	}
+	wantMedia(t, doc, uuidA)
 }
 
 // TestSyncOnEncode_ErrorHandling: MarkdownToADFAll aborts on an upload
@@ -91,17 +59,9 @@ func TestSyncOnEncode_SingleBatchReferencedOnly(t *testing.T) {
 // before-encode-failed diagnostic and proceeds.
 func TestSyncOnEncode_ErrorHandling(t *testing.T) {
 	mdDir := t.TempDir()
-	dir := filepath.Join(mdDir, "assets")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "one.png"), tinyPNG(t, 1, 1), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	store, err := NewFSStore(mdDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	dir := mustMkdir(t, filepath.Join(mdDir, "assets"))
+	mustDo(t, os.WriteFile(filepath.Join(dir, "one.png"), tinyPNG(t, 1, 1), 0o600))
+	store := mustStore(t, mdDir)
 	boom := errors.New("attachment API down")
 	up := UploaderFunc(func(context.Context, []PendingAsset) ([]UploadResult, error) {
 		return nil, boom

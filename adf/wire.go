@@ -44,21 +44,40 @@ func IsWireSafe(doc Doc) bool {
 	return true
 }
 
+// syntheticCarrier is implemented by the four kinds that can carry a
+// synthetic, never-wire ATTRIBUTE (ColwidthsHint is a synthetic kind, so
+// it needs no attribute answer). The interface is optional rather than
+// part of Node because the other kinds have nothing to say — and because
+// it gives IsWireSafe and StripSynthetic one source of truth instead of
+// two parallel type switches that drift apart when a fifth synthetic
+// attribute arrives.
+type syntheticCarrier interface {
+	Node
+	// hasSynthetic reports whether the synthetic attribute is set.
+	hasSynthetic() bool
+	// clearedCopy is a shallow copy with the synthetic attribute cleared.
+	clearedCopy() Node
+}
+
+func (n *Heading) hasSynthetic() bool { return n.Anchor != "" }
+func (n *Heading) clearedCopy() Node  { c := *n; c.Anchor = ""; return &c }
+
+func (n *Table) hasSynthetic() bool { return n.Align != nil }
+func (n *Table) clearedCopy() Node  { c := *n; c.Align = nil; return &c }
+
+func (n *BulletList) hasSynthetic() bool { return n.Tight != nil }
+func (n *BulletList) clearedCopy() Node  { c := *n; c.Tight = nil; return &c }
+
+func (n *OrderedList) hasSynthetic() bool { return n.Tight != nil }
+func (n *OrderedList) clearedCopy() Node  { c := *n; c.Tight = nil; return &c }
+
 // nodeWireSafe checks one node for synthetic kinds and style markers.
 func nodeWireSafe(n Node) bool {
-	switch t := n.(type) {
-	case *ColwidthsHint:
+	if _, isHint := n.(*ColwidthsHint); isHint {
 		return false
-	case *Heading:
-		return t.Anchor == ""
-	case *Table:
-		return t.Align == nil
-	case *BulletList:
-		return t.Tight == nil
-	case *OrderedList:
-		return t.Tight == nil
 	}
-	return true
+	c, ok := n.(syntheticCarrier)
+	return !ok || !c.hasSynthetic()
 }
 
 // StripSynthetic returns a copy of the document with every synthetic,
@@ -99,53 +118,24 @@ func stripNodes(nodes []Node) ([]Node, bool) {
 	return out, true
 }
 
-// stripNode clears a single node's tightness flag and recurses into its
-// content, copying the node only when something changes.
+// stripNode clears a single node's synthetic attribute and recurses into
+// its content, copying the node only when something changes.
 func stripNode(n Node) (Node, bool) {
 	copied := false
-	ensure := func() {
-		if !copied {
-			n = copyNode(n)
-			copied = true
-		}
+	if c, ok := n.(syntheticCarrier); ok && c.hasSynthetic() {
+		n = c.clearedCopy()
+		copied = true
 	}
-	switch t := n.(type) {
-	case *Heading:
-		if t.Anchor != "" {
-			ensure()
-			if h, ok := n.(*Heading); ok {
-				h.Anchor = ""
-			}
-		}
-	case *Table:
-		if t.Align != nil {
-			ensure()
-			if tbl, ok := n.(*Table); ok {
-				tbl.Align = nil
-			}
-		}
-	case *BulletList:
-		if t.Tight != nil {
-			ensure()
-			if bl, ok := n.(*BulletList); ok {
-				bl.Tight = nil
-			}
-		}
-	case *OrderedList:
-		if t.Tight != nil {
-			ensure()
-			if ol, ok := n.(*OrderedList); ok {
-				ol.Tight = nil
-			}
-		}
+	newContent, contentChanged := stripNodes(NodeContent(n))
+	if !contentChanged {
+		return n, copied
 	}
-	if content := NodeContent(n); len(content) > 0 {
-		if newContent, contentChanged := stripNodes(content); contentChanged {
-			ensure()
-			if s := slotsOf(n); s.content != nil {
-				*s.content = newContent
-			}
-		}
+	if !copied {
+		n = n.shallowCopy()
+		copied = true
+	}
+	if s := n.slots(); s.content != nil {
+		*s.content = newContent
 	}
 	return n, copied
 }

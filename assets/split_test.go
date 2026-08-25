@@ -14,20 +14,12 @@ import (
 // because Lookup is content-addressed.
 func TestSync_DeduplicatesByContent(t *testing.T) {
 	mdDir := t.TempDir()
-	dir := filepath.Join(mdDir, "assets")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		t.Fatal(err)
-	}
+	dir := mustMkdir(t, filepath.Join(mdDir, "assets"))
 	content := tinyPNG(t, 2, 2)
 	for _, name := range []string{"a.png", "b.png"} {
-		if err := os.WriteFile(filepath.Join(dir, name), content, 0o600); err != nil {
-			t.Fatal(err)
-		}
+		mustDo(t, os.WriteFile(filepath.Join(dir, name), content, 0o600))
 	}
-	store, err := NewFSStore(mdDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := mustStore(t, mdDir)
 	var uploaded []string
 	if _, syncErr := Sync(t.Context(), store, UploaderFunc(
 		func(_ context.Context, batch []PendingAsset) ([]UploadResult, error) {
@@ -45,17 +37,9 @@ func TestSync_DeduplicatesByContent(t *testing.T) {
 		t.Fatalf("uploaded = %v, want one item for identical content", uploaded)
 	}
 	for _, path := range []string{"assets/a.png", "assets/b.png"} {
-		if id, ok := store.Lookup("", path); !ok || id != uuidA {
-			t.Errorf("%s → %q %v, want %s", path, id, ok, uuidA)
-		}
+		wantLookup(t, store, "", path, uuidA)
 	}
-	pending, err := store.Pending("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pending) != 0 {
-		t.Errorf("pending after dedup sync = %v", pending)
-	}
+	wantPending(t, store)
 }
 
 // TestFSStoreSplit_SharedTruthPerDocView: the TRUE store (blobs +
@@ -65,61 +49,27 @@ func TestSync_DeduplicatesByContent(t *testing.T) {
 // Resolve.
 func TestFSStoreSplit_SharedTruthPerDocView(t *testing.T) {
 	root := t.TempDir()
-	docA := filepath.Join(root, "docs", "a")
-	docB := filepath.Join(root, "docs", "b")
-	for _, d := range []string{docA, docB} {
-		if err := os.MkdirAll(d, 0o750); err != nil {
-			t.Fatal(err)
-		}
-	}
-	viewA, err := NewFSStoreSplit(root, docA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	viewB, err := NewFSStoreSplit(root, docB)
-	if err != nil {
-		t.Fatal(err)
-	}
+	docA := mustMkdir(t, filepath.Join(root, "docs", "a"))
+	docB := mustMkdir(t, filepath.Join(root, "docs", "b"))
+	viewA := mustSplitStore(t, root, docA)
+	viewB := mustSplitStore(t, root, docB)
+	blobDir := filepath.Join(root, "assets", ".store")
 
 	// Download through view A: blob lands in the shared store, the
 	// friendly file next to A's documents, reference path doc-local.
-	asset, addErr := viewA.Add("", uuidA, "shot.png", tinyPNG(t, 3, 4))
-	if addErr != nil {
-		t.Fatal(addErr)
-	}
-	if asset.Path != "assets/shot.png" {
-		t.Errorf("view A path: %q", asset.Path)
-	}
-	blobs, dirErr := os.ReadDir(filepath.Join(root, "assets", ".store"))
-	if dirErr != nil || len(blobs) != 2 { // blob + index.json
-		t.Fatalf("shared blob dir: %v entries, err %v", len(blobs), dirErr)
-	}
-	if _, err := os.Lstat(filepath.Join(docA, "assets", "shot.png")); err != nil {
-		t.Errorf("friendly file missing in view A: %v", err)
-	}
+	wantPath(t, mustAdd(t, viewA, uuidA, "shot.png", tinyPNG(t, 3, 4)), "assets/shot.png")
+	wantEntryCount(t, blobDir, 2) // blob + index.json
+	wantExists(t, filepath.Join(docA, "assets", "shot.png"))
 
 	// View B resolves the same id through the shared index and
 	// materializes its own friendly file.
-	assetB, ok := viewB.Resolve(uuidA)
-	if !ok || assetB.Path != "assets/shot.png" {
-		t.Fatalf("view B resolve: %+v %v", assetB, ok)
-	}
-	if assetB.Width != 3 || assetB.Height != 4 {
-		t.Errorf("view B dims: %dx%d", assetB.Width, assetB.Height)
-	}
-	if id, ok := viewB.Lookup("", "assets/shot.png"); !ok || id != uuidA {
-		t.Errorf("view B lookup after materialize: %q %v", id, ok)
-	}
+	wantAsset(t, mustResolve(t, viewB, uuidA), "assets/shot.png", 3, 4)
+	wantLookup(t, viewB, "", "assets/shot.png", uuidA)
 
 	// Identical content added through view B deduplicates in the
 	// shared blob store.
-	if _, dupErr := viewB.Add("", uuidB, "copy.png", tinyPNG(t, 3, 4)); dupErr != nil {
-		t.Fatal(dupErr)
-	}
-	blobs, dirErr = os.ReadDir(filepath.Join(root, "assets", ".store"))
-	if dirErr != nil || len(blobs) != 2 {
-		t.Errorf("blob store after duplicate add: %v entries, err %v", len(blobs), dirErr)
-	}
+	mustAdd(t, viewB, uuidB, "copy.png", tinyPNG(t, 3, 4))
+	wantEntryCount(t, blobDir, 2)
 }
 
 // TestFormat_RewritesReferencesOnLayoutChange: re-rendering markdown

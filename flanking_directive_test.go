@@ -202,7 +202,7 @@ func TestDirectiveLabelEscapesBackslash(t *testing.T) {
 // text for a directive node — so the label content vanishes. The
 // renderer escapes those colons, including the digit-led names the prose
 // escaper leaves alone for remark parity. See
-// markdown.writeColonEscapePrefix and markdown.escapeDirectiveLabel.
+// markdown.escapesColon and markdown.escapeDirectiveLabel.
 func TestDirectiveLabelEscapesNestedDirectiveColon(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

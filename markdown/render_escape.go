@@ -26,7 +26,28 @@ func (r *mdRenderer) escapeText(s string, st *inlineContext, nextLead byte, enco
 	// Hex-encode the boundary runes adjacent to a non-flankable emphasis
 	// marker (remark-stringify behavior); only alphanumerics are encoded —
 	// punctuation neighbors already satisfy the flanking rules.
-	start, end := 0, len(s)
+	start := r.writeEncodedLead(&sb, s, st, encodeLead)
+	end, trailRef := encodedTrail(s, start, encodeTrail)
+	s = s[start:end]
+	// Line-start state at the node's first content byte — the per-char
+	// st.prev advances through the loop, but a digit RUN's start position
+	// needs the state where the run began.
+	nodeAtLineStart := atLineStart(st)
+	st.nodePrev, st.nodeHasPrev = st.prev, st.hasPrev
+	for i := range len(s) {
+		r.writeEscapedByte(&sb, s, i, nextLead, st, nodeAtLineStart)
+	}
+	if trailRef != "" {
+		sb.WriteString(trailRef)
+		st.prev, st.hasPrev = ';', true
+	}
+	return sb.String()
+}
+
+// writeEncodedLead hex-encodes the node's leading rune where remark does
+// and returns the byte offset the escaped content starts at.
+func (r *mdRenderer) writeEncodedLead(sb *strings.Builder, s string, st *inlineContext, encodeLead bool) int {
+	start := 0
 	// A space at a line start after a hard break would be stripped on
 	// re-parse; remark hex-encodes it ("\\\n&#x20;0").
 	if !r.cfg.prettierText && st.hasPrev && st.prev == '\n' {
@@ -43,180 +64,171 @@ func (r *mdRenderer) escapeText(s string, st *inlineContext, nextLead byte, enco
 			st.prev, st.hasPrev = ';', true
 		}
 	}
-	trailRef := ""
-	if encodeTrail {
-		if r1 := lastRuneOf(s[start:]); r1 != 0 && isEncodableRune(r1) {
-			trailRef = hexRef(r1)
-			end = len(s) - len(string(r1))
-		}
-	}
-	s = s[start:end]
-	// Line-start state at the node's first content byte — the per-char
-	// st.prev advances through the loop, but a digit RUN's start position
-	// needs the state where the run began.
-	nodeAtLineStart := atLineStart(st)
-	st.nodePrev, st.nodeHasPrev = st.prev, st.hasPrev
-	for i := range len(s) {
-		ch := s[i]
-		// Table-cell pipe escaping applies even where markdown escaping is
-		// off (link labels): mdast-util-gfm-table's unsafe rule covers the
-		// whole cell.
-		if ch == '|' && st.pipes {
-			sb.WriteByte('\\')
-		}
-		// Link labels use remark's restricted escape set (measured):
-		// brackets and emphasis-capable markers escape, a backslash only
-		// before punctuation, a colon only before a letter; '@', '|',
-		// '#', '-' and the atBreak rules do not apply inside labels.
-		if st.label && !r.cfg.prettierText && labelEscapes(s, i, nextLead, st) {
-			sb.WriteByte('\\')
-		}
-		if st.escape {
-			r.writeEscapePrefix(&sb, s, i, nextLead, st, nodeAtLineStart)
-		}
-		sb.WriteByte(ch)
-		st.prev, st.hasPrev = ch, true
-	}
-	if trailRef != "" {
-		sb.WriteString(trailRef)
-		st.prev, st.hasPrev = ';', true
-	}
-	return sb.String()
+	return start
 }
 
-// writeEscapePrefix writes the backslash escape needed before s[i] under the
-// active markdown escaping rules (remark-stringify vs prettier). The cases
-// are dispatched to helpers grouped by character class.
-func (r *mdRenderer) writeEscapePrefix(sb *strings.Builder, s string, i int, nextLead byte, st *inlineContext, nodeAtLineStart bool) {
+// encodedTrail returns where the escaped content ends and the hex
+// reference that replaces the trailing rune (empty when none does).
+func encodedTrail(s string, start int, encodeTrail bool) (end int, ref string) {
+	if !encodeTrail {
+		return len(s), ""
+	}
+	if r1 := lastRuneOf(s[start:]); r1 != 0 && isEncodableRune(r1) {
+		return len(s) - len(string(r1)), hexRef(r1)
+	}
+	return len(s), ""
+}
+
+// writeEscapedByte writes s[i] behind whatever backslashes the active
+// rules call for, and advances the per-character state.
+func (r *mdRenderer) writeEscapedByte(sb *strings.Builder, s string, i int, nextLead byte, st *inlineContext, nodeAtLineStart bool) {
+	ch := s[i]
+	// Table-cell pipe escaping applies even where markdown escaping is
+	// off (link labels): mdast-util-gfm-table's unsafe rule covers the
+	// whole cell.
+	if ch == '|' && st.pipes {
+		sb.WriteByte('\\')
+	}
+	// Link labels use remark's restricted escape set (measured):
+	// brackets and emphasis-capable markers escape, a backslash only
+	// before punctuation, a colon only before a letter; '@', '|',
+	// '#', '-' and the atBreak rules do not apply inside labels.
+	if st.label && !r.cfg.prettierText && labelEscapes(s, i, nextLead, st) {
+		sb.WriteByte('\\')
+	}
+	if st.escape && r.needsEscape(s, i, nextLead, st, nodeAtLineStart) {
+		sb.WriteByte('\\')
+	}
+	sb.WriteByte(ch)
+	st.prev, st.hasPrev = ch, true
+}
+
+// needsEscape reports whether s[i] needs a backslash under the active
+// markdown escaping rules (remark-stringify vs prettier). The cases are
+// dispatched to predicates grouped by character class.
+func (r *mdRenderer) needsEscape(s string, i int, nextLead byte, st *inlineContext, nodeAtLineStart bool) bool {
 	switch s[i] {
 	case '_', '\\', '~', '*', '`', '<', '[', '(', ':':
-		r.writeInlineMarkerEscapePrefix(sb, s, i, nextLead, st)
+		return r.escapesInlineMarker(s, i, nextLead, st)
 	case '=', '#', '>', '-', '+':
-		r.writeLineStartEscapePrefix(sb, s, i, nextLead, st)
+		return r.escapesLineStart(s, i, nextLead, st)
 	case '|', '.', ')', '&', '!', '@':
-		r.writeTokenEscapePrefix(sb, s, i, nextLead, st, nodeAtLineStart)
+		return r.escapesToken(s, i, nextLead, st, nodeAtLineStart)
 	}
+	return false
 }
 
-// writeInlineMarkerEscapePrefix handles the inline-construct markers
-// (emphasis, code, links, directives) for writeEscapePrefix.
-func (r *mdRenderer) writeInlineMarkerEscapePrefix(sb *strings.Builder, s string, i int, nextLead byte, st *inlineContext) {
+// escapesInlineMarker covers the inline-construct markers (emphasis,
+// code, links, directives) for needsEscape.
+func (r *mdRenderer) escapesInlineMarker(s string, i int, nextLead byte, st *inlineContext) bool {
 	switch s[i] {
 	case '_':
-		if r.escapeUnderscore(s, i, nextLead, st) {
-			sb.WriteByte('\\')
-		}
+		return r.escapeUnderscore(s, i, nextLead, st)
 	case '\\':
-		if r.escapeBackslash(s, i, nextLead) {
-			sb.WriteByte('\\')
-		}
+		return r.escapeBackslash(s, i, nextLead)
 	case '~':
 		// Prettier never escapes a tilde (its parser keeps \~
 		// literal, handled via the format sentinel); remark always
 		// escapes it.
-		if !r.cfg.prettierText {
-			sb.WriteByte('\\')
-		}
+		return !r.cfg.prettierText
 	case '*', '`':
-		sb.WriteByte('\\')
+		return true
 	case '<':
-		if r.escapeAngle(s, i, nextLead) {
-			sb.WriteByte('\\')
-		}
+		return r.escapeAngle(s, i, nextLead)
 	case '[':
 		// remark escapes '[' in phrasing (link ambiguity: "[]()" text
 		// would re-parse as a link and vanish); prettier drops the escape
 		// again, matching the corpus.
-		if !r.cfg.prettierText {
-			sb.WriteByte('\\')
-		}
+		return !r.cfg.prettierText
 	case '(':
 		// remark escapes '(' after ']' (it would complete a link).
-		if !r.cfg.prettierText && st.hasPrev && st.prev == ']' {
-			sb.WriteByte('\\')
-		}
+		return !r.cfg.prettierText && st.hasPrev && st.prev == ']'
 	case ':':
-		r.writeColonEscapePrefix(sb, s, i, nextLead, st)
+		return r.escapesColon(s, i, nextLead, st)
 	}
+	return false
 }
 
-// writeLineStartEscapePrefix handles the atBreak (line-start) block-syntax
-// characters for writeEscapePrefix.
-func (r *mdRenderer) writeLineStartEscapePrefix(sb *strings.Builder, s string, i int, nextLead byte, st *inlineContext) {
+// escapesLineStart covers the atBreak (line-start) block-syntax
+// characters for needsEscape. None of them applies away from a line
+// start, and prettier escapes none of them at all.
+func (r *mdRenderer) escapesLineStart(s string, i int, nextLead byte, st *inlineContext) bool {
+	if r.cfg.prettierText || !atLineStart(st) {
+		return false
+	}
 	switch s[i] {
 	case '=', '#', '>':
 		// remark's atBreak unsafe rules: these characters at a line start
 		// (paragraph start or after a break) would re-parse as setext/
 		// heading/quote syntax (measured, see the atbreak probes).
-		if !r.cfg.prettierText && atLineStart(st) {
-			sb.WriteByte('\\')
-		}
+		return true
 	case '-':
 		// '-' at a line start re-parses as a list marker (space/tab/EOL
 		// after), setext/thematic ('-' after), or a table delimiter row
 		// (':'/'|' after); bare "-x" stays unescaped.
-		if !r.cfg.prettierText && atLineStart(st) {
-			if n := byteAt(s, i+1, nextLead); n == 0 || n == ' ' || n == '\t' || n == '-' || n == '|' || n == ':' {
-				sb.WriteByte('\\')
-			}
-		}
+		n := byteAt(s, i+1, nextLead)
+		return n == 0 || n == ' ' || n == '\t' || n == '-' || n == '|' || n == ':'
 	case '+':
 		// '+' at a line start followed by space/tab/EOL re-parses as a
 		// list marker.
-		if !r.cfg.prettierText && atLineStart(st) {
-			if n := byteAt(s, i+1, nextLead); n == 0 || n == ' ' || n == '\t' {
-				sb.WriteByte('\\')
-			}
-		}
+		n := byteAt(s, i+1, nextLead)
+		return n == 0 || n == ' ' || n == '\t'
 	}
+	return false
 }
 
-// writeTokenEscapePrefix handles the neighbor-sensitive token characters
-// (table pipes, ordered-list punctuation, character references, images,
-// email autolinks) for writeEscapePrefix.
-func (r *mdRenderer) writeTokenEscapePrefix(sb *strings.Builder, s string, i int, nextLead byte, st *inlineContext, nodeAtLineStart bool) {
+// escapesToken covers the neighbor-sensitive token characters (table
+// pipes, ordered-list punctuation, character references, images, email
+// autolinks) for needsEscape.
+func (r *mdRenderer) escapesToken(s string, i int, nextLead byte, st *inlineContext, nodeAtLineStart bool) bool {
 	switch s[i] {
 	case '|':
-		// '|' at a line start followed by [ \t:-] could form a table
-		// delimiter row; mdast-util-gfm-table escapes it (measured:
-		// "|-", "| - |", "|:-" escape; "|x" does not).
-		if !r.cfg.prettierText && atLineStart(st) {
-			if n := byteAt(s, i+1, nextLead); n == ' ' || n == '\t' || n == '-' || n == ':' {
-				sb.WriteByte('\\')
-			}
-		}
+		return r.escapeTablePipe(s, i, nextLead, st)
 	case '.', ')':
-		// A digit run from the line start followed by '.'/')' and then
-		// space/tab/EOL re-parses as an ordered list marker; remark
-		// escapes the punctuation.
-		if !r.cfg.prettierText && digitRunFromLineStart(s, i, nodeAtLineStart) {
-			if n := byteAt(s, i+1, nextLead); n == 0 || n == ' ' || n == '\t' {
-				sb.WriteByte('\\')
-			}
-		}
+		return r.escapeOrderedMarker(s, i, nextLead, nodeAtLineStart)
 	case '&':
-		// '&' before '#' or a letter could form a character reference on
-		// re-parse; remark escapes it ("AT\\&T", "\\&#0;") and leaves
-		// bare ampersands alone ("a & b").
-		if !r.cfg.prettierText {
-			if n := byteAt(s, i+1, nextLead); n == '#' || isASCIILetter(n) {
-				sb.WriteByte('\\')
-			}
-		}
+		return r.escapeAmpersand(s, i, nextLead)
 	case '!':
 		// '!' before '[' would combine with a following link into image
 		// syntax; remark escapes it (probe: "!![]()[0]()").
-		if !r.cfg.prettierText && byteAt(s, i+1, nextLead) == '[' {
-			sb.WriteByte('\\')
-		}
+		return !r.cfg.prettierText && byteAt(s, i+1, nextLead) == '['
 	case '@':
-		// mdast-util-gfm-autolink-literal's unsafe rule: an '@' between
-		// email-literal characters would linkify on re-parse (before:
-		// [+\-.\w], after: [-.\w]); does not apply inside labels.
-		if r.escapeAt(s, i, nextLead, st) {
-			sb.WriteByte('\\')
-		}
+		return r.escapeAt(s, i, nextLead, st)
 	}
+	return false
+}
+
+// escapeTablePipe: '|' at a line start followed by [ \t:-] could form a
+// table delimiter row; mdast-util-gfm-table escapes it (measured: "|-",
+// "| - |", "|:-" escape; "|x" does not).
+func (r *mdRenderer) escapeTablePipe(s string, i int, nextLead byte, st *inlineContext) bool {
+	if r.cfg.prettierText || !atLineStart(st) {
+		return false
+	}
+	n := byteAt(s, i+1, nextLead)
+	return n == ' ' || n == '\t' || n == '-' || n == ':'
+}
+
+// escapeOrderedMarker: a digit run from the line start followed by
+// '.'/')' and then space/tab/EOL re-parses as an ordered list marker;
+// remark escapes the punctuation.
+func (r *mdRenderer) escapeOrderedMarker(s string, i int, nextLead byte, nodeAtLineStart bool) bool {
+	if r.cfg.prettierText || !digitRunFromLineStart(s, i, nodeAtLineStart) {
+		return false
+	}
+	n := byteAt(s, i+1, nextLead)
+	return n == 0 || n == ' ' || n == '\t'
+}
+
+// escapeAmpersand: '&' before '#' or a letter could form a character
+// reference on re-parse; remark escapes it ("AT\&T", "\&#0;") and leaves
+// bare ampersands alone ("a & b").
+func (r *mdRenderer) escapeAmpersand(s string, i int, nextLead byte) bool {
+	if r.cfg.prettierText {
+		return false
+	}
+	n := byteAt(s, i+1, nextLead)
+	return n == '#' || isASCIILetter(n)
 }
 
 // escapeAt reports whether an '@' would form a GFM email autolink literal
@@ -357,9 +369,9 @@ func (r *mdRenderer) escapeAngle(s string, i int, nextLead byte) bool {
 	return n == '!' || n == '/' || n == '?' || isASCIILetter(n)
 }
 
-// writeColonEscapePrefix writes the backslash before a ':' that would
-// re-parse as a text directive (a ':' before an ASCII letter, not preceded by
-// another ':') or a leading "::" at a block break.
+// escapesColon reports whether a ':' would re-parse as a text directive
+// (a ':' before an ASCII letter, not preceded by another ':') or as a
+// leading "::" at a block break, and so needs a backslash.
 //
 // Inside a text directive's [label] the rule widens, a deliberate
 // divergence from remark: a nested text directive there is LOSSY (the
@@ -367,22 +379,21 @@ func (r *mdRenderer) escapeAngle(s string, i int, nextLead byte) bool {
 // directive node), so it also covers digit-led names — goldmark-directive
 // parses those — and the label's first character, which has no previous
 // character but does follow the '[' the renderer just wrote.
-func (r *mdRenderer) writeColonEscapePrefix(sb *strings.Builder, s string, i int, nextLead byte, st *inlineContext) {
-	if st.colons && !r.cfg.prettierText {
-		next := nextLead
-		if i+1 < len(s) {
-			next = s[i+1]
-		}
-		notAfterColon := st.prev != ':' || !st.hasPrev
-		escapes := st.hasPrev && st.prev != ':' && isASCIILetter(next)
-		if st.directiveLabel {
-			escapes = notAfterColon && isDirectiveNameStart(next)
-		}
-		atBreak := st.hasPrev && st.prev == '\n' && next == ':'
-		if escapes || atBreak {
-			sb.WriteByte('\\')
-		}
+func (r *mdRenderer) escapesColon(s string, i int, nextLead byte, st *inlineContext) bool {
+	if !st.colons || r.cfg.prettierText {
+		return false
 	}
+	next := nextLead
+	if i+1 < len(s) {
+		next = s[i+1]
+	}
+	notAfterColon := st.prev != ':' || !st.hasPrev
+	escapes := st.hasPrev && st.prev != ':' && isASCIILetter(next)
+	if st.directiveLabel {
+		escapes = notAfterColon && isDirectiveNameStart(next)
+	}
+	atBreak := st.hasPrev && st.prev == '\n' && next == ':'
+	return escapes || atBreak
 }
 
 // labelEscapes reports whether s[i] needs a backslash inside a link label

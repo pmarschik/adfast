@@ -301,14 +301,7 @@ func parseStorageLinks(storage string) []storageLink {
 	dec.AutoClose = storageAutoClose
 	dec.Entity = xml.HTMLEntity
 
-	var (
-		links []storageLink
-		cur   *storageLink
-		text  strings.Builder
-		depth int  // element depth inside the current link
-		body  bool // inside the text-carrying part of the current link
-		codes int  // open <code> elements
-	)
+	var sc linkScanner
 	for {
 		tok, err := dec.Token()
 		if err != nil {
@@ -316,49 +309,76 @@ func parseStorageLinks(storage string) []storageLink {
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
-			name := elemName(t.Name)
-			switch {
-			case cur != nil:
-				depth++
-				switch name {
-				case "ri:page":
-					cur.title = attrValue(t, "ri", "content-title")
-				case "ac:link-body", "ac:plain-text-link-body":
-					body = true
-				}
-			case name == "code":
-				codes++
-			case name == "a":
-				cur = &storageLink{href: attrValue(t, "", "href"), code: codes > 0}
-				depth, body = 0, true
-				text.Reset()
-			case name == "ac:link":
-				cur = &storageLink{code: codes > 0}
-				depth, body = 0, false
-				text.Reset()
-			}
+			sc.start(t)
 		case xml.EndElement:
-			name := elemName(t.Name)
-			switch {
-			case cur != nil && depth == 0:
-				cur.text = text.String()
-				links = append(links, *cur)
-				cur, body = nil, false
-			case cur != nil:
-				depth--
-				if name == "ac:link-body" || name == "ac:plain-text-link-body" {
-					body = false
-				}
-			case name == "code" && codes > 0:
-				codes--
-			}
+			sc.end(elemName(t.Name))
 		case xml.CharData:
-			if cur != nil && body {
-				text.Write(t)
+			if sc.cur != nil && sc.body {
+				sc.text.Write(t)
 			}
 		}
 	}
-	return links
+	return sc.links
+}
+
+// linkScanner is the state parseStorageLinks threads through the storage
+// body's token stream.
+type linkScanner struct {
+	links []storageLink
+	cur   *storageLink
+	text  strings.Builder
+	depth int  // element depth inside the current link
+	body  bool // inside the text-carrying part of the current link
+	codes int  // open <code> elements
+}
+
+// start opens an element. Inside a link it picks up the page title and
+// the text-carrying body; outside one it opens a new link or tracks the
+// <code> nesting that decides a link's code flag.
+func (sc *linkScanner) start(t xml.StartElement) {
+	name := elemName(t.Name)
+	switch {
+	case sc.cur != nil:
+		sc.depth++
+		switch name {
+		case "ri:page":
+			sc.cur.title = attrValue(t, "ri", "content-title")
+		case "ac:link-body", "ac:plain-text-link-body":
+			sc.body = true
+		}
+	case name == "code":
+		sc.codes++
+	case name == "a":
+		sc.open(&storageLink{href: attrValue(t, "", "href"), code: sc.codes > 0}, true)
+	case name == "ac:link":
+		sc.open(&storageLink{code: sc.codes > 0}, false)
+	}
+}
+
+// open begins a new link. body says whether its text starts right away
+// (an <a>) or waits for a link-body element (an <ac:link>).
+func (sc *linkScanner) open(link *storageLink, body bool) {
+	sc.cur = link
+	sc.depth, sc.body = 0, body
+	sc.text.Reset()
+}
+
+// end closes an element, finishing the current link when its own end tag
+// arrives (depth 0).
+func (sc *linkScanner) end(name string) {
+	switch {
+	case sc.cur != nil && sc.depth == 0:
+		sc.cur.text = sc.text.String()
+		sc.links = append(sc.links, *sc.cur)
+		sc.cur, sc.body = nil, false
+	case sc.cur != nil:
+		sc.depth--
+		if name == "ac:link-body" || name == "ac:plain-text-link-body" {
+			sc.body = false
+		}
+	case name == "code" && sc.codes > 0:
+		sc.codes--
+	}
 }
 
 // elemName joins the namespace prefix back onto the local name. The

@@ -18,8 +18,18 @@ import (
 
 // extendedRegistrations returns the registrations Registrations appends
 // after the historical set (dispatch order within this list is not
-// significant — no two hooks probe the same ADF type).
+// significant — no two hooks probe the same ADF type), grouped the same
+// way Registrations groups the historical set.
 func extendedRegistrations() []extension.Registration {
+	regs := extendedInlineRegistrations()
+	regs = append(regs, extendedBlockRegistrations()...)
+	return append(regs, blockMarkRegistrations()...)
+}
+
+// extendedInlineRegistrations returns the extended kinds that live inside
+// a paragraph: three inline nodes, the annotation mark, and retired
+// fontSize.
+func extendedInlineRegistrations() []extension.Registration {
 	return []extension.Registration{
 		{
 			Kind:         "date",
@@ -57,6 +67,15 @@ func extendedRegistrations() []extension.Registration {
 			Texts:         markConstructors("fontSize", func(d *ast.TextDirective) extension.Node { return &FontSize{Attrs: d.Attrs, Children: d.Children} }),
 			DecodedByCore: true,
 		},
+	}
+}
+
+// extendedBlockRegistrations returns the extended kinds that decode from
+// an ADF BLOCK node. The "extension" kind spans all three directive
+// surfaces because ADF spells it inlineExtension, extension and
+// bodiedExtension.
+func extendedBlockRegistrations() []extension.Registration {
+	return []extension.Registration{
 		{
 			Kind: "extension",
 			Texts: map[string]func(*ast.TextDirective) extension.Node{
@@ -104,8 +123,13 @@ func extendedRegistrations() []extension.Registration {
 			},
 			DecodeBlock: decodeLayoutColumn,
 		},
-		// The block-mark wrappers decode from ADF block MARKS, not nodes;
-		// convert's block-mark wrapping constructs them.
+	}
+}
+
+// blockMarkRegistrations returns the wrapper kinds that decode from ADF
+// block MARKS, not nodes; convert's block-mark wrapping constructs them.
+func blockMarkRegistrations() []extension.Registration {
+	return []extension.Registration{
 		{
 			Kind: "align",
 			Containers: map[string]func(*ast.ContainerDirective) extension.Node{

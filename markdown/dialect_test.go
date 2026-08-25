@@ -24,49 +24,57 @@ func TestParse_DialectPromotion(t *testing.T) {
 		"a :status[Ready]{color=\"green\"} b :mention[@P]{#712020:abc} c\n"
 	root := Parse([]byte(src))
 
-	var panel *dialect.Panel
-	var media *dialect.Media
-	var jql *dialect.JQL
-	var status *dialect.Status
-	var mention *dialect.Mention
-	var walk func(n ast.Node)
-	walk = func(n ast.Node) {
-		switch v := n.(type) {
-		case *dialect.Panel:
-			panel = v
-		case *dialect.Media:
-			media = v
-		case *dialect.JQL:
-			jql = v
-		case *dialect.Status:
-			status = v
-		case *dialect.Mention:
-			mention = v
-		}
-		for _, c := range ast.Children(n) {
-			walk(c)
-		}
-	}
-	walk(root)
-
-	if panel == nil || panel.PanelType != "info" {
+	if panel := firstNode[*dialect.Panel](t, root); panel.PanelType != "info" {
 		t.Errorf("panel not promoted: %+v", panel)
 	}
-	if media == nil {
-		t.Fatal("media not promoted")
-	}
-	if media.ID != "b577" || media.MediaType != "file" || media.Width != 772 || media.Height != 512 || !media.Group || media.Layout != "align-start" {
-		t.Errorf("media attrs not bound: %+v", media)
-	}
-	if jql == nil || jql.CloudID != "c1" || jql.Columns != "summary,status" {
+	wantMediaAttrs(t, firstNode[*dialect.Media](t, root))
+	if jql := firstNode[*dialect.JQL](t, root); jql.CloudID != "c1" || jql.Columns != "summary,status" {
 		t.Errorf("jql attrs not bound: %+v", jql)
 	}
-	if status == nil || status.Color != "green" || ast.PlainText(status.Children) != "Ready" {
+	if status := firstNode[*dialect.Status](t, root); status.Color != "green" || ast.PlainText(status.Children) != "Ready" {
 		t.Errorf("status not bound: %+v", status)
 	}
-	if mention == nil || mention.AccountID != "712020:abc" {
+	if mention := firstNode[*dialect.Mention](t, root); mention.AccountID != "712020:abc" {
 		t.Errorf("mention id not bound: %+v", mention)
 	}
+}
+
+// wantMediaAttrs pins every attribute the ::media directive binds — the
+// widest attribute surface in the dialect, so it carries its own helper.
+func wantMediaAttrs(t *testing.T, media *dialect.Media) {
+	t.Helper()
+	if media.ID != "b577" || media.MediaType != "file" || media.Width != 772 ||
+		media.Height != 512 || !media.Group || media.Layout != "align-start" {
+		t.Errorf("media attrs not bound: %+v", media)
+	}
+}
+
+// firstNode returns the first node of kind T in the tree and fails the
+// test when the parse promoted none. Each promotion assertion above
+// wants exactly one node of its own kind, and the search is the same for
+// all of them — one generic walk instead of a five-case type switch that
+// has to grow with the dialect.
+func firstNode[T ast.Node](t *testing.T, root ast.Node) T {
+	t.Helper()
+	found, ok := searchNode[T](root)
+	if !ok {
+		t.Fatalf("%T was not promoted", found)
+	}
+	return found
+}
+
+// searchNode is firstNode's depth-first search, without the test hook.
+func searchNode[T ast.Node](n ast.Node) (T, bool) {
+	if typed, ok := n.(T); ok {
+		return typed, true
+	}
+	for _, c := range ast.Children(n) {
+		if typed, ok := searchNode[T](c); ok {
+			return typed, true
+		}
+	}
+	var zero T
+	return zero, false
 }
 
 // TestParse_GoldmarkTreeStaysGeneric asserts the goldmark layer carries

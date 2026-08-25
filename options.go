@@ -57,9 +57,26 @@ func newOptions(opts []Option) options {
 }
 
 // convertOptions builds the convert.Option list common to the AST⇄ADF
-// conversions from the resolved facade options.
+// conversions from the resolved facade options. The groups append in a
+// fixed order: a later option overrides an earlier one, so the order the
+// helpers run in is part of the contract.
 func (o *options) convertOptions() []convert.Option {
 	var out []convert.Option
+	out = o.appendLinkOptions(out)
+	out = o.appendPolicyOptions(out)
+	out = o.appendShapeOptions(out)
+	out = o.appendAssetOptions(out)
+	if len(o.extensions) > 0 {
+		out = append(out, convert.WithExtensions(o.extensions...))
+	}
+	if o.diagnostics != nil {
+		out = append(out, convert.WithDiagnostics(o.diagnostics))
+	}
+	return out
+}
+
+// appendLinkOptions carries the URL-shaping resolvers.
+func (o *options) appendLinkOptions(out []convert.Option) []convert.Option {
 	if o.smartLinks.KeyFromURL != nil || o.smartLinks.URLForKey != nil {
 		out = append(out, convert.WithSmartLinks(o.smartLinks))
 	}
@@ -69,6 +86,11 @@ func (o *options) convertOptions() []convert.Option {
 	if o.fileCards.Card != nil || o.fileCards.Link != nil {
 		out = append(out, convert.WithFileCards(o.fileCards))
 	}
+	return out
+}
+
+// appendPolicyOptions carries what the target product accepts.
+func (o *options) appendPolicyOptions(out []convert.Option) []convert.Option {
 	if len(o.codeLanguages) > 0 {
 		out = append(out, convert.WithCodeLanguages(o.codeLanguages))
 	}
@@ -78,6 +100,11 @@ func (o *options) convertOptions() []convert.Option {
 	if o.noHeadingAnchors {
 		out = append(out, convert.WithoutHeadingAnchors(o.noAnchorsProduct))
 	}
+	return out
+}
+
+// appendShapeOptions carries the markdown-surface preservation flags.
+func (o *options) appendShapeOptions(out []convert.Option) []convert.Option {
 	if o.preserveTight {
 		out = append(out, convert.WithPreserveListTightness())
 	}
@@ -87,6 +114,11 @@ func (o *options) convertOptions() []convert.Option {
 	if o.incrementLists {
 		out = append(out, convert.WithIncrementListMarkers())
 	}
+	return out
+}
+
+// appendAssetOptions carries the media/attachment resolvers.
+func (o *options) appendAssetOptions(out []convert.Option) []convert.Option {
 	if o.resolveImageDims != nil {
 		out = append(out, convert.WithImageDimsResolver(o.resolveImageDims))
 	}
@@ -98,12 +130,6 @@ func (o *options) convertOptions() []convert.Option {
 	}
 	if o.resolveMediaAsset != nil {
 		out = append(out, convert.WithMediaAssetResolver(o.resolveMediaAsset))
-	}
-	if len(o.extensions) > 0 {
-		out = append(out, convert.WithExtensions(o.extensions...))
-	}
-	if o.diagnostics != nil {
-		out = append(out, convert.WithDiagnostics(o.diagnostics))
 	}
 	return out
 }

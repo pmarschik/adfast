@@ -676,7 +676,12 @@ func TestEscapeProvenanceSurvivesAURLSplit(t *testing.T) {
 // FuzzRoundTripIdempotent — content that cannot occur in host documents
 // or where the reference pipeline (prettier wrap) is equally unstable.
 //
-//nolint:gocognit,cyclop,funlen // the skip ladder is a flat sequence of documented classes
+// The skip ladder lives in the skipFmt* classifiers below, grouped by the
+// stage a class is visible at: the parsed document, the source bytes, and
+// the formatted output. Each classifier returns the FIRST documented
+// class that matches, so a skip always names the reason it fired, and the
+// groups run in that stage order so that no group inspects a stage the
+// input has not reached.
 func FuzzFormatSemanticsPreserved(f *testing.F) {
 	for _, seed := range fuzzSeeds {
 		f.Add(seed)
@@ -687,346 +692,32 @@ func FuzzFormatSemanticsPreserved(f *testing.F) {
 		}
 		normalizedMd := strings.ReplaceAll(strings.ReplaceAll(md, "\r\n", "\n"), "\r", "\n")
 		doc := mdToADF(md)
-		if reason, skip := skipDocClasses(doc); skip {
-			t.Skip(reason)
+		for _, classify := range []func(adf.Doc) (string, bool){
+			skipDocClasses,
+			skipDocLinkClasses,
+			skipFmtWhitespaceClasses,
+			skipFmtStructureClasses,
+			skipFmtEscapeClasses,
+			skipFmtDelimiterClasses,
+			skipFmtDirectiveTextClasses,
+			skipFmtLinkClasses,
+		} {
+			if reason, skip := classify(doc); skip {
+				t.Skip(reason)
+			}
 		}
-		if reason, skip := skipDocLinkClasses(doc); skip {
+		if reason, skip := skipFmtSourceClasses(md, normalizedMd); skip {
 			t.Skip(reason)
-		}
-		// The formatter deliberately trims trailing whitespace on code
-		// lines (prettier parity; see the "code fence trailing space
-		// trimmed" pin), which IS a code-text change — the one sanctioned
-		// semantic edit.
-		if hasCodeTrailingWhitespace(doc) {
-			t.Skip("trailing whitespace in code lines; the formatter trims it by design")
 		}
 		formatted := fmtMD(md)
-		// A tab inside prose can sit at a wrap point, become a newline,
-		// and collapse to a space on re-parse; prettier is equally
-		// unstable on this class (tabs inside code spans are fine).
-		if docHasProseTab(doc) {
-			t.Skip("tab in prose; the reference pipeline is equally unstable under wrapping")
-		}
-		if reason, skip := skipRenderedClasses(formatted); skip {
-			t.Skip(reason)
-		}
-		// An underscore emphasis marker rendered adjacent to a literal
-		// underscore merges into a longer delimiter run on re-parse
-		// (probe: "0000 0*0000*_00" → "…&#x30;000__00"). A pre-existing
-		// prettier-mode renderer instability, byte-identical before and
-		// after the md→ast→md rewrite; conservatively skipped.
-		if strings.Contains(formatted, "__") {
-			t.Skip("underscore delimiter run in rendered output; pre-existing renderer instability")
-		}
-		// A soft-break collapse can butt a literal "[x]" against its list
-		// marker, manufacturing task syntax on re-parse ("* [X]\n0" →
-		// "- [X] 0"); remark renders the identical bytes and is equally
-		// unstable.
-		if docHasCheckboxLeadText(doc) {
-			t.Skip("task marker formed by soft-break collapse; remark is equally unstable")
-		}
-		// Emoji projection is deliberately lossy across markdown
-		// persistence (see convert's VisitEmoji): a known shortname
-		// renders as its unicode text, shedding the emoji node.
-		if docHasEmoji(doc) {
-			t.Skip("emoji node; the markdown projection is deliberately lossy")
-		}
-		// An empty list item's rendered marker line interacts with
-		// indented-code formation in nested lists between rounds;
-		// pre-existing renderer corner.
-		if docHasEmptyListItem(doc) {
-			t.Skip("empty list item; pre-existing marker/indented-code corner")
-		}
-		// An empty paragraph (e.g. holding only a dropped empty link)
-		// renders as bare blank lines that vanish on re-parse; remark
-		// renders the identical bytes.
-		if docHasEmptyParagraph(doc) {
-			t.Skip("empty paragraph; renders as blank lines that vanish on re-parse")
-		}
-		// ::media without a layout attribute converts to a plain image,
-		// whose re-encode materializes the default layout="center" — the
-		// pre-existing media⇄image default-layout asymmetry (identical
-		// before the md→ast→md rewrite).
-		if docHasLayoutlessMediaSingle(doc) {
-			t.Skip("layout-less mediaSingle; image re-encode materializes the default layout")
-		}
-		// A literal backslash directly before a preserved-escape
-		// character ("\\+" → text "\+") collides with the formatter's
-		// preserved-escape channel (markdown.PreservedEscapes) and sheds
-		// one escape level on re-parse — a pre-existing quirk of the
-		// prettier escape model, byte-identical before the md→ast→md
-		// rewrite.
-		if docHasBackslashBeforePreserved(doc) {
-			t.Skip("backslash before a preserved-escape character; pre-existing escape-channel collision")
-		}
-		// Ordered-marker numbers that are neither all-equal nor a strict
-		// +1 progression flip the prettier increment inference between
-		// rounds; pre-existing numbering-style inference limits.
-		if hasIrregularOrderedNumbers(normalizedMd) {
-			t.Skip("irregular ordered-list numbering; increment inference is not a fixpoint")
-		}
-		// A wide gap after an ordered-list marker ("0)  0) 0") feeds the
-		// prettier marker-gap alignment, which is not a fixpoint when
-		// nested markers interact; pre-existing renderer quirk.
-		if orderedGapMarkerRe.MatchString(normalizedMd) {
-			t.Skip("wide ordered-marker gap; pre-existing gap-alignment quirk")
-		}
-		// An empty code block inside a list item collapses its trailing
-		// blank line on re-parse, flipping the following block's gap;
-		// pre-existing spacing quirk.
-		if docHasEmptyCodeBlock(doc) {
-			t.Skip("empty code block; pre-existing list-gap quirk")
-		}
-		// An interior space run in text (e.g. left by a degraded
-		// directive label) collapses under prose wrapping; remark wraps
-		// identically.
-		if docHasDoubleSpaceText(doc) {
-			t.Skip("interior space run in text; wrapping collapses it")
-		}
-		// Trailing whitespace at the end of a block's inline run is
-		// trimmed by the prose renderer (a decoded "&#XA;" can leave one
-		// behind); pre-existing trim behavior.
-		if docHasTrailingSpaceRun(doc) {
-			t.Skip("trailing whitespace in a block's inline run; the renderer trims it")
-		}
-		// More than two trailing spaces before a hard break leave a
-		// space-suffixed text node; re-parse absorbs the extra spaces
-		// into the break marker ("0    \n" → "0   \n" → "0  \n") — a
-		// pre-existing quirk of the space-form hard-break preservation.
-		if docHasSpaceBeforeHardBreak(doc) {
-			t.Skip("extra spaces before a hard break; pre-existing space-form break quirk")
-		}
-		// A literal backslash rendered directly before a
-		// flanking-hex-encoded rune escapes the reference's ampersand on
-		// re-parse ("[*0\\0*000" -> "[_0\\&#x30;_..."); the same
-		// reference-adjacency family as skipRenderedTokenClasses' "@&#x"
-		// rule, pre-existing.
-		if strings.Contains(formatted, "\\&#x") {
-			t.Skip("backslash adjoining a character reference; pre-existing renderer instability")
-		}
-		// A literal backslash before a space can end up at a wrap point,
-		// where the line-trailing backslash re-parses as a hard break;
-		// the reference pipeline wraps identically.
-		if docHasBackslashSpaceText(doc) {
-			t.Skip("backslash before a space; wrap can turn it into a hard break")
-		}
-		// A text run ending in a literal backslash escapes whatever
-		// delimiter or character follows it on re-parse ("*0\\\\*" ->
-		// "_0\\_"); remark is equally unstable on this class.
-		if docHasTrailingBackslashText(doc) {
-			t.Skip("text ending in a literal backslash; remark is equally unstable")
-		}
-		// Literal tildes in or next to strike content merge with the ~~
-		// delimiters on re-parse ("0~0~~0~" → "0~~0~~0~~"); remark is
-		// equally unstable on this class.
-		if docHasLiteralTilde(doc) {
-			t.Skip("literal tilde in text; strike-delimiter flanking is unstable on this class")
-		}
-		// A backslash escape rendered right after a directive-name-shaped
-		// token terminates the name on re-parse, so a previously inert
-		// token can become a known directive (":emoji_" -> ":emoji\\_" ->
-		// dropped :emoji); the reference pipeline degrades identically.
-		if nameThenEscapeRe.MatchString(formatted) || nameThenHexRe.MatchString(formatted) {
-			t.Skip("escape after a directive-name-shaped token; the reference pipeline is equally unstable")
-		}
-		// An emphasis marker directly adjoining an image opener flips the
-		// marker's flanking classification between rounds ("_0_![…]");
-		// pre-existing flanking instability.
-		if emphasisImageRe.MatchString(formatted) {
-			t.Skip("emphasis marker adjoining an image; pre-existing flanking instability")
-		}
-		// A link/image title containing a quote is written verbatim
-		// between the renderer's own quotes and derails on re-parse
-		// ('[0](0 (\"))' -> '[0](0 \"\"\")'); pre-existing title-escape gap.
-		if mdHasQuirkyTitle(md) {
-			t.Skip("quote or backslash inside a link title; pre-existing title-escape gap")
-		}
-		// An image alt holding directive syntax flattens differently in
-		// the formatter (colon-name kept as text) than in the canonical
-		// alt projection (plain text only); pre-existing alt-flattening
-		// divergence.
-		if imageAltColonRe.MatchString(formatted) {
-			t.Skip("directive-ish token in image alt; pre-existing alt-flattening divergence")
-		}
-		// A character-reference-shaped token in plain text ("&quot;",
-		// its '&' escaped in the source) renders bare and decodes on
-		// re-parse; pre-existing escape gap.
-		if docHasEntityShapedText(doc) {
-			t.Skip("character-reference-shaped token in text; pre-existing escape gap")
-		}
-		// An email-shaped token in plain text (its '@' was escaped in the
-		// source, which the render does not reproduce) gets linkified on
-		// re-parse ("0\\@0.A" -> "0@0.A"); pre-existing escape gap.
-		if docHasEmailShapedText(doc) {
-			t.Skip("email-shaped token in plain text; pre-existing escape gap")
-		}
-		// An '@' with a flanking-hex-encoded rune later in the same word
-		// ("0@0.A&#x30;…") flips GFM email linkification between rounds —
-		// the wider form of skipRenderedTokenClasses' "@&#x" rule.
-		if emailHexRe.MatchString(formatted) {
-			t.Skip("email-like token adjoining a character reference; remark is equally unstable")
-		}
-		// A ":::" run inside plain text can end up alone on a wrapped
-		// line and re-parse as a container-directive fence; the reference
-		// pipeline wraps identically.
-		if docHasTextColonFence(doc) {
-			t.Skip("container-fence token in text; wrap can isolate it into a fence line")
-		}
-		// A bare directive attribute literally named "id" collides with
-		// the {#id} shortcut and renders as "{}" (pre-existing
-		// writeDirectiveAttrs corner), losing the payload on re-parse.
-		if strings.Contains(normalizedMd, "{id}") {
-			t.Skip("bare 'id' directive attribute; collides with the {#id} shortcut")
-		}
-		// A character reference in the source decodes at parse time and
-		// re-renders as raw bytes (an encoded newline becomes a soft
-		// break, an encoded space collapses, …); the reference pipeline
-		// degrades identically. Skipped by input shape.
-		if strings.Contains(normalizedMd, "&#") {
-			t.Skip("character reference in source; decodes to raw content")
-		}
-		// An escaped quote in the source can sit inside a link/image
-		// title, which the prettier renderer writes verbatim between its
-		// own quotes; the title derails on re-parse. Skipped by input
-		// shape.
-		if strings.Contains(normalizedMd, "\\\"") {
-			t.Skip("escaped quote; may sit inside a verbatim-rendered link title")
-		}
-		// A link-reference-definition-shaped line ("[0]:0") drops in the
-		// parse; inside a loose list the emptied item collapses the list
-		// spacing between rounds. Skipped by input shape.
-		if refDefShapedLineRe.MatchString(normalizedMd) {
-			t.Skip("link-reference-definition-shaped line; drops and shifts list spacing")
-		}
-		// A leaf-directive-shaped line ("::name…") that drops (unknown
-		// name or invalid payload) can leave its neighbor blocks adjacent
-		// in a tight list item, where they rejoin on re-parse; the
-		// reference pipeline degrades identically. Skipped by input shape
-		// (stable known directives lose fuzz coverage here, but the
-		// corpus tests pin those).
-		if leafDirectiveLineRe.MatchString(normalizedMd) {
-			t.Skip("leaf-directive-shaped line; dropped directives shift tight-list joins")
-		}
-		// A line-leading ']' in the render (a bracket split across a hard
-		// break) can assemble a link-reference definition on re-parse;
-		// remark renders the identical bytes.
-		if bracketLeadLineRe.MatchString(formatted) {
-			t.Skip("line-leading bracket in rendered output; may assemble a reference definition")
-		}
-		// A bare "::name" token left alone on its line (e.g. after an
-		// empty :u dropped behind it) re-parses as a leaf directive and
-		// vanishes ("::0:u" -> "::0" -> ""); the reference pipeline
-		// degrades identically.
-		if bareLeafTokenLineRe.MatchString(formatted) {
-			t.Skip("bare leaf-directive token line; the reference pipeline is equally unstable")
-		}
-		// Paragraph text leading with a list-marker character ("* --" ->
-		// item text "--") collides with the renderer's marker-collision
-		// rewriting and re-parses differently; pre-existing renderer
-		// behavior on this class.
-		if docHasMarkerLeadParagraph(doc) {
-			t.Skip("marker character leading paragraph text; pre-existing marker-collision rewriting")
-		}
-		// A literal underscore inside emphasis content closes the _
-		// delimiters early on re-parse ("0*00_0*0000"); pre-existing
-		// renderer instability of the underscore emphasis form.
-		if docHasUnderscoreInEmphasis(doc) {
-			t.Skip("underscore inside emphasis content; pre-existing renderer instability")
-		}
-		// A link destination containing parentheses renders bare in the
-		// prettier URL form (angle brackets only wrap on space or ')'),
-		// so unbalanced '(' breaks the link on re-parse ("[0](( )");
-		// pre-existing prettier URL-form gap.
-		if docHasParenInLinkHref(doc) || parenDestRe.MatchString(formatted) {
-			t.Skip("parenthesis in link destination; pre-existing prettier URL-form gap")
-		}
-		// Text ending in ':' directly before a typed inline directive
-		// doubles the colon in the render, promoting the token to a LEAF
-		// directive on re-parse (":*:media*" -> "::media{…}");
-		// pre-existing gluing behavior.
-		if docHasColonBeforeInline(doc) {
-			t.Skip("colon before an inline directive; re-parses as a leaf directive")
-		}
-		// A colon-name token inside emphasis content can absorb the
-		// closing marker on re-parse (directive names allow '_'/'-':
-		// "*0:A0*-0" -> "_0:A0_-0" reads as directive "A0_-0");
-		// pre-existing label parsing.
-		if docHasColonNameInEmphasis(doc) {
-			t.Skip("colon-name token inside emphasis; the name can absorb the closing marker")
-		}
-		// A colon-name token inside a styled (mark-directive) label
-		// re-parses as a nested directive and splits the wrapper
-		// (":u[0:A0]" -> ":u[0]:u[:A0]"); pre-existing label parsing.
-		if docHasColonNameInStyledText(doc) {
-			t.Skip("colon-name token in a mark-directive label; pre-existing label parsing")
-		}
-		// A colon inside a typed inline directive's rendered label
-		// (":placeholder[:0]") can derail the whole directive on
-		// re-parse; the reference pipeline degrades identically.
-		if docHasColonInInlineLabel(doc) {
-			t.Skip("colon in an inline directive label; the reference pipeline is equally unstable")
-		}
-		// A '<' in prose interacts with wrapping and the HTML-atom
-		// handling in unstable ways: emphasis drops around HTML atoms
-		// ("*0<A>*" -> "_0_<A>"), and a wrap point inside an HTML-ish
-		// token flips the escape decision between rounds; pre-existing.
-		if docHasAngleText(doc) {
-			t.Skip("'<' in prose; pre-existing HTML-atom and escape instabilities")
-		}
-		// Inline HTML that lands at a line start after formatting (its
-		// enclosing emphasis drops it to an unmarked atom) re-parses as
-		// block-level HTML and is stripped ("*<A>*" -> "<A>");
-		// pre-existing behavior of the HTML atom handling.
-		if htmlLeadLineRe.MatchString(formatted) {
-			t.Skip("line-leading inline HTML; re-parses as block HTML")
-		}
-		// A colon-name token inside a link label re-parses as a text
-		// directive and splits the link ("www.:A.a"); the label rules
-		// deliberately write labels verbatim — pre-existing.
-		if docHasColonNameInLinkLabel(doc) {
-			t.Skip("colon-name token inside a link label; pre-existing label-escape gap")
-		}
-		// A literal bracket inside a link label renders unescaped under
-		// the prettier label rules and derails the [label](url) form on
-		// re-parse; pre-existing prettier-escape gap.
-		if docHasBracketInLinkLabel(doc) {
-			t.Skip("bracket inside a link label; pre-existing prettier-escape gap")
-		}
-		// A link-shaped token inside plain text ("[label](url)", e.g.
-		// from an escaped bracket the parse decoded) is rendered verbatim
-		// by the prettier text rules and re-parses as a real link;
-		// pre-existing renderer behavior.
-		if docHasLinkShapedText(doc) {
-			t.Skip("link-shaped token in plain text; pre-existing prettier-escape gap")
-		}
-		// A literal '!' rendered directly before a [label](url) link
-		// turns it into an image on re-parse ("\\![0]()" -> "![0]()");
-		// remark escapes this, the prettier rules do not — pre-existing.
-		if docHasBangBeforeLink(doc) {
-			t.Skip("'!' before a link; re-parses as an image")
-		}
-		// A dropped construct's rejoin can glue preceding text directly
-		// onto a bare autolink ("…]http://…" → "000http://…"), whose
-		// linkification then fails on re-parse for lack of a word
-		// boundary; remark degrades identically.
-		if docHasBareLinkGluedToText(doc) {
-			t.Skip("bare autolink glued to preceding text; remark is equally unstable")
-		}
-		// A directive-shaped token inside plain text (":name{…}",
-		// ":name[…]" — often assembled by a soft-break collapse) re-parses
-		// as a text directive and sheds its payload; the reference
-		// pipeline degrades it identically (extends the digit-led rule in
-		// skipRenderedTokenClasses to letter-led names).
-		if docHasDirectiveShapedText(doc) {
-			t.Skip("directive-shaped token in text; the reference pipeline is equally unstable")
-		}
-		// Emphasis directly before a code span triggers the formatter's
-		// mark re-inference across code boundaries (ported verbatim from
-		// the ADF decode, where code spans genuinely shed their marks),
-		// which can extend the emphasis over following unmarked text
-		// (probe: "*0`0`* 0" → "_0`0` 0_") — pre-existing behavior.
-		if docHasEmphasisBeforeCode(doc) {
-			t.Skip("emphasis adjoining a code span; pre-existing mark re-inference")
+		for _, classify := range []func(string) (string, bool){
+			skipRenderedClasses,
+			skipFmtRenderedEscapeClasses,
+			skipFmtRenderedLineClasses,
+		} {
+			if reason, skip := classify(formatted); skip {
+				t.Skip(reason)
+			}
 		}
 		// Frontmatter detection no longer diverges between the directions:
 		// both md→adf and the formatter share one FrontmatterProvider, so a
@@ -1039,6 +730,405 @@ func FuzzFormatSemanticsPreserved(f *testing.F) {
 			t.Errorf("format not idempotent for %q:\nonce:  %q\ntwice: %q", md, formatted, twice)
 		}
 	})
+}
+
+// skipFmtWhitespaceClasses reports document classes whose whitespace does
+// not survive the formatter's trimming and prose wrapping.
+func skipFmtWhitespaceClasses(doc adf.Doc) (reason string, skip bool) {
+	// The formatter deliberately trims trailing whitespace on code
+	// lines (prettier parity; see the "code fence trailing space
+	// trimmed" pin), which IS a code-text change — the one sanctioned
+	// semantic edit.
+	if hasCodeTrailingWhitespace(doc) {
+		return "trailing whitespace in code lines; the formatter trims it by design", true
+	}
+	// A tab inside prose can sit at a wrap point, become a newline,
+	// and collapse to a space on re-parse; prettier is equally
+	// unstable on this class (tabs inside code spans are fine).
+	if docHasProseTab(doc) {
+		return "tab in prose; the reference pipeline is equally unstable under wrapping", true
+	}
+	// An interior space run in text (e.g. left by a degraded
+	// directive label) collapses under prose wrapping; remark wraps
+	// identically.
+	if docHasDoubleSpaceText(doc) {
+		return "interior space run in text; wrapping collapses it", true
+	}
+	// Trailing whitespace at the end of a block's inline run is
+	// trimmed by the prose renderer (a decoded "&#XA;" can leave one
+	// behind); pre-existing trim behavior.
+	if docHasTrailingSpaceRun(doc) {
+		return "trailing whitespace in a block's inline run; the renderer trims it", true
+	}
+	// More than two trailing spaces before a hard break leave a
+	// space-suffixed text node; re-parse absorbs the extra spaces
+	// into the break marker ("0    \n" → "0   \n" → "0  \n") — a
+	// pre-existing quirk of the space-form hard-break preservation.
+	if docHasSpaceBeforeHardBreak(doc) {
+		return "extra spaces before a hard break; pre-existing space-form break quirk", true
+	}
+	return "", false
+}
+
+// skipFmtStructureClasses reports document classes whose block structure
+// or marker shape shifts between rounds.
+func skipFmtStructureClasses(doc adf.Doc) (reason string, skip bool) {
+	// An empty list item's rendered marker line interacts with
+	// indented-code formation in nested lists between rounds;
+	// pre-existing renderer corner.
+	if docHasEmptyListItem(doc) {
+		return "empty list item; pre-existing marker/indented-code corner", true
+	}
+	// An empty paragraph (e.g. holding only a dropped empty link)
+	// renders as bare blank lines that vanish on re-parse; remark
+	// renders the identical bytes.
+	if docHasEmptyParagraph(doc) {
+		return "empty paragraph; renders as blank lines that vanish on re-parse", true
+	}
+	// An empty code block inside a list item collapses its trailing
+	// blank line on re-parse, flipping the following block's gap;
+	// pre-existing spacing quirk.
+	if docHasEmptyCodeBlock(doc) {
+		return "empty code block; pre-existing list-gap quirk", true
+	}
+	// A soft-break collapse can butt a literal "[x]" against its list
+	// marker, manufacturing task syntax on re-parse ("* [X]\n0" →
+	// "- [X] 0"); remark renders the identical bytes and is equally
+	// unstable.
+	if docHasCheckboxLeadText(doc) {
+		return "task marker formed by soft-break collapse; remark is equally unstable", true
+	}
+	// Paragraph text leading with a list-marker character ("* --" ->
+	// item text "--") collides with the renderer's marker-collision
+	// rewriting and re-parses differently; pre-existing renderer
+	// behavior on this class.
+	if docHasMarkerLeadParagraph(doc) {
+		return "marker character leading paragraph text; pre-existing marker-collision rewriting", true
+	}
+	// Emoji projection is deliberately lossy across markdown
+	// persistence (see convert's VisitEmoji): a known shortname
+	// renders as its unicode text, shedding the emoji node.
+	if docHasEmoji(doc) {
+		return "emoji node; the markdown projection is deliberately lossy", true
+	}
+	// ::media without a layout attribute converts to a plain image,
+	// whose re-encode materializes the default layout="center" — the
+	// pre-existing media⇄image default-layout asymmetry (identical
+	// before the md→ast→md rewrite).
+	if docHasLayoutlessMediaSingle(doc) {
+		return "layout-less mediaSingle; image re-encode materializes the default layout", true
+	}
+	return "", false
+}
+
+// skipFmtEscapeClasses reports document classes the prettier escape model
+// does not carry back through a re-parse.
+func skipFmtEscapeClasses(doc adf.Doc) (reason string, skip bool) {
+	// A literal backslash directly before a preserved-escape
+	// character ("\\+" → text "\+") collides with the formatter's
+	// preserved-escape channel (markdown.PreservedEscapes) and sheds
+	// one escape level on re-parse — a pre-existing quirk of the
+	// prettier escape model, byte-identical before the md→ast→md
+	// rewrite.
+	if docHasBackslashBeforePreserved(doc) {
+		return "backslash before a preserved-escape character; pre-existing escape-channel collision", true
+	}
+	// A literal backslash before a space can end up at a wrap point,
+	// where the line-trailing backslash re-parses as a hard break;
+	// the reference pipeline wraps identically.
+	if docHasBackslashSpaceText(doc) {
+		return "backslash before a space; wrap can turn it into a hard break", true
+	}
+	// A text run ending in a literal backslash escapes whatever
+	// delimiter or character follows it on re-parse ("*0\\\\*" ->
+	// "_0\\_"); remark is equally unstable on this class.
+	if docHasTrailingBackslashText(doc) {
+		return "text ending in a literal backslash; remark is equally unstable", true
+	}
+	// A character-reference-shaped token in plain text ("&quot;",
+	// its '&' escaped in the source) renders bare and decodes on
+	// re-parse; pre-existing escape gap.
+	if docHasEntityShapedText(doc) {
+		return "character-reference-shaped token in text; pre-existing escape gap", true
+	}
+	// An email-shaped token in plain text (its '@' was escaped in the
+	// source, which the render does not reproduce) gets linkified on
+	// re-parse ("0\\@0.A" -> "0@0.A"); pre-existing escape gap.
+	if docHasEmailShapedText(doc) {
+		return "email-shaped token in plain text; pre-existing escape gap", true
+	}
+	// A literal '!' rendered directly before a [label](url) link
+	// turns it into an image on re-parse ("\\![0]()" -> "![0]()");
+	// remark escapes this, the prettier rules do not — pre-existing.
+	if docHasBangBeforeLink(doc) {
+		return "'!' before a link; re-parses as an image", true
+	}
+	// A '<' in prose interacts with wrapping and the HTML-atom
+	// handling in unstable ways: emphasis drops around HTML atoms
+	// ("*0<A>*" -> "_0_<A>"), and a wrap point inside an HTML-ish
+	// token flips the escape decision between rounds; pre-existing.
+	if docHasAngleText(doc) {
+		return "'<' in prose; pre-existing HTML-atom and escape instabilities", true
+	}
+	return "", false
+}
+
+// skipFmtDelimiterClasses reports document classes where a literal
+// character merges with the emphasis or strike delimiters around it.
+func skipFmtDelimiterClasses(doc adf.Doc) (reason string, skip bool) {
+	// Literal tildes in or next to strike content merge with the ~~
+	// delimiters on re-parse ("0~0~~0~" → "0~~0~~0~~"); remark is
+	// equally unstable on this class.
+	if docHasLiteralTilde(doc) {
+		return "literal tilde in text; strike-delimiter flanking is unstable on this class", true
+	}
+	// A literal underscore inside emphasis content closes the _
+	// delimiters early on re-parse ("0*00_0*0000"); pre-existing
+	// renderer instability of the underscore emphasis form.
+	if docHasUnderscoreInEmphasis(doc) {
+		return "underscore inside emphasis content; pre-existing renderer instability", true
+	}
+	// Emphasis directly before a code span triggers the formatter's
+	// mark re-inference across code boundaries (ported verbatim from
+	// the ADF decode, where code spans genuinely shed their marks),
+	// which can extend the emphasis over following unmarked text
+	// (probe: "*0`0`* 0" → "_0`0` 0_") — pre-existing behavior.
+	if docHasEmphasisBeforeCode(doc) {
+		return "emphasis adjoining a code span; pre-existing mark re-inference", true
+	}
+	return "", false
+}
+
+// skipFmtDirectiveTextClasses reports document classes where plain text
+// assembles into directive syntax on re-parse. Labels are written
+// verbatim by design, so a colon-name token inside one re-reads as a
+// nested directive.
+func skipFmtDirectiveTextClasses(doc adf.Doc) (reason string, skip bool) {
+	// A ":::" run inside plain text can end up alone on a wrapped
+	// line and re-parse as a container-directive fence; the reference
+	// pipeline wraps identically.
+	if docHasTextColonFence(doc) {
+		return "container-fence token in text; wrap can isolate it into a fence line", true
+	}
+	// Text ending in ':' directly before a typed inline directive
+	// doubles the colon in the render, promoting the token to a LEAF
+	// directive on re-parse (":*:media*" -> "::media{…}");
+	// pre-existing gluing behavior.
+	if docHasColonBeforeInline(doc) {
+		return "colon before an inline directive; re-parses as a leaf directive", true
+	}
+	// A colon-name token inside emphasis content can absorb the
+	// closing marker on re-parse (directive names allow '_'/'-':
+	// "*0:A0*-0" -> "_0:A0_-0" reads as directive "A0_-0");
+	// pre-existing label parsing.
+	if docHasColonNameInEmphasis(doc) {
+		return "colon-name token inside emphasis; the name can absorb the closing marker", true
+	}
+	// A colon-name token inside a styled (mark-directive) label
+	// re-parses as a nested directive and splits the wrapper
+	// (":u[0:A0]" -> ":u[0]:u[:A0]"); pre-existing label parsing.
+	if docHasColonNameInStyledText(doc) {
+		return "colon-name token in a mark-directive label; pre-existing label parsing", true
+	}
+	// A colon inside a typed inline directive's rendered label
+	// (":placeholder[:0]") can derail the whole directive on
+	// re-parse; the reference pipeline degrades identically.
+	if docHasColonInInlineLabel(doc) {
+		return "colon in an inline directive label; the reference pipeline is equally unstable", true
+	}
+	// A directive-shaped token inside plain text (":name{…}",
+	// ":name[…]" — often assembled by a soft-break collapse) re-parses
+	// as a text directive and sheds its payload; the reference
+	// pipeline degrades it identically (extends the digit-led rule in
+	// skipRenderedTokenClasses to letter-led names).
+	if docHasDirectiveShapedText(doc) {
+		return "directive-shaped token in text; the reference pipeline is equally unstable", true
+	}
+	return "", false
+}
+
+// skipFmtLinkClasses reports document classes where a link's label or
+// destination does not survive the prettier link forms.
+func skipFmtLinkClasses(doc adf.Doc) (reason string, skip bool) {
+	// A link destination containing parentheses renders bare in the
+	// prettier URL form (angle brackets only wrap on space or ')'),
+	// so unbalanced '(' breaks the link on re-parse ("[0](( )");
+	// pre-existing prettier URL-form gap. The rendered half of this
+	// class is parenDestRe in skipFmtRenderedLineClasses.
+	if docHasParenInLinkHref(doc) {
+		return "parenthesis in link destination; pre-existing prettier URL-form gap", true
+	}
+	// A colon-name token inside a link label re-parses as a text
+	// directive and splits the link ("www.:A.a"); the label rules
+	// deliberately write labels verbatim — pre-existing.
+	if docHasColonNameInLinkLabel(doc) {
+		return "colon-name token inside a link label; pre-existing label-escape gap", true
+	}
+	// A literal bracket inside a link label renders unescaped under
+	// the prettier label rules and derails the [label](url) form on
+	// re-parse; pre-existing prettier-escape gap.
+	if docHasBracketInLinkLabel(doc) {
+		return "bracket inside a link label; pre-existing prettier-escape gap", true
+	}
+	// A link-shaped token inside plain text ("[label](url)", e.g.
+	// from an escaped bracket the parse decoded) is rendered verbatim
+	// by the prettier text rules and re-parses as a real link;
+	// pre-existing renderer behavior.
+	if docHasLinkShapedText(doc) {
+		return "link-shaped token in plain text; pre-existing prettier-escape gap", true
+	}
+	// A dropped construct's rejoin can glue preceding text directly
+	// onto a bare autolink ("…]http://…" → "000http://…"), whose
+	// linkification then fails on re-parse for lack of a word
+	// boundary; remark degrades identically.
+	if docHasBareLinkGluedToText(doc) {
+		return "bare autolink glued to preceding text; remark is equally unstable", true
+	}
+	return "", false
+}
+
+// skipFmtSourceClasses reports classes recognized on the SOURCE bytes,
+// before any render: content that the parse itself decodes or drops, so
+// the formatted document can never carry it back. normalizedMd is md with
+// its line endings folded to "\n"; md is the raw input, which the link
+// title rules read verbatim.
+func skipFmtSourceClasses(md, normalizedMd string) (reason string, skip bool) {
+	// Ordered-marker numbers that are neither all-equal nor a strict
+	// +1 progression flip the prettier increment inference between
+	// rounds; pre-existing numbering-style inference limits.
+	if hasIrregularOrderedNumbers(normalizedMd) {
+		return "irregular ordered-list numbering; increment inference is not a fixpoint", true
+	}
+	// A wide gap after an ordered-list marker ("0)  0) 0") feeds the
+	// prettier marker-gap alignment, which is not a fixpoint when
+	// nested markers interact; pre-existing renderer quirk.
+	if orderedGapMarkerRe.MatchString(normalizedMd) {
+		return "wide ordered-marker gap; pre-existing gap-alignment quirk", true
+	}
+	// A link/image title containing a quote is written verbatim
+	// between the renderer's own quotes and derails on re-parse
+	// ('[0](0 (\"))' -> '[0](0 \"\"\")'); pre-existing title-escape gap.
+	if mdHasQuirkyTitle(md) {
+		return "quote or backslash inside a link title; pre-existing title-escape gap", true
+	}
+	// A bare directive attribute literally named "id" collides with
+	// the {#id} shortcut and renders as "{}" (pre-existing
+	// writeDirectiveAttrs corner), losing the payload on re-parse.
+	if strings.Contains(normalizedMd, "{id}") {
+		return "bare 'id' directive attribute; collides with the {#id} shortcut", true
+	}
+	// A character reference in the source decodes at parse time and
+	// re-renders as raw bytes (an encoded newline becomes a soft
+	// break, an encoded space collapses, …); the reference pipeline
+	// degrades identically. Skipped by input shape.
+	if strings.Contains(normalizedMd, "&#") {
+		return "character reference in source; decodes to raw content", true
+	}
+	// An escaped quote in the source can sit inside a link/image
+	// title, which the prettier renderer writes verbatim between its
+	// own quotes; the title derails on re-parse. Skipped by input
+	// shape.
+	if strings.Contains(normalizedMd, "\\\"") {
+		return "escaped quote; may sit inside a verbatim-rendered link title", true
+	}
+	// A link-reference-definition-shaped line ("[0]:0") drops in the
+	// parse; inside a loose list the emptied item collapses the list
+	// spacing between rounds. Skipped by input shape.
+	if refDefShapedLineRe.MatchString(normalizedMd) {
+		return "link-reference-definition-shaped line; drops and shifts list spacing", true
+	}
+	// A leaf-directive-shaped line ("::name…") that drops (unknown
+	// name or invalid payload) can leave its neighbor blocks adjacent
+	// in a tight list item, where they rejoin on re-parse; the
+	// reference pipeline degrades identically. Skipped by input shape
+	// (stable known directives lose fuzz coverage here, but the
+	// corpus tests pin those).
+	if leafDirectiveLineRe.MatchString(normalizedMd) {
+		return "leaf-directive-shaped line; dropped directives shift tight-list joins", true
+	}
+	return "", false
+}
+
+// skipFmtRenderedEscapeClasses reports classes recognized on the
+// FORMATTED bytes where an escape or character reference sits next to a
+// token that changes meaning on re-parse.
+func skipFmtRenderedEscapeClasses(formatted string) (reason string, skip bool) {
+	// An underscore emphasis marker rendered adjacent to a literal
+	// underscore merges into a longer delimiter run on re-parse
+	// (probe: "0000 0*0000*_00" → "…&#x30;000__00"). A pre-existing
+	// prettier-mode renderer instability, byte-identical before and
+	// after the md→ast→md rewrite; conservatively skipped.
+	if strings.Contains(formatted, "__") {
+		return "underscore delimiter run in rendered output; pre-existing renderer instability", true
+	}
+	// A literal backslash rendered directly before a
+	// flanking-hex-encoded rune escapes the reference's ampersand on
+	// re-parse ("[*0\\0*000" -> "[_0\\&#x30;_..."); the same
+	// reference-adjacency family as skipRenderedTokenClasses' "@&#x"
+	// rule, pre-existing.
+	if strings.Contains(formatted, "\\&#x") {
+		return "backslash adjoining a character reference; pre-existing renderer instability", true
+	}
+	// A backslash escape rendered right after a directive-name-shaped
+	// token terminates the name on re-parse, so a previously inert
+	// token can become a known directive (":emoji_" -> ":emoji\\_" ->
+	// dropped :emoji); the reference pipeline degrades identically.
+	if nameThenEscapeRe.MatchString(formatted) || nameThenHexRe.MatchString(formatted) {
+		return "escape after a directive-name-shaped token; the reference pipeline is equally unstable", true
+	}
+	// An '@' with a flanking-hex-encoded rune later in the same word
+	// ("0@0.A&#x30;…") flips GFM email linkification between rounds —
+	// the wider form of skipRenderedTokenClasses' "@&#x" rule.
+	if emailHexRe.MatchString(formatted) {
+		return "email-like token adjoining a character reference; remark is equally unstable", true
+	}
+	return "", false
+}
+
+// skipFmtRenderedLineClasses reports classes recognized on the FORMATTED
+// bytes where a token's position on its line — set by wrapping, or by a
+// neighbor that dropped — changes how the line re-parses.
+func skipFmtRenderedLineClasses(formatted string) (reason string, skip bool) {
+	// An emphasis marker directly adjoining an image opener flips the
+	// marker's flanking classification between rounds ("_0_![…]");
+	// pre-existing flanking instability.
+	if emphasisImageRe.MatchString(formatted) {
+		return "emphasis marker adjoining an image; pre-existing flanking instability", true
+	}
+	// An image alt holding directive syntax flattens differently in
+	// the formatter (colon-name kept as text) than in the canonical
+	// alt projection (plain text only); pre-existing alt-flattening
+	// divergence.
+	if imageAltColonRe.MatchString(formatted) {
+		return "directive-ish token in image alt; pre-existing alt-flattening divergence", true
+	}
+	// A line-leading ']' in the render (a bracket split across a hard
+	// break) can assemble a link-reference definition on re-parse;
+	// remark renders the identical bytes.
+	if bracketLeadLineRe.MatchString(formatted) {
+		return "line-leading bracket in rendered output; may assemble a reference definition", true
+	}
+	// A bare "::name" token left alone on its line (e.g. after an
+	// empty :u dropped behind it) re-parses as a leaf directive and
+	// vanishes ("::0:u" -> "::0" -> ""); the reference pipeline
+	// degrades identically.
+	if bareLeafTokenLineRe.MatchString(formatted) {
+		return "bare leaf-directive token line; the reference pipeline is equally unstable", true
+	}
+	// Inline HTML that lands at a line start after formatting (its
+	// enclosing emphasis drops it to an unmarked atom) re-parses as
+	// block-level HTML and is stripped ("*<A>*" -> "<A>");
+	// pre-existing behavior of the HTML atom handling.
+	if htmlLeadLineRe.MatchString(formatted) {
+		return "line-leading inline HTML; re-parses as block HTML", true
+	}
+	// The rendered half of skipFmtLinkClasses' parenthesis class: an
+	// unbalanced '(' in a bare-rendered link destination breaks the
+	// link on re-parse.
+	if parenDestRe.MatchString(formatted) {
+		return "parenthesis in link destination; pre-existing prettier URL-form gap", true
+	}
+	return "", false
 }
 
 // hasCodeTrailingWhitespace reports whether any code block line ends in
@@ -1138,26 +1228,47 @@ func docHasBackslashBeforePreserved(doc adf.Doc) bool {
 // with whitespace after it (the line boundary swallows either side on
 // re-parse).
 func docHasSpaceBeforeHardBreak(doc adf.Doc) bool {
+	return anyContentRun(doc, func(content []adf.Node) bool {
+		for i := range content {
+			if _, isBreak := content[i].(*adf.HardBreak); !isBreak {
+				continue
+			}
+			if spaceTouchesBreak(content, i) {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// anyContentRun reports whether pred accepts the content slice of any node
+// in the document. The sibling-adjacency predicates all walk the tree the
+// same way and differ only in what they look for within one node's
+// children, so the walk lives here once.
+func anyContentRun(doc adf.Doc, pred func(content []adf.Node) bool) bool {
 	for _, root := range doc.Content {
 		for n := range adf.Walk(root) {
-			content := adf.NodeContent(n)
-			for i := range content {
-				if _, isBreak := content[i].(*adf.HardBreak); !isBreak {
-					continue
-				}
-				if i > 0 {
-					if text, ok := content[i-1].(*adf.Text); ok &&
-						strings.TrimRight(text.Text, " \t") != text.Text {
-						return true
-					}
-				}
-				if i+1 < len(content) {
-					if text, ok := content[i+1].(*adf.Text); ok &&
-						strings.TrimLeft(text.Text, " \t") != text.Text {
-						return true
-					}
-				}
+			if pred(adf.NodeContent(n)) {
+				return true
 			}
+		}
+	}
+	return false
+}
+
+// spaceTouchesBreak reports whether the text on either side of the hard
+// break at index i carries whitespace at that boundary.
+func spaceTouchesBreak(content []adf.Node, i int) bool {
+	if i > 0 {
+		if text, ok := content[i-1].(*adf.Text); ok &&
+			strings.TrimRight(text.Text, " \t") != text.Text {
+			return true
+		}
+	}
+	if i+1 < len(content) {
+		if text, ok := content[i+1].(*adf.Text); ok &&
+			strings.TrimLeft(text.Text, " \t") != text.Text {
+			return true
 		}
 	}
 	return false
@@ -1228,44 +1339,44 @@ func docHasDirectiveShapedText(doc adf.Doc) bool {
 // following sibling text starts with a non-space character — either
 // side glues onto the bare URL when rendered and shifts linkification.
 func docHasBareLinkGluedToText(doc adf.Doc) bool {
-	// GFM linkification requires the char before the URL to be
-	// whitespace or one of *_~( — anything else breaks the autolink
-	// when the render glues them together.
-	blocksLinkify := func(b byte) bool {
-		switch b {
-		case ' ', '\t', '\n', '*', '_', '~', '(':
-			return false
-		}
-		return true
-	}
-	isBare := func(n adf.Node) bool {
-		text, ok := n.(*adf.Text)
-		if !ok {
-			return false
-		}
-		link, hasLink := adf.FindMark[*adf.Link](text.Marks)
-		return hasLink && link.Href != nil && *link.Href == text.Text
-	}
-	for _, root := range doc.Content {
-		for n := range adf.Walk(root) {
-			content := adf.NodeContent(n)
-			for i := 0; i+1 < len(content); i++ {
-				cur, isText := content[i].(*adf.Text)
-				next, nextText := content[i+1].(*adf.Text)
-				if !isText || !nextText {
-					continue
-				}
-				if isBare(content[i+1]) && cur.Text != "" && blocksLinkify(cur.Text[len(cur.Text)-1]) {
-					return true
-				}
-				if isBare(content[i]) && next.Text != "" &&
-					next.Text[0] != ' ' && next.Text[0] != '\t' {
-					return true
-				}
+	return anyContentRun(doc, func(content []adf.Node) bool {
+		for i := 0; i+1 < len(content); i++ {
+			cur, isText := content[i].(*adf.Text)
+			next, nextText := content[i+1].(*adf.Text)
+			if isText && nextText && bareLinkGlued(cur, next) {
+				return true
 			}
 		}
+		return false
+	})
+}
+
+// bareLinkGlued reports whether the adjacent text pair renders with a bare
+// autolink glued to its neighbor.
+func bareLinkGlued(cur, next *adf.Text) bool {
+	if isBareLinkText(next) && cur.Text != "" && blocksLinkify(cur.Text[len(cur.Text)-1]) {
+		return true
 	}
-	return false
+	return isBareLinkText(cur) && next.Text != "" &&
+		next.Text[0] != ' ' && next.Text[0] != '\t'
+}
+
+// isBareLinkText reports whether the text node renders as a bare autolink
+// — its label is its own href.
+func isBareLinkText(text *adf.Text) bool {
+	link, hasLink := adf.FindMark[*adf.Link](text.Marks)
+	return hasLink && link.Href != nil && *link.Href == text.Text
+}
+
+// blocksLinkify reports whether the byte b, rendered directly before a
+// bare URL, keeps GFM from linkifying it: linkification requires
+// whitespace or one of *_~( there.
+func blocksLinkify(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '*', '_', '~', '(':
+		return false
+	}
+	return true
 }
 
 // docHasLiteralTilde reports a literal tilde anywhere in the document

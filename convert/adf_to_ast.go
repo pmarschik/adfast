@@ -774,97 +774,108 @@ func convertAdfListItems(shape adfListShape, content []adf.Node, rc renderCtx) *
 	}
 }
 
+// adfRowConverter converts an ADF table's rows one at a time, carrying
+// the rowspan state between them. Column count and padding are measured
+// in VISUAL columns: a colspan-N cell covers N, and rowspans carry
+// covered columns into the following rows.
+type adfRowConverter struct {
+	carryState
+	rc       renderCtx
+	colCount int
+}
+
 func convertAdfTable(node *adf.Table, rc renderCtx) ast.Node {
+	rows := adfTableRows(node)
+	if len(rows) == 0 {
+		return nil
+	}
+	conv := &adfRowConverter{rc: rc, colCount: visualColCount(rows[0])}
+
+	var mdRows []ast.Node
+	if !rowIsHeader(rows[0]) {
+		// No header row — prepend an empty header, then all rows as data.
+		mdRows = append(mdRows, emptyTableRow(conv.colCount))
+	}
+	for _, row := range rows {
+		mdRows = append(mdRows, conv.convertRow(row))
+	}
+	return &ast.Table{Children: mdRows, Align: liftTableAlign(node.Align)}
+}
+
+// adfTableRows picks the tableRow children out of a table, skipping
+// anything else the document may carry there.
+func adfTableRows(node *adf.Table) []*adf.TableRow {
 	var rows []*adf.TableRow
 	for _, child := range node.Content {
 		if row, ok := child.(*adf.TableRow); ok {
 			rows = append(rows, row)
 		}
 	}
-	if len(rows) == 0 {
-		return nil
-	}
+	return rows
+}
 
-	firstRow := rows[0]
-	isHeader := false
-	for _, cell := range firstRow.Content {
+// rowIsHeader reports whether the row holds any tableHeader cell, the
+// ADF shape markdown spells as the header row.
+func rowIsHeader(row *adf.TableRow) bool {
+	for _, cell := range row.Content {
 		if _, ok := cell.(*adf.TableHeader); ok {
-			isHeader = true
-			break
+			return true
 		}
 	}
-	// Column count and padding are measured in VISUAL columns: a
-	// colspan-N cell covers N, and rowspans carry covered columns into
-	// the following rows.
-	colCount := 0
-	for _, cell := range firstRow.Content {
+	return false
+}
+
+// visualColCount is the row's width in visual columns.
+func visualColCount(row *adf.TableRow) int {
+	count := 0
+	for _, cell := range row.Content {
 		cs, _ := cellSpans(cell)
-		colCount += max(cs, 1)
+		count += max(cs, 1)
 	}
-	type rowCarry struct{ rowsLeft, width int }
-	var carries []rowCarry // columns covered by rowspans from earlier rows
+	return count
+}
 
-	convertRow := func(row *adf.TableRow) ast.Node {
-		var cells []ast.Node
-		var newCarries []rowCarry
-		width := 0
-		for _, c := range carries {
-			width += c.width
+// convertRow converts one ADF row, padding it out to the table's visual
+// column count and advancing the rowspan carries.
+func (c *adfRowConverter) convertRow(row *adf.TableRow) ast.Node {
+	var cells []ast.Node
+	var fresh []rowspanCarry
+	width := c.carriedWidth()
+	for _, cell := range row.Content {
+		mdCell, cs, rs := c.convertCell(cell)
+		if rs > 1 {
+			fresh = append(fresh, rowspanCarry{rowsLeft: rs - 1, width: cs})
 		}
-		for _, cell := range row.Content {
-			// Table cells contain block nodes; flatten to inlines.
-			var inlines []ast.Node
-			for _, block := range adf.NodeContent(cell) {
-				inlines = append(inlines, convertAdfInlines(adf.NodeContent(block), rc)...)
-			}
-			mdCell := &ast.TableCell{Children: inlines}
-			csRaw, rs := cellSpans(cell)
-			cs := max(csRaw, 1)
-			if cs > 1 {
-				mdCell.ColSpan = cs
-			}
-			if rs > 1 {
-				mdCell.RowSpan = rs
-				newCarries = append(newCarries, rowCarry{rowsLeft: rs - 1, width: cs})
-			}
-			width += cs
-			cells = append(cells, mdCell)
-		}
-		for width < colCount {
-			cells = append(cells, &ast.TableCell{})
-			width++
-		}
-		// Age existing carries (consumed by this row); fresh ones start
-		// covering the NEXT row, so they skip this aging step.
-		var next []rowCarry
-		for _, c := range carries {
-			if c.rowsLeft > 1 {
-				next = append(next, rowCarry{rowsLeft: c.rowsLeft - 1, width: c.width})
-			}
-		}
-		next = append(next, newCarries...)
-		carries = next
-		return &ast.TableRow{Children: cells}
+		width += cs
+		cells = append(cells, mdCell)
 	}
-
-	var mdRows []ast.Node
-	if isHeader {
-		for _, row := range rows {
-			mdRows = append(mdRows, convertRow(row))
-		}
-	} else {
-		// No header row — prepend an empty header, then all rows as data.
-		emptyHeader := &ast.TableRow{Children: make([]ast.Node, colCount)}
-		for i := range emptyHeader.Children {
-			emptyHeader.Children[i] = &ast.TableCell{}
-		}
-		mdRows = append(mdRows, emptyHeader)
-		for _, row := range rows {
-			mdRows = append(mdRows, convertRow(row))
-		}
+	for width < c.colCount {
+		cells = append(cells, &ast.TableCell{})
+		width++
 	}
+	c.advance(fresh)
+	return &ast.TableRow{Children: cells}
+}
 
-	return &ast.Table{Children: mdRows, Align: liftTableAlign(node.Align)}
+// convertCell flattens one cell's block content to inlines and lifts its
+// spans onto the markdown cell, returning the visual column span and the
+// row span alongside it.
+func (c *adfRowConverter) convertCell(cell adf.Node) (mdCell *ast.TableCell, colSpan, rowSpan int) {
+	// Table cells contain block nodes; flatten to inlines.
+	var inlines []ast.Node
+	for _, block := range adf.NodeContent(cell) {
+		inlines = append(inlines, convertAdfInlines(adf.NodeContent(block), c.rc)...)
+	}
+	mdCell = &ast.TableCell{Children: inlines}
+	csRaw, rs := cellSpans(cell)
+	cs := max(csRaw, 1)
+	if cs > 1 {
+		mdCell.ColSpan = cs
+	}
+	if rs > 1 {
+		mdCell.RowSpan = rs
+	}
+	return mdCell, cs, rs
 }
 
 // ---------------------------------------------------------------------------
@@ -913,7 +924,7 @@ func convertAdfInlines(nodes []adf.Node, rc renderCtx) []ast.Node {
 	trimBreakEdges(items)
 	ops := flatInlineSpanOps(rc)
 	inferAcrossCode(items, ops)
-	return groupSpans(items, ops, false, false, false)
+	return groupSpans(items, ops, openMarks{})
 }
 
 // flatInlineSpanOps adapts flatInline to the shared flat→nested spanning

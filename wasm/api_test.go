@@ -33,12 +33,19 @@ type wantSpan struct {
 	level int
 }
 
-func TestScanSpans(t *testing.T) {
-	tests := []struct {
-		name string
-		md   string
-		want []wantSpan
-	}{{
+// scanSpanCase is one source document plus the spans ScanSpans must
+// report for it, in document order.
+type scanSpanCase struct {
+	name string
+	md   string
+	want []wantSpan
+}
+
+// scanSpanCases is the corpus TestScanSpans runs. It sits beside the
+// runner rather than inside it so that neither the table nor the
+// assertions grow past what one screen shows.
+func scanSpanCases() []scanSpanCase {
+	return []scanSpanCase{{
 		name: "no directives",
 		md:   "# Heading\n\nJust prose with a : colon.\n",
 		want: nil,
@@ -132,8 +139,10 @@ func TestScanSpans(t *testing.T) {
 			attrs: map[string]string{"color": "blue"},
 		}},
 	}}
+}
 
-	for _, tt := range tests {
+func TestScanSpans(t *testing.T) {
+	for _, tt := range scanSpanCases() {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ScanSpans(tt.md)
 			if len(got) != len(tt.want) {

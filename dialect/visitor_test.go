@@ -108,3 +108,56 @@ func TestVisitorChain(t *testing.T) {
 		t.Errorf("core dispatch: %q", got)
 	}
 }
+
+// TestVisitDispatchIsExhaustive pins one node per dialect kind against
+// the method it must reach. Visit splits the kind list across the
+// visit*Kind helpers, and a kind dropped from all of them still compiles
+// — it silently becomes someone else's node. This table is what notices.
+func TestVisitDispatchIsExhaustive(t *testing.T) {
+	cases := []struct {
+		node ast.Node
+		want string
+	}{
+		{&Panel{}, "Panel"},
+		{&Expand{}, "Expand"},
+		{&Media{}, "Media"},
+		{&JQL{}, "JQL"},
+		{&LinkCard{}, "LinkCard"},
+		{&LinkEmbed{}, "LinkEmbed"},
+		{&Colwidths{}, "Colwidths"},
+		{&Decisions{}, "Decisions"},
+		{&Mention{}, "Mention"},
+		{&Status{}, "Status"},
+		{&MediaInline{}, "MediaInline"},
+		{&Color{}, "Color"},
+		{&Bg{}, "Bg"},
+		{&Underline{}, "Underline"},
+		{&Sub{}, "Sub"},
+		{&Sup{}, "Sup"},
+		{&Date{}, "Date"},
+		{&Placeholder{}, "Placeholder"},
+		{&Emoji{}, "Emoji"},
+		{&Annotation{}, "Annotation"},
+		{&FontSize{}, "FontSize"},
+		{&InlineExtension{}, "InlineExtension"},
+		{&Extension{}, "Extension"},
+		{&BodiedExtension{}, "BodiedExtension"},
+		{&Frame{}, "Frame"},
+		{&SyncBlock{}, "SyncBlock"},
+		{&BodiedSyncBlock{}, "BodiedSyncBlock"},
+		{&Section{}, "Section"},
+		{&Column{}, "Column"},
+		{&MediaCaption{}, "MediaCaption"},
+		{&Align{}, "Align"},
+		{&Indent{}, "Indent"},
+		{&Breakout{}, "Breakout"},
+		{&DataConsumer{}, "DataConsumer"},
+		{&Fragment{}, "Fragment"},
+	}
+	v := dialectNamer{}
+	for _, tc := range cases {
+		if got := Visit[string](tc.node, v); got != tc.want {
+			t.Errorf("%s dispatched to %q, want %q", tc.node.Kind(), got, tc.want)
+		}
+	}
+}

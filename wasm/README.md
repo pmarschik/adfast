@@ -39,6 +39,9 @@ globalThis.adfast = {
 };
 ```
 
+The keys above are listed for reading, not in emission order: a JSON
+object is unordered, so only the key **names** are part of the surface.
+
 Every export returns a plain object that the caller **branches on**. No
 export throws:
 

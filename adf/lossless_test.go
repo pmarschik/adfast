@@ -154,6 +154,31 @@ func TestDecodeEncode_Lossless(t *testing.T) {
 	})
 }
 
+// TestDecodeEncode_NoTypedKindStaysRaw is the regression for a drift
+// between the two halves of the node-kind table: "image", "frontmatter",
+// and "html" were classified with a generic-slot shape but had no typed
+// constructor, so a document containing one decoded to a nil Node —
+// silent tree corruption that crashed the first caller to touch it. Every
+// kind the decoder does not build must take the RawNode escape.
+func TestDecodeEncode_NoTypedKindStaysRaw(t *testing.T) {
+	raw := `{"type":"doc","version":1,"content":[
+		{"type":"image","attrs":{"src":"a.png"}},
+		{"type":"html","text":"<b>x</b>"},
+		{"type":"frontmatter","text":"title: x"}
+	]}`
+	input, doc, diags := decodeCollecting(t, raw)
+	for i, n := range doc.Content {
+		if n == nil {
+			t.Fatalf("content[%d] decoded to a nil Node", i)
+		}
+		if _, isRaw := n.(*adf.RawNode); !isRaw {
+			t.Errorf("content[%d]: expected RawNode, got %T", i, n)
+		}
+	}
+	assertLossless(t, input, doc)
+	assertDiagnosticCounts(t, diags, map[string]int{"unknown-node": 3})
+}
+
 // TestDecodeEncode_PresenceSensitiveAttrs pins the pointer fields and
 // the Extra fallback for known attributes whose decoded value the
 // plain typed field could not represent faithfully (zero values where

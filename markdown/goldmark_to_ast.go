@@ -68,42 +68,64 @@ func foldDirectivesIntoURLs(nodes []ast.Node) []ast.Node {
 		for end < len(nodes) && foldableNode(nodes[end]) {
 			end++
 		}
-		// Concatenate the run and note each directive's span.
-		var sb strings.Builder
-		type span struct {
-			name          string
-			idx, from, to int
-		}
-		var spans []span
-		for i := start; i < end; i++ {
-			if d, ok := nodes[i].(*ast.TextDirective); ok {
-				raw := ":" + d.Name
-				spans = append(spans, span{name: d.Name, idx: i, from: sb.Len(), to: sb.Len() + len(raw)})
-				sb.WriteString(raw)
-				continue
-			}
-			if t, ok := nodes[i].(*ast.Text); ok {
-				sb.WriteString(t.Value)
-			}
-		}
-		merged := sb.String()
-		for _, loc := range urlLiteralRe.FindAllStringIndex(merged, -1) {
-			// The literal ends where the parser would end it, not where
-			// the regexp does (see trimURLLiteralEnd).
-			stop := loc[0] + len(trimURLLiteralEnd(merged[loc[0]:loc[1]]))
-			for _, sp := range spans {
-				if sp.from >= loc[0] && sp.to <= stop && (sp.from > loc[0] || sp.to < stop) {
-					nodes[sp.idx] = &ast.Text{Value: ":" + sp.name}
-					changed = true
-				}
-			}
+		merged, spans := mergeFoldRun(nodes, start, end)
+		if dissolveSpannedDirectives(nodes, merged, spans) {
+			changed = true
 		}
 		start = end
 	}
 	if !changed {
 		return nodes
 	}
-	// Re-merge adjacent plain text nodes so URL splitting sees one run.
+	return remergeTexts(nodes)
+}
+
+// dirSpan locates one bare directive within a fold run's concatenated text:
+// idx is its position in the node slice, [from,to) its byte span in the
+// concatenation.
+type dirSpan struct {
+	name          string
+	idx, from, to int
+}
+
+// mergeFoldRun concatenates nodes[start:end] — the plain text plus each bare
+// directive's ":name" source — and reports where each directive landed.
+func mergeFoldRun(nodes []ast.Node, start, end int) (merged string, spans []dirSpan) {
+	var sb strings.Builder
+	for i := start; i < end; i++ {
+		switch n := nodes[i].(type) {
+		case *ast.TextDirective:
+			raw := ":" + n.Name
+			spans = append(spans, dirSpan{name: n.Name, idx: i, from: sb.Len(), to: sb.Len() + len(raw)})
+			sb.WriteString(raw)
+		case *ast.Text:
+			sb.WriteString(n.Value)
+		}
+	}
+	return sb.String(), spans
+}
+
+// dissolveSpannedDirectives turns every directive a URL literal reaches into
+// plain text — one whose span sits inside the literal and does not cover it
+// whole — and reports whether it changed anything.
+func dissolveSpannedDirectives(nodes []ast.Node, merged string, spans []dirSpan) bool {
+	changed := false
+	for _, loc := range urlLiteralRe.FindAllStringIndex(merged, -1) {
+		// The literal ends where the parser would end it, not where the
+		// regexp does (see trimURLLiteralEnd).
+		stop := loc[0] + len(trimURLLiteralEnd(merged[loc[0]:loc[1]]))
+		for _, sp := range spans {
+			if sp.from >= loc[0] && sp.to <= stop && (sp.from > loc[0] || sp.to < stop) {
+				nodes[sp.idx] = &ast.Text{Value: ":" + sp.name}
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
+// remergeTexts merges adjacent plain text nodes so URL splitting sees one run.
+func remergeTexts(nodes []ast.Node) []ast.Node {
 	var out []ast.Node
 	for i := range nodes {
 		if t, ok := nodes[i].(*ast.Text); ok && len(out) > 0 {
@@ -392,30 +414,62 @@ func htmlBlockSpan(n *gast.HTMLBlock, src []byte) (start, end int) {
 	return start, end
 }
 
+// convertGoldmarkBlock converts one goldmark block node. The kinds are
+// grouped by shape — prose, verbatim, structured — so that each group is
+// one small function; a kind in none of them falls through to the unknown
+// case, which descends into the children.
 func convertGoldmarkBlock(node gast.Node, src []byte, lc *liftCtx, depth int) ast.Node {
+	if out, ok := convertProseBlock(node, src, lc, depth); ok {
+		return out
+	}
+	if out, ok := convertVerbatimBlock(node, src); ok {
+		return out
+	}
+	if out, ok := convertStructuredBlock(node, src, lc, depth); ok {
+		return out
+	}
+	// Unknown block — try children
+	if node.HasChildren() {
+		content := convertGoldmarkBlocks(node, src, lc, depth+1)
+		if len(content) > 0 {
+			return content[0]
+		}
+	}
+	return nil
+}
+
+// convertProseBlock handles the blocks whose content is inline text.
+func convertProseBlock(node gast.Node, src []byte, lc *liftCtx, depth int) (ast.Node, bool) {
 	switch n := node.(type) {
 	case *gast.Paragraph:
 		out := &ast.Paragraph{Children: convertGoldmarkInlines(n, src, lc, depth+1)}
 		if _, ok := n.AttributeString("directiveLabel"); ok {
 			out.DirectiveLabel = true
 		}
-		return out
+		return out, true
 
 	case *gast.TextBlock:
 		// Tight list items use TextBlock instead of Paragraph
-		return &ast.Paragraph{Children: convertGoldmarkInlines(n, src, lc, depth+1)}
+		return &ast.Paragraph{Children: convertGoldmarkInlines(n, src, lc, depth+1)}, true
 
 	case *gast.Heading:
 		// The anchor strip mutates n, so it must precede the inline read.
 		id := splitHeadingAnchor(n, src)
-		return &ast.Heading{Depth: n.Level, ID: id, Children: convertGoldmarkInlines(n, src, lc, depth+1)}
+		return &ast.Heading{Depth: n.Level, ID: id, Children: convertGoldmarkInlines(n, src, lc, depth+1)}, true
 
 	case *gast.ThematicBreak:
-		return &ast.ThematicBreak{}
+		return &ast.ThematicBreak{}, true
 
 	case *gast.Blockquote:
-		return &ast.Blockquote{Children: convertGoldmarkBlocks(n, src, lc, depth+1)}
+		return &ast.Blockquote{Children: convertGoldmarkBlocks(n, src, lc, depth+1)}, true
+	}
+	return nil, false
+}
 
+// convertVerbatimBlock handles the blocks whose content is raw source
+// lines, so none of them descends into children.
+func convertVerbatimBlock(node gast.Node, src []byte) (ast.Node, bool) {
+	switch n := node.(type) {
 	case *gast.FencedCodeBlock:
 		return &ast.Code{
 			// Info strings carry character references and escapes
@@ -424,13 +478,10 @@ func convertGoldmarkBlock(node gast.Node, src []byte, lc *liftCtx, depth int) as
 			// language at any whitespace, so trim a tab tail too.
 			Lang:  decodeMarkdownEscapes(fenceLanguage(string(n.Language(src))), ""),
 			Value: codeBlockValue(n, src),
-		}
+		}, true
 
 	case *gast.CodeBlock:
-		return &ast.Code{Value: codeBlockValue(n, src)}
-
-	case *gast.List:
-		return convertGoldmarkList(n, src, lc, depth)
+		return &ast.Code{Value: codeBlockValue(n, src)}, true
 
 	case *gast.HTMLBlock:
 		var buf bytes.Buffer
@@ -441,7 +492,17 @@ func convertGoldmarkBlock(node gast.Node, src []byte, lc *liftCtx, depth int) as
 		if n.HasClosure() {
 			buf.Write(n.ClosureLine.Value(src))
 		}
-		return &ast.HTML{Value: strings.TrimRight(buf.String(), "\n")}
+		return &ast.HTML{Value: strings.TrimRight(buf.String(), "\n")}, true
+	}
+	return nil, false
+}
+
+// convertStructuredBlock handles the blocks with a shape of their own:
+// lists, tables, directives, footnote definitions.
+func convertStructuredBlock(node gast.Node, src []byte, lc *liftCtx, depth int) (ast.Node, bool) {
+	switch n := node.(type) {
+	case *gast.List:
+		return convertGoldmarkList(n, src, lc, depth), true
 
 	case *directive.ContainerDirective:
 		// The label, when present, is already the node's first child
@@ -450,34 +511,25 @@ func convertGoldmarkBlock(node gast.Node, src []byte, lc *liftCtx, depth int) as
 			Name:     n.Name,
 			Attrs:    n.Attrs,
 			Children: convertGoldmarkBlocks(n, src, lc, depth+1),
-		}
+		}, true
 
 	case *directive.LeafDirective:
 		return &ast.LeafDirective{
 			Name:     n.Name,
 			Attrs:    n.Attrs,
 			Children: convertGoldmarkInlines(n, src, lc, depth+1),
-		}
+		}, true
 
 	case *east.Table:
-		return convertGoldmarkTable(n, src, lc, depth)
+		return convertGoldmarkTable(n, src, lc, depth), true
 
 	case *footnoteDefBlock:
 		return &ast.FootnoteDef{
 			Label:    n.Label,
 			Children: convertGoldmarkBlocks(n, src, lc, depth+1),
-		}
-
-	default:
-		// Unknown block — try children
-		if node.HasChildren() {
-			content := convertGoldmarkBlocks(node, src, lc, depth+1)
-			if len(content) > 0 {
-				return content[0]
-			}
-		}
-		return nil
+		}, true
 	}
+	return nil, false
 }
 
 // fenceLanguage truncates a fence info word at the first tab — micromark
@@ -873,70 +925,102 @@ func rawCellText(cell gast.Node, src []byte) string {
 // merge with) revert to literal text; each reverted marker is reported
 // through notify (1-based row/column) when a notice is registered.
 func resolveTableSpans(rows []*ast.TableRow, notify func(marker string, row, col int)) {
-	report := func(marker string, rowIdx, col int) {
-		if notify != nil {
-			notify(marker, rowIdx+1, col+1)
-		}
-	}
 	// owner[col] points at the cell currently spanning that visual column
 	// from an earlier row (for rowspan extension).
-	owner := map[int]*ast.TableCell{}
+	r := &spanResolver{owner: map[int]*ast.TableCell{}, notify: notify}
 	for rowIdx, row := range rows {
-		cells := row.Children
-		var kept []ast.Node
-		col := 0
-		pendingCols := 0 // ">" markers awaiting their content cell
-		revertPending := func() {
-			// The pending ">" run occupies the columns just before col.
-			for c := col - pendingCols; c < col; c++ {
-				kept = append(kept, literalMarkerCell(">"))
-				report(">", rowIdx, c)
-			}
-			pendingCols = 0
+		row.Children = r.resolveRow(row.Children, rowIdx)
+	}
+}
+
+// spanResolver holds the table-wide state resolveTableSpans threads through
+// the rows.
+type spanResolver struct {
+	owner  map[int]*ast.TableCell
+	notify func(marker string, row, col int)
+}
+
+// rowCursor is the per-row state: the cells kept so far, the visual column
+// reached, and the count of ">" markers awaiting their content cell.
+type rowCursor struct {
+	kept        []ast.Node
+	col         int
+	pendingCols int
+}
+
+// resolveRow folds one row's markers into its content cells and returns the
+// cells that survive.
+func (r *spanResolver) resolveRow(cells []ast.Node, rowIdx int) []ast.Node {
+	cur := &rowCursor{}
+	for i := range cells {
+		if marker, ok := cells[i].(*spanMarkerCell); ok {
+			r.resolveMarker(marker.marker, cur, rowIdx)
+			continue
 		}
-		for i := range cells {
-			if marker, ok := cells[i].(*spanMarkerCell); ok {
-				switch marker.marker {
-				case ">":
-					pendingCols++
-					col++
-					continue
-				case "^":
-					if pendingCols > 0 {
-						// mixed markers — treat the whole pending run as literal
-						revertPending()
-					}
-					if span, spanOK := owner[col]; spanOK {
-						if span.RowSpan == 0 {
-							span.RowSpan = 1
-						}
-						span.RowSpan++
-						col++
-						continue
-					}
-					kept = append(kept, literalMarkerCell("^"))
-					report("^", rowIdx, col)
-					col++
-					continue
-				}
-			}
-			cell, cellOK := cells[i].(*ast.TableCell)
-			if !cellOK {
-				continue
-			}
-			if pendingCols > 0 {
-				cell.ColSpan = pendingCols + 1
-				pendingCols = 0
-			}
-			startCol := col - max(cell.ColSpan-1, 0)
-			kept = append(kept, cell)
-			for c := startCol; c <= col; c++ {
-				owner[c] = cell
-			}
-			col++
+		if cell, ok := cells[i].(*ast.TableCell); ok {
+			r.placeCell(cell, cur)
 		}
-		revertPending()
-		row.Children = kept
+	}
+	r.revertPending(cur, rowIdx)
+	return cur.kept
+}
+
+// resolveMarker consumes one merge marker: ">" defers to the content cell
+// that follows it, "^" extends the cell already spanning this column. An
+// unresolvable marker reverts to literal text; an unknown one is dropped.
+func (r *spanResolver) resolveMarker(marker string, cur *rowCursor, rowIdx int) {
+	switch marker {
+	case ">":
+		cur.pendingCols++
+		cur.col++
+	case "^":
+		if cur.pendingCols > 0 {
+			// mixed markers — treat the whole pending run as literal
+			r.revertPending(cur, rowIdx)
+		}
+		if span, ok := r.owner[cur.col]; ok {
+			if span.RowSpan == 0 {
+				span.RowSpan = 1
+			}
+			span.RowSpan++
+		} else {
+			cur.kept = append(cur.kept, literalMarkerCell("^"))
+			r.report("^", rowIdx, cur.col)
+		}
+		cur.col++
+	}
+}
+
+// placeCell keeps a content cell, absorbing any pending ">" run as its
+// colspan and claiming every visual column it now covers.
+func (r *spanResolver) placeCell(cell *ast.TableCell, cur *rowCursor) {
+	if cur.pendingCols > 0 {
+		cell.ColSpan = cur.pendingCols + 1
+		cur.pendingCols = 0
+	}
+	startCol := cur.col - max(cell.ColSpan-1, 0)
+	cur.kept = append(cur.kept, cell)
+	for c := startCol; c <= cur.col; c++ {
+		r.owner[c] = cell
+	}
+	cur.col++
+}
+
+// revertPending turns a ">" run with no content cell to merge into back into
+// literal marker cells. The run occupies the columns just before cur.col.
+func (r *spanResolver) revertPending(cur *rowCursor, rowIdx int) {
+	for c := cur.col - cur.pendingCols; c < cur.col; c++ {
+		cur.kept = append(cur.kept, literalMarkerCell(">"))
+		r.report(">", rowIdx, c)
+	}
+	cur.pendingCols = 0
+}
+
+// report forwards a reverted marker to the notice sink in 1-based
+// coordinates, when one is registered.
+func (r *spanResolver) report(marker string, rowIdx, col int) {
+	if r.notify != nil {
+		r.notify(marker, rowIdx+1, col+1)
 	}
 }
 
@@ -979,32 +1063,70 @@ func coalesceTextNodes(nodes []ast.Node) []ast.Node {
 	return out
 }
 
+// convertGoldmarkInline converts one goldmark inline node into the zero,
+// one, or more ast inlines it becomes. As with the block side the kinds are
+// grouped by shape; each group reports ok=false for a kind it does not own,
+// and ok=true with nil nodes for one that legitimately produces nothing.
 func convertGoldmarkInline(node gast.Node, src []byte, lc *liftCtx, depth int) []ast.Node {
+	if out, ok := convertTextInline(node, src); ok {
+		return out
+	}
+	if out, ok := convertStyledInline(node, src, lc, depth); ok {
+		return out
+	}
+	if out, ok := convertLinkInline(node, src, lc, depth); ok {
+		return out
+	}
+	if out, ok := convertEmbeddedInline(node, src, lc, depth); ok {
+		return out
+	}
+	// Try to recurse into children (drops leaf markers like TaskCheckBox)
+	if node.HasChildren() {
+		return convertGoldmarkInlines(node, src, lc, depth+1)
+	}
+	return nil
+}
+
+// convertTextInline handles the leaf kinds that carry literal characters.
+func convertTextInline(node gast.Node, src []byte) ([]ast.Node, bool) {
 	switch n := node.(type) {
 	case *gast.Text:
-		return convertGoldmarkText(n, src)
+		return convertGoldmarkText(n, src), true
 
 	case *gast.String:
 		if len(n.Value) == 0 {
-			return nil
+			return nil, true
 		}
-		return []ast.Node{&ast.Text{Value: string(n.Value)}}
+		return []ast.Node{&ast.Text{Value: string(n.Value)}}, true
 
 	case *gast.CodeSpan:
 		// CommonMark: line endings inside a code span are converted to
 		// spaces (a span may wrap across source lines).
-		return []ast.Node{&ast.InlineCode{Value: strings.ReplaceAll(string(textContent(n, src)), "\n", " ")}}
+		return []ast.Node{&ast.InlineCode{Value: strings.ReplaceAll(string(textContent(n, src)), "\n", " ")}}, true
+	}
+	return nil, false
+}
 
+// convertStyledInline handles the kinds that only wrap their children in a
+// style.
+func convertStyledInline(node gast.Node, src []byte, lc *liftCtx, depth int) ([]ast.Node, bool) {
+	switch n := node.(type) {
 	case *gast.Emphasis:
 		children := convertGoldmarkInlines(n, src, lc, depth+1)
 		if n.Level >= 2 {
-			return []ast.Node{&ast.Strong{Children: children}}
+			return []ast.Node{&ast.Strong{Children: children}}, true
 		}
-		return []ast.Node{&ast.Emphasis{Children: children}}
+		return []ast.Node{&ast.Emphasis{Children: children}}, true
 
 	case *east.Strikethrough:
-		return []ast.Node{&ast.Delete{Children: convertGoldmarkInlines(n, src, lc, depth+1)}}
+		return []ast.Node{&ast.Delete{Children: convertGoldmarkInlines(n, src, lc, depth+1)}}, true
+	}
+	return nil, false
+}
 
+// convertLinkInline handles the kinds that carry a destination.
+func convertLinkInline(node gast.Node, src []byte, lc *liftCtx, depth int) ([]ast.Node, bool) {
+	switch n := node.(type) {
 	case *gast.Link:
 		// An explicit [label](url) resource link keeps that form even when
 		// the label equals the URL (prettier does not shorten it); only
@@ -1015,42 +1137,55 @@ func convertGoldmarkInline(node gast.Node, src []byte, lc *liftCtx, depth int) [
 			Title:    decodeMarkdownEscapes(string(n.Title), ""),
 			Explicit: true,
 			Children: convertGoldmarkInlines(n, src, lc, depth+1),
-		}}
+		}}, true
 
 	case *gast.Image:
 		return []ast.Node{&ast.Image{
 			URL:      decodeMarkdownEscapes(string(n.Destination), ""),
 			Title:    decodeMarkdownEscapes(string(n.Title), ""),
 			Children: convertGoldmarkInlines(n, src, lc, depth+1),
-		}}
+		}}, true
 
 	case *gast.AutoLink:
-		href := string(n.URL(src))
-		_, angle := n.AttributeString("angleAutoLink")
-		// micromark's email autolink literal requires a dot in the domain
-		// and a final letter (goldmark's regex path absorbs trailing
-		// digits; see gfmEmailRe) — invalid matches stay plain text.
-		if n.AutoLinkType == gast.AutoLinkEmail && !angle && !gfmEmailValid(href) {
-			return []ast.Node{&ast.Text{Value: string(n.Label(src))}}
-		}
-		// www literals keep their bare label with the http:// href
-		// (goldmark's URL() prepends the protocol; remark renders
-		// "[www.x](http://www.x)").
-		label := string(n.Label(src))
-		if label == "" {
-			label = href
-		}
-		return []ast.Node{&ast.Link{
-			URL:      href,
-			Bare:     !angle,
-			Children: []ast.Node{&ast.Text{Value: label}},
-		}}
+		return convertGoldmarkAutoLink(n, src), true
+	}
+	return nil, false
+}
 
+// convertGoldmarkAutoLink converts a bare or angle-bracketed autolink,
+// rejecting the email literals micromark would not have linkified.
+func convertGoldmarkAutoLink(n *gast.AutoLink, src []byte) []ast.Node {
+	href := string(n.URL(src))
+	_, angle := n.AttributeString("angleAutoLink")
+	// micromark's email autolink literal requires a dot in the domain
+	// and a final letter (goldmark's regex path absorbs trailing
+	// digits; see gfmEmailRe) — invalid matches stay plain text.
+	if n.AutoLinkType == gast.AutoLinkEmail && !angle && !gfmEmailValid(href) {
+		return []ast.Node{&ast.Text{Value: string(n.Label(src))}}
+	}
+	// www literals keep their bare label with the http:// href
+	// (goldmark's URL() prepends the protocol; remark renders
+	// "[www.x](http://www.x)").
+	label := string(n.Label(src))
+	if label == "" {
+		label = href
+	}
+	return []ast.Node{&ast.Link{
+		URL:      href,
+		Bare:     !angle,
+		Children: []ast.Node{&ast.Text{Value: label}},
+	}}
+}
+
+// convertEmbeddedInline handles the kinds embedded in the inline stream by
+// an extension: directives, footnote references, and raw HTML.
+func convertEmbeddedInline(node gast.Node, src []byte, lc *liftCtx, depth int) ([]ast.Node, bool) {
+	switch n := node.(type) {
 	case *directive.TextDirective:
-		return convertGoldmarkTextDirective(n, lc, depth)
+		return convertGoldmarkTextDirective(n, lc, depth), true
 
 	case *footnoteRefInline:
-		return []ast.Node{&ast.FootnoteRef{Label: n.Label}}
+		return []ast.Node{&ast.FootnoteRef{Label: n.Label}}, true
 
 	case *gast.RawHTML:
 		var buf bytes.Buffer
@@ -1059,20 +1194,14 @@ func convertGoldmarkInline(node gast.Node, src []byte, lc *liftCtx, depth int) [
 			buf.Write(seg.Value(src))
 		}
 		if buf.Len() == 0 {
-			return nil
+			return nil, true
 		}
-		return []ast.Node{&ast.HTML{Value: buf.String()}}
+		return []ast.Node{&ast.HTML{Value: buf.String()}}, true
 
 	case *gast.HTMLBlock:
-		return nil
-
-	default:
-		// Try to recurse into children (drops leaf markers like TaskCheckBox)
-		if node.HasChildren() {
-			return convertGoldmarkInlines(node, src, lc, depth+1)
-		}
-		return nil
+		return nil, true
 	}
+	return nil, false
 }
 
 // gfmEmailValid reports whether a linkified email address satisfies
@@ -1258,35 +1387,58 @@ func decodeCharacterReference(s string, i int) (decoded string, next int, ok boo
 // decodeNumericReference decodes the &#123;/&#x1F; numeric forms, starting
 // just after the '#'.
 func decodeNumericReference(s string, j int) (decoded string, next int, ok bool) {
-	hex := false
-	if j < len(s) && (s[j] == 'x' || s[j] == 'X') {
-		hex = true
+	hex := j < len(s) && (s[j] == 'x' || s[j] == 'X')
+	if hex {
 		j++
 	}
-	start := j
+	digits, end, found := scanRefDigits(s, j, hex)
+	if !found {
+		return "", 0, false
+	}
+	char, valid := refRune(digits, hex)
+	if !valid {
+		return "", 0, false
+	}
+	return char, end + 1, true
+}
+
+// scanRefDigits spans a numeric reference's digits and requires the closing
+// ';'. CommonMark caps the run at seven decimal or six hexadecimal digits;
+// a longer, empty, or unterminated run is not a reference at all. end is the
+// index of the ';'.
+func scanRefDigits(s string, j int, hex bool) (digits string, end int, ok bool) {
 	maxDigits := 7
 	if hex {
 		maxDigits = 6
 	}
+	start := j
 	for j < len(s) && j-start <= maxDigits && isRefDigit(s[j], hex) {
 		j++
 	}
 	if j == start || j-start > maxDigits || j >= len(s) || s[j] != ';' {
 		return "", 0, false
 	}
+	return s[start:j], j, true
+}
+
+// refRune converts a numeric reference's digits to the character they name.
+// CommonMark maps NUL and any non-Unicode code point to U+FFFD; digits that
+// do not parse at all (unreachable under the length caps scanRefDigits
+// applies) are reported as no reference.
+func refRune(digits string, hex bool) (char string, ok bool) {
 	base := 10
 	if hex {
 		base = 16
 	}
-	n, err := strconv.ParseInt(s[start:j], base, 32)
+	n, err := strconv.ParseInt(digits, base, 32)
 	if err != nil {
-		return "", 0, false
+		return "", false
 	}
 	r := rune(n)
 	if r == 0 || !utf8.ValidRune(r) {
 		r = utf8.RuneError
 	}
-	return string(r), j + 1, true
+	return string(r), true
 }
 
 func isRefDigit(c byte, hex bool) bool {

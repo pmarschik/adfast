@@ -17,8 +17,23 @@ import (
 // markdown parser and the convert decoder wire it automatically; the
 // slice ORDER is the decode dispatch order and is significant — the JQL
 // datasource hook must probe blockCards before the LinkCard fallback.
+//
+// The set is assembled from one group per node shape. The groups are
+// concatenated in the order below and each group keeps its own internal
+// order, so the dispatch order is the reading order of the four
+// functions taken together.
 func Registrations() []extension.Registration {
-	regs := []extension.Registration{
+	regs := blockRegistrations()
+	regs = append(regs, inlineRegistrations()...)
+	regs = append(regs, markRegistrations()...)
+	return append(regs, extendedRegistrations()...)
+}
+
+// blockRegistrations returns the kinds that decode from an ADF BLOCK
+// node. The JQL datasource hook probes blockCards, so "jql" must precede
+// the "linkCard" fallback.
+func blockRegistrations() []extension.Registration {
+	return []extension.Registration{
 		{
 			Kind:        "panel",
 			Containers:  panelConstructors(),
@@ -85,6 +100,13 @@ func Registrations() []extension.Registration {
 			},
 			DecodedByCore: true,
 		},
+	}
+}
+
+// inlineRegistrations returns the kinds that decode from an ADF INLINE
+// node.
+func inlineRegistrations() []extension.Registration {
+	return []extension.Registration{
 		{
 			Kind: "mention",
 			Texts: map[string]func(*ast.TextDirective) extension.Node{
@@ -106,10 +128,16 @@ func Registrations() []extension.Registration {
 			},
 			DecodeInline: decodeMediaInline,
 		},
-		// The mark kinds decode from ADF text MARKS, not nodes: convert's
-		// mark machinery owns which marks project and their canonical
-		// nesting order, and dispatches each mark to the DecodeTextMark
-		// hooks below for node construction (see the package comment).
+	}
+}
+
+// markRegistrations returns the kinds that decode from ADF text MARKS,
+// not nodes: convert's mark machinery owns which marks project and their
+// canonical nesting order, and dispatches each mark to the
+// DecodeTextMark hooks below for node construction (see the package
+// comment).
+func markRegistrations() []extension.Registration {
+	return []extension.Registration{
 		{
 			Kind: "color",
 			Texts: markConstructors("color", func(d *ast.TextDirective) extension.Node {
@@ -140,7 +168,6 @@ func Registrations() []extension.Registration {
 			DecodeTextMark: decodeSupMark,
 		},
 	}
-	return append(regs, extendedRegistrations()...)
 }
 
 // ---------------------------------------------------------------------------
@@ -484,6 +511,34 @@ func singleBlocksImage(single *adf.MediaSingle, defaultLayout string) bool {
 	return adf.HasExtra(single, "layout")
 }
 
+// mediaBlocksImage reports whether the media node (or its mediaSingle
+// wrapper) carries a property the plain-image markdown form cannot hold:
+// an occurrenceKey, a non-empty collection, a border mark, or a wrapper
+// richer than the given default layout. It is the half the file and the
+// external image paths share; each adds its own type-specific checks.
+func mediaBlocksImage(media *adf.Media, single *adf.MediaSingle, defaultLayout string) bool {
+	if media.OccurrenceKey != nil || adf.HasExtra(media, "occurrenceKey") {
+		return true
+	}
+	if media.Collection != nil && *media.Collection != "" {
+		return true
+	}
+	if adf.HasMark(media.Marks, "border") {
+		return true
+	}
+	return singleBlocksImage(single, defaultLayout)
+}
+
+// imageParagraph wraps a plain ![alt](url) image in its own paragraph,
+// the block form both image paths return.
+func imageParagraph(url, alt string) ast.Node {
+	img := &ast.Image{URL: url}
+	if alt != "" {
+		img.Children = []ast.Node{&ast.Text{Value: alt}}
+	}
+	return &ast.Paragraph{Children: []ast.Node{img}}
+}
+
 // fileMediaAsImage renders a file-type media node as a plain
 // ![alt](assets/name) image when the local asset can carry every ADF
 // property: the asset store maps the path back to the media id on
@@ -499,27 +554,23 @@ func fileMediaAsImage(media *adf.Media, single *adf.MediaSingle, ctx extension.D
 	if media.ID == "" || !ok || !asset.HasDim {
 		return nil
 	}
-	if media.Width == nil || media.Height == nil ||
-		float64(asset.Width) != *media.Width || float64(asset.Height) != *media.Height {
+	if !dimsMatchAsset(media, asset) {
 		return nil
 	}
-	if media.Collection != nil && *media.Collection != "" {
+	if mediaBlocksImage(media, single, "align-start") {
 		return nil
 	}
-	if media.OccurrenceKey != nil || adf.HasExtra(media, "occurrenceKey") {
-		return nil
+	return imageParagraph(asset.Path, media.Alt)
+}
+
+// dimsMatchAsset reports whether the media's recorded intrinsic
+// dimensions are exactly the local file's own, the case the encode side
+// re-derives rather than reads back from the markdown.
+func dimsMatchAsset(media *adf.Media, asset extension.MediaAsset) bool {
+	if media.Width == nil || media.Height == nil {
+		return false
 	}
-	if adf.HasMark(media.Marks, "border") {
-		return nil
-	}
-	if singleBlocksImage(single, "align-start") {
-		return nil
-	}
-	img := &ast.Image{URL: asset.Path}
-	if media.Alt != "" {
-		img.Children = []ast.Node{&ast.Text{Value: media.Alt}}
-	}
-	return &ast.Paragraph{Children: []ast.Node{img}}
+	return float64(asset.Width) == *media.Width && float64(asset.Height) == *media.Height
 }
 
 // mediaAsImage renders an external media node as a plain markdown image
@@ -532,10 +583,7 @@ func fileMediaAsImage(media *adf.Media, single *adf.MediaSingle, ctx extension.D
 // document-relative path (a local image reference not yet uploaded to
 // Jira — preserved so the round-trip and the push upload can still see it).
 func mediaAsImage(media *adf.Media, single *adf.MediaSingle, preserveLocal bool) ast.Node {
-	if media.Type != "external" {
-		return nil
-	}
-	if media.URL == "" {
+	if media.Type != "external" || media.URL == "" {
 		return nil
 	}
 	// A document-relative URL only round-trips to a plain image under
@@ -545,29 +593,20 @@ func mediaAsImage(media *adf.Media, single *adf.MediaSingle, preserveLocal bool)
 	if !isHTTP && !preserveLocal {
 		return nil
 	}
-	if media.Width != nil || adf.HasExtra(media, "width") {
+	if hasDimension(media, "width", media.Width) || hasDimension(media, "height", media.Height) {
 		return nil
 	}
-	if media.Height != nil || adf.HasExtra(media, "height") {
+	if mediaBlocksImage(media, single, "center") {
 		return nil
 	}
-	if media.OccurrenceKey != nil || adf.HasExtra(media, "occurrenceKey") {
-		return nil
-	}
-	if media.Collection != nil && *media.Collection != "" {
-		return nil
-	}
-	if adf.HasMark(media.Marks, "border") {
-		return nil
-	}
-	if singleBlocksImage(single, "center") {
-		return nil
-	}
-	img := &ast.Image{URL: media.URL}
-	if media.Alt != "" {
-		img.Children = []ast.Node{&ast.Text{Value: media.Alt}}
-	}
-	return &ast.Paragraph{Children: []ast.Node{img}}
+	return imageParagraph(media.URL, media.Alt)
+}
+
+// hasDimension reports whether the media carries the named intrinsic
+// dimension, either as the typed field or as an unmodeled Extra entry
+// (a non-numeric value the typed field cannot hold).
+func hasDimension(media *adf.Media, name string, field *float64) bool {
+	return field != nil || adf.HasExtra(media, name)
 }
 
 // mediaOmissions are the facts a canonical ::media leaves attributes out on:

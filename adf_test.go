@@ -37,17 +37,45 @@ func link(href string) *adf.Link {
 	return &adf.Link{Href: &href}
 }
 
+// wantContains fails when got is missing any of the fragments.
+func wantContains(t *testing.T, got string, want ...string) {
+	t.Helper()
+	for _, s := range want {
+		if !strings.Contains(got, s) {
+			t.Errorf("output %q does not contain %q", got, s)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ADF → MD: Block types
 // ---------------------------------------------------------------------------
 
 func TestAdfToMarkdown_BlockTypes(t *testing.T) {
-	tests := []struct {
-		name     string
-		exact    string
-		contains []string
-		input    adf.Doc
-	}{
+	for _, tt := range blockTypeCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			got := adfToMD(tt.input, WithSmartLinks(jiraTestSmartLinks))
+			if tt.exact != "" && got != tt.exact {
+				t.Errorf("got %q, want %q", got, tt.exact)
+			}
+			wantContains(t, got, tt.contains...)
+		})
+	}
+}
+
+// blockTypeCase is one ADF block kind's markdown expectation: exact pins
+// the whole render, contains pins fragments of it.
+type blockTypeCase struct {
+	name     string
+	exact    string
+	contains []string
+	input    adf.Doc
+}
+
+// blockTypeCases is the table TestAdfToMarkdown_BlockTypes runs. It lives
+// outside the test body so the body stays the runner alone.
+func blockTypeCases() []blockTypeCase {
+	return []blockTypeCase{
 		{
 			name:  "renders a paragraph",
 			input: doc(p(txt("Hello world"))),
@@ -138,20 +166,6 @@ func TestAdfToMarkdown_BlockTypes(t *testing.T) {
 			}),
 			contains: []string{`::media[shot.png]{#abc height="551" layoutWidth="686" width="2308" widthType="pixel"}`},
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := adfToMD(tt.input, WithSmartLinks(jiraTestSmartLinks))
-			if tt.exact != "" && got != tt.exact {
-				t.Errorf("got %q, want %q", got, tt.exact)
-			}
-			for _, s := range tt.contains {
-				if !strings.Contains(got, s) {
-					t.Errorf("output %q does not contain %q", got, s)
-				}
-			}
-		})
 	}
 }
 
@@ -410,12 +424,36 @@ func TestAdfToMarkdown_MarkCombinations(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRoundTrip(t *testing.T) {
-	tests := []struct {
-		name       string
-		input      string
-		contains   []string
-		notContain []string
-	}{
+	for _, tt := range roundTripCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			roundTrip := adfToMD(mdToADF(tt.input))
+			for _, s := range tt.contains {
+				if !strings.Contains(roundTrip, s) {
+					t.Errorf("round-trip of %q → %q does not contain %q", tt.input, roundTrip, s)
+				}
+			}
+			for _, s := range tt.notContain {
+				if strings.Contains(roundTrip, s) {
+					t.Errorf("round-trip of %q → %q should not contain %q", tt.input, roundTrip, s)
+				}
+			}
+		})
+	}
+}
+
+// roundTripCase pins what one markdown input must (and must not) still
+// contain after a trip through ADF and back.
+type roundTripCase struct {
+	name       string
+	input      string
+	contains   []string
+	notContain []string
+}
+
+// roundTripCases is the table TestRoundTrip runs; see blockTypeCases for
+// why it sits outside the test body.
+func roundTripCases() []roundTripCase {
+	return []roundTripCase{
 		{
 			name:       "strips leading YAML frontmatter",
 			input:      "---\nstatus: Ready\n---\n\n# Title",
@@ -498,23 +536,6 @@ func TestRoundTrip(t *testing.T) {
 			input:    "| A | B |\n| --- | --- |\n| 1 | 2 |",
 			contains: []string{"| A | B |", "| 1 | 2 |"},
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			adfDoc := mdToADF(tt.input)
-			roundTrip := adfToMD(adfDoc)
-			for _, s := range tt.contains {
-				if !strings.Contains(roundTrip, s) {
-					t.Errorf("round-trip of %q → %q does not contain %q", tt.input, roundTrip, s)
-				}
-			}
-			for _, s := range tt.notContain {
-				if strings.Contains(roundTrip, s) {
-					t.Errorf("round-trip of %q → %q should not contain %q", tt.input, roundTrip, s)
-				}
-			}
-		})
 	}
 }
 
@@ -637,7 +658,10 @@ func TestMarkdownToAdf_PanelLabel(t *testing.T) {
 	})
 }
 
-func TestEdgeCases(t *testing.T) {
+// The edge cases split by concern: each group is a top-level test so no
+// single body has to carry all of them.
+
+func TestEdgeCases_EmptyInput(t *testing.T) {
 	t.Run("handles empty doc", func(t *testing.T) {
 		md := adfToMD(doc())
 		if md != "\n" {
@@ -652,6 +676,28 @@ func TestEdgeCases(t *testing.T) {
 		}
 	})
 
+	t.Run("handles empty markdownToAdf input", func(t *testing.T) {
+		wantEmptyParagraphDoc(t, mdToADF(""))
+	})
+
+	t.Run("handles whitespace-only markdownToAdf input", func(t *testing.T) {
+		wantEmptyParagraphDoc(t, mdToADF("   \n  \n  "))
+	})
+}
+
+// wantEmptyParagraphDoc pins the shape markdown with no content converts
+// to: a version 1 doc holding one empty paragraph.
+func wantEmptyParagraphDoc(t *testing.T, adfDoc adf.Doc) {
+	t.Helper()
+	if adfDoc.Type != "doc" || adfDoc.Version != 1 {
+		t.Errorf("unexpected doc: %+v", adfDoc)
+	}
+	if len(adfDoc.Content) != 1 || adfDoc.Content[0].Kind() != "paragraph" {
+		t.Errorf("expected single empty paragraph: %+v", adfDoc.Content)
+	}
+}
+
+func TestEdgeCases_NestedBlocks(t *testing.T) {
 	t.Run("handles deeply nested lists", func(t *testing.T) {
 		md := adfToMD(doc(&adf.BulletList{
 			Content: []adf.Node{li(
@@ -664,15 +710,7 @@ func TestEdgeCases(t *testing.T) {
 				)}},
 			)},
 		}))
-		if !strings.Contains(md, "- L1") {
-			t.Errorf("missing L1: %q", md)
-		}
-		if !strings.Contains(md, "  - L2") {
-			t.Errorf("missing L2: %q", md)
-		}
-		if !strings.Contains(md, "    - L3") {
-			t.Errorf("missing L3: %q", md)
-		}
+		wantContains(t, md, "- L1", "  - L2", "    - L3")
 	})
 
 	t.Run("handles table with empty cells", func(t *testing.T) {
@@ -688,30 +726,22 @@ func TestEdgeCases(t *testing.T) {
 				}},
 			},
 		}))
-		if !strings.Contains(md, "| H |") {
-			t.Errorf("missing header: %q", md)
-		}
-		if !strings.Contains(md, "data") {
-			t.Errorf("missing data: %q", md)
-		}
+		wantContains(t, md, "| H |", "data")
 	})
 
 	t.Run("handles multiple paragraphs in blockquote", func(t *testing.T) {
 		md := adfToMD(doc(&adf.Blockquote{
 			Content: []adf.Node{p(txt("first")), p(txt("second"))},
 		}))
-		if !strings.Contains(md, "> first") {
-			t.Errorf("missing first: %q", md)
-		}
-		if !strings.Contains(md, "> second") {
-			t.Errorf("missing second: %q", md)
-		}
+		wantContains(t, md, "> first", "> second")
 		// blank separator line should have no trailing space (matches remark-stringify)
 		if strings.Contains(md, "> \n") {
 			t.Errorf("blockquote blank line should be '>\\n' not '> \\n': %q", md)
 		}
 	})
+}
 
+func TestEdgeCases_ListsAndPanels(t *testing.T) {
 	t.Run("ordered list uses lazy numbering", func(t *testing.T) {
 		md := adfToMD(doc(&adf.OrderedList{
 			Content: []adf.Node{
@@ -720,15 +750,7 @@ func TestEdgeCases(t *testing.T) {
 				li(p(txt("c"))),
 			},
 		}))
-		if !strings.Contains(md, "1. a") {
-			t.Errorf("missing '1. a': %q", md)
-		}
-		if !strings.Contains(md, "1. b") {
-			t.Errorf("missing '1. b': %q", md)
-		}
-		if !strings.Contains(md, "1. c") {
-			t.Errorf("missing '1. c': %q", md)
-		}
+		wantContains(t, md, "1. a", "1. b", "1. c")
 	})
 
 	t.Run("renders unknown panel types as info", func(t *testing.T) {
@@ -736,480 +758,6 @@ func TestEdgeCases(t *testing.T) {
 			PanelType: "custom",
 			Content:   []adf.Node{p(txt("content"))},
 		}))
-		if !strings.Contains(md, ":::info") {
-			t.Errorf("expected :::info: %q", md)
-		}
+		wantContains(t, md, ":::info")
 	})
-
-	t.Run("handles empty markdownToAdf input", func(t *testing.T) {
-		adfDoc := mdToADF("")
-		if adfDoc.Type != "doc" || adfDoc.Version != 1 {
-			t.Errorf("unexpected doc: %+v", adfDoc)
-		}
-		if len(adfDoc.Content) != 1 || adfDoc.Content[0].Kind() != "paragraph" {
-			t.Errorf("expected single empty paragraph: %+v", adfDoc.Content)
-		}
-	})
-
-	t.Run("handles whitespace-only markdownToAdf input", func(t *testing.T) {
-		adfDoc := mdToADF("   \n  \n  ")
-		if adfDoc.Type != "doc" || adfDoc.Version != 1 {
-			t.Errorf("unexpected doc: %+v", adfDoc)
-		}
-		if len(adfDoc.Content) != 1 || adfDoc.Content[0].Kind() != "paragraph" {
-			t.Errorf("expected single empty paragraph: %+v", adfDoc.Content)
-		}
-	})
-}
-
-// Regression: empty list items must render their marker ("-", "1.") so the
-// list survives re-parsing; a first block that renders empty must not leave
-// a trailing-space marker. Both were fuzz findings (storysmith-md-7a7s).
-func TestRoundTripIdempotent_EmptyListItems(t *testing.T) {
-	inputs := []string{
-		"0)\nA0",   // empty ordered item followed by lazy text
-		"1.\ntext", // empty ordered item
-		"-\n- b",   // empty bullet item before non-empty one
-		"* [X]",    // bullet item whose paragraph renders empty
-		"- [ ]",    // task marker without content
-	}
-	for _, md := range inputs {
-		first := adfToMD(mdToADF(md))
-		second := adfToMD(mdToADF(first))
-		if first != second {
-			t.Errorf("round-trip not idempotent for %q:\nfirst:  %q\nsecond: %q", md, first, second)
-		}
-	}
-}
-
-// Regression: paragraph text that looks like an ATX heading must be escaped
-// or it becomes a real heading on re-parse (fuzz finding; remark escapes it too).
-func TestRoundTripIdempotent_LeadingHash(t *testing.T) {
-	for _, md := range []string{"\\#", "\\# literal hash", "\\## two"} {
-		first := adfToMD(mdToADF(md))
-		second := adfToMD(mdToADF(first))
-		if first != second {
-			t.Errorf("round-trip not idempotent for %q:\nfirst:  %q\nsecond: %q", md, first, second)
-		}
-		if !strings.Contains(first, `\#`) {
-			t.Errorf("leading hash not escaped for %q: %q", md, first)
-		}
-	}
-}
-
-// The mention directive itself is the @: :mention[Name] (no leading @)
-// encodes an ADF mention whose text carries the conventional "@" prefix,
-// renders back without it, and the legacy :mention[@Name] form still
-// parses (leading @ stripped).
-func TestMention_LabelWithoutAt(t *testing.T) {
-	want := doc(p(&adf.Mention{Text: new("@Jane Doe"), ID: "712020:aa"}))
-	for _, md := range []string{
-		":mention[Jane Doe]{#712020:aa}",
-		":mention[@Jane Doe]{#712020:aa}", // legacy form keeps working
-	} {
-		got := mdToADF(md)
-		if gotJSON, wantJSON := string(mustJSON(got)), string(mustJSON(want)); gotJSON != wantJSON {
-			t.Errorf("mdToADF(%q) = %s, want %s", md, gotJSON, wantJSON)
-		}
-	}
-	out := adfToMD(want)
-	if out != ":mention[Jane Doe]{#712020:aa}\n" {
-		t.Errorf("render = %q, want no leading @", out)
-	}
-	// Round-trip idempotence for the new form.
-	first := adfToMD(mdToADF(":mention[Jane Doe]{#712020:aa}"))
-	second := adfToMD(mdToADF(first))
-	if first != second {
-		t.Errorf("round-trip not idempotent:\nfirst:  %q\nsecond: %q", first, second)
-	}
-}
-
-// A ::decisions leaf directive marks the immediately following plain
-// bullet list as an ADF decisionList (exactly like ::colwidths marks the
-// following table), and the pair round-trips stably.
-func TestDecisions_DirectiveMarksFollowingList(t *testing.T) {
-	md := "::decisions\n\n- use jj for vcs\n- ship it\n"
-	d := mdToADF(md)
-	if len(d.Content) != 1 {
-		t.Fatalf("content: %d nodes", len(d.Content))
-	}
-	dl, ok := d.Content[0].(*adf.DecisionList)
-	if !ok {
-		t.Fatalf("expected decisionList, got %T", d.Content[0])
-	}
-	if len(dl.Content) != 2 {
-		t.Fatalf("items: %d", len(dl.Content))
-	}
-	for _, itemNode := range dl.Content {
-		item, itemOK := itemNode.(*adf.DecisionItem)
-		if !itemOK || item.State != "DECIDED" {
-			t.Errorf("item: %+v", itemNode)
-		}
-	}
-	first := adfToMD(d)
-	if first != md {
-		t.Errorf("render = %q, want %q", first, md)
-	}
-	if second := adfToMD(mdToADF(first)); second != first {
-		t.Errorf("round-trip not idempotent:\nfirst:  %q\nsecond: %q", first, second)
-	}
-}
-
-// "- [~] x" is an ordinary bullet item with literal text: goldmark's GFM
-// task-list extension only recognizes [ ]/[x]/[X] checkboxes, so the
-// unrecognized [~] marker stays cell text (and renders escaped).
-func TestDecisions_TildeCheckboxStaysLiteral(t *testing.T) {
-	d := mdToADF("- [~] not a decision\n")
-	bl, ok := d.Content[0].(*adf.BulletList)
-	if !ok {
-		t.Fatalf("expected bulletList, got %T", d.Content[0])
-	}
-	item := adf.NodeContent(bl)[0]
-	para := adf.NodeContent(item)[0]
-	if got := adf.NodeText(adf.NodeContent(para)[0]); got != "[~] not a decision" {
-		t.Errorf("literal text: %q", got)
-	}
-	first := adfToMD(d)
-	if !strings.Contains(first, `\[\~] not a decision`) {
-		t.Errorf("render must escape the literal marker: %q", first)
-	}
-	if second := adfToMD(mdToADF(first)); second != first {
-		t.Errorf("round-trip not idempotent:\nfirst:  %q\nsecond: %q", first, second)
-	}
-}
-
-// Regression: consecutive ordered lists must alternate their delimiter
-// ("1." / "1)") or they merge into one list on re-parse (fuzz finding;
-// remark-stringify alternates the same way).
-func TestRoundTripIdempotent_AdjacentOrderedLists(t *testing.T) {
-	first := adfToMD(mdToADF("1) a\n1. b"))
-	if first != "1. a\n\n1) b\n" {
-		t.Errorf("expected alternated delimiters, got %q", first)
-	}
-	second := adfToMD(mdToADF(first))
-	if first != second {
-		t.Errorf("round-trip not idempotent:\nfirst:  %q\nsecond: %q", first, second)
-	}
-}
-
-// The terse ::media directive (default type/layout omitted) must re-inflate to
-// the original ADF, so a Markdown-authored push reproduces the media node.
-func TestMediaDirective_DefaultsRoundTrip(t *testing.T) {
-	in := doc(&adf.MediaSingle{
-		Layout: new("align-start"), Width: new(float64(686)), WidthType: new("pixel"),
-		Content: []adf.Node{&adf.Media{
-			Type: "file", ID: "abc", Alt: "shot.png",
-			Collection: new(""), Width: new(float64(2308)), Height: new(float64(551)),
-		}},
-	})
-	md := adfToMD(in)
-	if strings.Contains(md, `type="file"`) || strings.Contains(md, `layout="align-start"`) {
-		t.Fatalf("expected default type/layout omitted, got %q", md)
-	}
-
-	back := mdToADF(md)
-	if len(back.Content) != 1 {
-		t.Fatalf("expected one block, got %d", len(back.Content))
-	}
-	single, ok := back.Content[0].(*adf.MediaSingle)
-	if !ok {
-		t.Fatalf("expected *adf.MediaSingle, got %T", back.Content[0])
-	}
-	if single.Layout == nil || *single.Layout != "align-start" {
-		t.Errorf("layout not re-inferred: %v", single.Layout)
-	}
-	media, ok := single.Content[0].(*adf.Media)
-	if !ok {
-		t.Fatalf("expected *adf.Media, got %T", single.Content[0])
-	}
-	if media.Type != "file" {
-		t.Errorf("type not re-inferred: %q", media.Type)
-	}
-}
-
-// A downloaded media node drops its explicit uuid on decode (the store can
-// resolve it from the path) and regains it on encode via the reverse resolver
-// — proving the uuid-less directive round-trips losslessly.
-func TestMediaDirective_UUIDDropRoundTrip(t *testing.T) {
-	const id = "b58322aa-b563-4639-89b3-517dc0ceb4e9"
-	const path = "assets/shot.png"
-	in := doc(&adf.MediaSingle{
-		Layout: new("align-start"), Width: new(float64(671)), WidthType: new("pixel"),
-		Content: []adf.Node{&adf.Media{
-			Type: "file", ID: id, Alt: "shot.png",
-			Collection: new(""), Width: new(float64(817)), Height: new(float64(182)),
-		}},
-	})
-
-	// Decode with the asset present → id omitted, path kept.
-	md := adfToMD(in, WithMediaAssets(map[string]convert.MediaAsset{id: {Path: path}}))
-	if strings.Contains(md, id) {
-		t.Fatalf("expected uuid dropped, got %q", md)
-	}
-	if !strings.Contains(md, `path="assets/shot.png"`) {
-		t.Fatalf("expected path retained, got %q", md)
-	}
-
-	// Encode with the reverse (path→id) resolver → id restored.
-	back := mdToADF(md, WithAssetIDResolver(func(p string) (string, bool) {
-		if p == path {
-			return id, true
-		}
-		return "", false
-	}))
-	single, ok := back.Content[0].(*adf.MediaSingle)
-	if !ok {
-		t.Fatalf("expected *adf.MediaSingle, got %T", back.Content[0])
-	}
-	media, ok := single.Content[0].(*adf.Media)
-	if !ok {
-		t.Fatalf("expected *adf.Media, got %T", single.Content[0])
-	}
-	if media.ID != id {
-		t.Errorf("uuid not restored on encode: %q", media.ID)
-	}
-}
-
-// Format mode (md→AST→md, WithPrettierFormat) must apply the same store-aware
-// media slimming as the ADF decode: a directive referencing a downloaded asset
-// drops its explicit id + default type/layout and gains the local path — and
-// the result is idempotent. Guards the convert.Normalize media path.
-func TestFormatMode_SlimsMediaViaStore(t *testing.T) {
-	md := `::media[shot.png]{#abc-123 collection height="182" layout="align-start" layoutWidth="671" type="file" width="817" widthType="pixel"}` + "\n"
-	opts := []Option{
-		WithPrettierFormat(),
-		WithMediaAssets(map[string]convert.MediaAsset{"abc-123": {Path: "assets/shot.png", Width: 817, Height: 182, HasDim: true}}),
-	}
-	out := ToMarkdown(FromMarkdown(md, opts...), opts...)
-	for _, bad := range []string{"#abc-123", `type="file"`, `layout="align-start"`} {
-		if strings.Contains(out, bad) {
-			t.Errorf("expected %q dropped in format mode, got:\n%s", bad, out)
-		}
-	}
-	if !strings.Contains(out, `path="assets/shot.png"`) {
-		t.Errorf("expected path retained, got:\n%s", out)
-	}
-	if again := ToMarkdown(FromMarkdown(out, opts...), opts...); again != out {
-		t.Errorf("format not idempotent:\n first: %q\nsecond: %q", out, again)
-	}
-}
-
-// A downloaded file media drops width/height (when they match the file) and an
-// empty collection on decode, and regains them on encode (dims via AssetDims,
-// collection via the file-media default) — proving the slim directive is a
-// lossless round-trip.
-func TestMediaDirective_DimsAndCollectionRoundTrip(t *testing.T) {
-	const id, path = "abc-123", "assets/shot.png"
-	in := doc(&adf.MediaSingle{
-		Layout: new("align-start"), Width: new(float64(945)), WidthType: new("pixel"),
-		Content: []adf.Node{&adf.Media{
-			Type: "file", ID: id, Alt: "shot.png",
-			Collection: new(""), Width: new(float64(1355)), Height: new(float64(568)),
-		}},
-	})
-	dec := []Option{WithMediaAssets(map[string]convert.MediaAsset{id: {Path: path, Width: 1355, Height: 568, HasDim: true}})}
-	md := adfToMD(in, dec...)
-	for _, bad := range []string{`width="1355"`, `height="568"`, "collection", "#" + id, `type="file"`} {
-		if strings.Contains(md, bad) {
-			t.Errorf("expected %q dropped, got:\n%s", bad, md)
-		}
-	}
-	if !strings.Contains(md, `layoutWidth="945"`) {
-		t.Errorf("layoutWidth (a real resize) must be kept, got:\n%s", md)
-	}
-
-	enc := []Option{
-		WithAssetIDResolver(func(p string) (string, bool) { return id, p == path }),
-		WithImageDimsResolver(func(p string) (int, int, bool) { return 1355, 568, p == path }),
-	}
-	back := mdToADF(md, enc...)
-	single, ok := back.Content[0].(*adf.MediaSingle)
-	if !ok {
-		t.Fatalf("expected *adf.MediaSingle, got %T", back.Content[0])
-	}
-	media, ok := single.Content[0].(*adf.Media)
-	if !ok {
-		t.Fatalf("expected *adf.Media, got %T", single.Content[0])
-	}
-	if media.ID != id {
-		t.Errorf("id not restored: %q", media.ID)
-	}
-	if media.Width == nil || *media.Width != 1355 || media.Height == nil || *media.Height != 568 {
-		t.Errorf("dims not restored: w=%v h=%v", media.Width, media.Height)
-	}
-	if media.Collection == nil || *media.Collection != "" {
-		t.Errorf("collection not restored: %v", media.Collection)
-	}
-}
-
-// WithPreserveLocalImages keeps an unresolved document-relative image through
-// the md->ADF->md round-trip (so a store-aware normalization or a later push
-// upload can still see it). Without it the image drops — the remark-reference
-// default — so the option must be opt-in.
-func TestPreserveLocalImages_RoundTrip(t *testing.T) {
-	const md = "Probe:\n\n![shot.png](assets/shot.png)\n"
-	roundTrip := func(opts ...Option) string {
-		d := ToADF(FromMarkdown(md, opts...), opts...)
-		return ToMarkdown(FromADF(d, opts...), opts...)
-	}
-	if got := roundTrip(); strings.Contains(got, "shot.png") {
-		t.Errorf("default must drop the unresolved local image, got %q", got)
-	}
-	if got := roundTrip(WithPreserveLocalImages()); got != md {
-		t.Errorf("preserve must keep the local image:\n got: %q\nwant: %q", got, md)
-	}
-	// An http image is unaffected (round-trips without the option).
-	const httpMD = "![a](https://example.com/y.png)\n"
-	if got := ToMarkdown(FromADF(ToADF(FromMarkdown(httpMD)))); got != httpMD {
-		t.Errorf("http image must round-trip: got %q", got)
-	}
-}
-
-// A pixel display width equal to the intrinsic width is a no-op resize (the
-// ~68% Jira-default case): decode drops layoutWidth + widthType, leaving a
-// natural-size directive. A genuine resize keeps them.
-func TestMediaDirective_NaturalWidthDropped(t *testing.T) {
-	const id, path = "abc-123", "assets/shot.png"
-	dec := []Option{WithMediaAssets(map[string]convert.MediaAsset{id: {Path: path, Width: 817, Height: 182, HasDim: true}})}
-	mediaLeaf := func() *adf.Media {
-		return &adf.Media{
-			Type: "file", ID: id, Alt: "shot.png",
-			Collection: new(""), Width: new(float64(817)), Height: new(float64(182)),
-		}
-	}
-
-	// layoutWidth == intrinsic width (817) + matching file dims → slims to path.
-	natural := doc(&adf.MediaSingle{
-		Layout: new("align-start"), Width: new(float64(817)), WidthType: new("pixel"),
-		Content: []adf.Node{mediaLeaf()},
-	})
-	md := adfToMD(natural, dec...)
-	for _, bad := range []string{"layoutWidth", "widthType"} {
-		if strings.Contains(md, bad) {
-			t.Errorf("expected natural-size %q dropped, got:\n%s", bad, md)
-		}
-	}
-	if got := strings.TrimSpace(md); got != `::media[shot.png]{path="assets/shot.png"}` {
-		t.Errorf("expected slim natural-size directive, got: %q", got)
-	}
-
-	// A genuine resize (671 != 817) keeps layoutWidth + widthType.
-	resized := doc(&adf.MediaSingle{
-		Layout: new("align-start"), Width: new(float64(671)), WidthType: new("pixel"),
-		Content: []adf.Node{mediaLeaf()},
-	})
-	rmd := adfToMD(resized, dec...)
-	if !strings.Contains(rmd, `layoutWidth="671"`) || !strings.Contains(rmd, `widthType="pixel"`) {
-		t.Errorf("genuine resize must keep layoutWidth/widthType, got:\n%s", rmd)
-	}
-}
-
-// A producer that publishes a soft-wrapped source file (mark, say) leaves the
-// wrap newlines inside the text node. ADF spells a line break as hardBreak, so
-// those are whitespace: the paragraph flows and re-wraps at our print width
-// instead of keeping the producer's.
-func TestAdfToMarkdown_TextNodeNewlinesFlow(t *testing.T) {
-	const width = 40
-	opts := []Option{WithPrintWidth(width)}
-	in := doc(p(txt(
-		"The value in each field is an index that maps to a result entry\n" +
-			"where it matches. Indices are assigned in order.",
-	)))
-	got := ToMarkdown(FromADF(in, opts...), opts...)
-	const want = "The value in each field is an index that\n" +
-		"maps to a result entry where it matches.\n" +
-		"Indices are assigned in order.\n"
-	if got != want {
-		t.Errorf("newlines did not flow:\n got: %q\nwant: %q", got, want)
-	}
-	for line := range strings.SplitSeq(strings.TrimSuffix(got, "\n"), "\n") {
-		if len(line) > width {
-			t.Errorf("line over the print width: %q", line)
-		}
-	}
-}
-
-// ADF records no marker style, so an ordered list renders as the reference
-// does — repeating the start number — until a caller asks for the numbering
-// people write.
-func TestAdfToMarkdown_IncrementListMarkers(t *testing.T) {
-	list := doc(&adf.OrderedList{Content: []adf.Node{li(p(txt("a"))), li(p(txt("b"))), li(p(txt("c")))}})
-	if got, want := adfToMD(list), "1. a\n1. b\n1. c\n"; got != want {
-		t.Errorf("default:\n got: %q\nwant: %q", got, want)
-	}
-	if got, want := adfToMD(list, WithIncrementListMarkers()), "1. a\n2. b\n3. c\n"; got != want {
-		t.Errorf("incrementing:\n got: %q\nwant: %q", got, want)
-	}
-}
-
-// The option only renumbers: the list's own start still says where the
-// numbering begins, and a bullet list is untouched.
-func TestAdfToMarkdown_IncrementListMarkersKeepsStart(t *testing.T) {
-	start := 9
-	in := doc(&adf.OrderedList{Order: &start, Content: []adf.Node{li(p(txt("a"))), li(p(txt("b")))}})
-	if got, want := adfToMD(in, WithIncrementListMarkers()), "9. a\n10. b\n"; got != want {
-		t.Errorf("start:\n got: %q\nwant: %q", got, want)
-	}
-	bullets := doc(&adf.BulletList{Content: []adf.Node{li(p(txt("a"))), li(p(txt("b")))}})
-	if got, want := adfToMD(bullets, WithIncrementListMarkers()), "- a\n- b\n"; got != want {
-		t.Errorf("bullets:\n got: %q\nwant: %q", got, want)
-	}
-}
-
-// With the option on, an ordered list a document already spelled 1. 2. 3.
-// survives the md → ADF → md round trip unchanged.
-func TestAdfToMarkdown_IncrementListMarkersRoundTrip(t *testing.T) {
-	const md = "1. a\n2. b\n3. c\n"
-	opts := []Option{WithIncrementListMarkers(), WithPreserveListTightness()}
-	got := ToMarkdown(FromADF(ToADF(FromMarkdown(md, opts...), opts...), opts...), opts...)
-	if got != md {
-		t.Errorf("round trip renumbered:\n got: %q\nwant: %q", got, md)
-	}
-}
-
-// The whitespace on either side of such a break goes with it — one space, the
-// CommonMark soft-break rule — and a break at an edge of the node separates
-// nothing at all.
-func TestAdfToMarkdown_TextNodeNewlineWhitespace(t *testing.T) {
-	tests := []struct {
-		name string
-		text string
-		want string
-	}{
-		{name: "indentation on both sides", text: "alpha   \n\t beta", want: "alpha beta\n"},
-		{name: "a blank line", text: "alpha\n\nbeta", want: "alpha beta\n"},
-		{name: "CRLF", text: "alpha\r\nbeta", want: "alpha beta\n"},
-		{name: "leading", text: "\nalpha", want: "alpha\n"},
-		{name: "trailing", text: "alpha\n", want: "alpha\n"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := ToMarkdown(FromADF(doc(p(txt(tc.text))))); got != tc.want {
-				t.Errorf("got %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
-// Only the edges of the block drop that space. A break at the end of one text
-// node is the separator between it and the next — dropping it there would run
-// the words into the code span that follows.
-func TestAdfToMarkdown_TextNodeNewlineBetweenSiblings(t *testing.T) {
-	in := doc(p(
-		txt("a result entry where\n"),
-		txt("i", &adf.Code{}),
-		txt("\nmatches."),
-	))
-	if got, want := ToMarkdown(FromADF(in)), "a result entry where `i` matches.\n"; got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
-}
-
-// A codeBlock is read straight off the node, so its newlines are content and
-// stay put.
-func TestAdfToMarkdown_CodeBlockKeepsNewlines(t *testing.T) {
-	in := doc(&adf.CodeBlock{Language: "go", Content: []adf.Node{txt("a := 1\nb := 2")}})
-	if got, want := ToMarkdown(FromADF(in)), "```go\na := 1\nb := 2\n```\n"; got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
 }

@@ -152,7 +152,7 @@ var fmtAtomSpanOps = spanOps[fmtAtom]{
 // run into canonical strong/em/delete nesting.
 func regroupAtoms(atoms []fmtAtom) []ast.Node {
 	inferAcrossCode(atoms, fmtAtomSpanOps)
-	return groupSpans(joinTextAtoms(atoms), fmtAtomSpanOps, false, false, false)
+	return groupSpans(joinTextAtoms(atoms), fmtAtomSpanOps, openMarks{})
 }
 
 // joinTextAtoms concatenates neighboring plain-text atoms carrying the
@@ -203,19 +203,41 @@ func (fn *normalizer) flattenInlines(nodes []ast.Node, ctx fmtMarks) []fmtAtom {
 	return out
 }
 
-//nolint:cyclop,funlen // flat type-switch dispatch over the inline dialect kinds
+// flattenInline converts one inline node to the flat atom run the
+// spanning algorithm regroups. The kind list is split by category across
+// the flatten*Inline helpers below; each answers ok=false for a kind
+// outside its category (ok=true with nil atoms is a kind that DROPS),
+// and flattenForeignInline takes what is left.
 func (fn *normalizer) flattenInline(n ast.Node, ctx fmtMarks) []fmtAtom {
+	if atoms, ok := fn.flattenLeafInline(n, ctx); ok {
+		return atoms
+	}
+	if atoms, ok := fn.flattenNestingInline(n, ctx); ok {
+		return atoms
+	}
+	if atoms, ok := fn.flattenDialectMarkInline(n, ctx); ok {
+		return atoms
+	}
+	if atoms, ok := flattenDialectAtomInline(n); ok {
+		return atoms
+	}
+	return fn.flattenForeignInline(n, ctx)
+}
+
+// flattenLeafInline handles the core inline kinds that become one atom:
+// the text leaves and the opaque nodes that ride under the current marks.
+func (fn *normalizer) flattenLeafInline(n ast.Node, ctx fmtMarks) ([]fmtAtom, bool) {
 	switch v := n.(type) {
 	case *ast.Text:
 		if v.Value == "" {
-			return nil
+			return nil, true
 		}
 		// Normalize runs only for the prettier formatter, whose renderer
 		// consumes the escape-preserving source form (ast.Text.Raw); feed
 		// that through so atomLeaf rebuilds the leaf with the escapes intact.
 		// Plain (non-prettier) rendering and the ADF encode never reach here
 		// and read the decoded Value directly.
-		return []fmtAtom{{text: v.Rendered(), m: ctx}}
+		return []fmtAtom{{text: v.Rendered(), m: ctx}}, true
 	case *ast.InlineCode:
 		// The code mark is exclusive in ADF: only the link survives, and
 		// only its href (title/source-form drop).
@@ -223,99 +245,123 @@ func (fn *normalizer) flattenInline(n ast.Node, ctx fmtMarks) []fmtAtom {
 		if ctx.link {
 			m.link, m.href = true, ctx.href
 		}
-		return []fmtAtom{{text: v.Value, isCode: true, m: m}}
-	case *ast.Strong:
-		next := ctx
-		next.strong = true
-		return fn.flattenInlines(v.Children, next)
-	case *ast.Emphasis:
-		next := ctx
-		next.em = true
-		return fn.flattenInlines(v.Children, next)
-	case *ast.Delete:
-		next := ctx
-		next.strike = true
-		return fn.flattenInlines(v.Children, next)
-	case *ast.Link:
-		next := ctx
-		next.link, next.href = true, v.URL
-		next.linkTitle, next.linkBare, next.linkExplicit = v.Title, v.Bare, v.Explicit
-		return fn.flattenInlines(v.Children, next)
+		return []fmtAtom{{text: v.Value, isCode: true, m: m}}, true
 	case *ast.Image:
 		// Inline images ride as opaque atoms; inherited marks drop (ADF
 		// carried them as a synthetic node without a mark slot).
 		img := &ast.Image{URL: v.URL, Title: v.Title, Children: fn.normalizeInlines(v.Children)}
-		return []fmtAtom{{node: img}}
+		return []fmtAtom{{node: img}}, true
 	case *ast.FootnoteRef:
 		// A reference rides as an opaque atom under its marks: the label
 		// is the identifier the definition pairs on, so nothing in it may
 		// be rewritten (see footnote.go).
-		return []fmtAtom{{node: &ast.FootnoteRef{Label: v.Label}, m: ctx}}
+		return []fmtAtom{{node: &ast.FootnoteRef{Label: v.Label}, m: ctx}}, true
 	case *ast.Break:
-		return []fmtAtom{{isBreak: true, spacesBreak: v.Value == "  "}}
+		return []fmtAtom{{isBreak: true, spacesBreak: v.Value == "  "}}, true
 	case *ast.HTML:
 		if v.Value == "" {
-			return nil
+			return nil, true
 		}
-		return []fmtAtom{{node: &ast.HTML{Value: v.Value}}}
+		return []fmtAtom{{node: &ast.HTML{Value: v.Value}}}, true
 	case *ast.TextDirective:
 		// Generic (unknown) text directive: the colon-prefixed name as
 		// plain text followed by the label; attributes drop.
 		out := []fmtAtom{{text: ":" + v.Name, m: ctx}}
-		return append(out, fn.flattenInlines(v.Children, ctx)...)
+		return append(out, fn.flattenInlines(v.Children, ctx)...), true
+	}
+	return nil, false
+}
+
+// flattenNestingInline handles the core inline wrappers: each pushes its
+// mark onto the context and flattens its children under it.
+func (fn *normalizer) flattenNestingInline(n ast.Node, ctx fmtMarks) ([]fmtAtom, bool) {
+	next := ctx
+	switch v := n.(type) {
+	case *ast.Strong:
+		next.strong = true
+		return fn.flattenInlines(v.Children, next), true
+	case *ast.Emphasis:
+		next.em = true
+		return fn.flattenInlines(v.Children, next), true
+	case *ast.Delete:
+		next.strike = true
+		return fn.flattenInlines(v.Children, next), true
+	case *ast.Link:
+		next.link, next.href = true, v.URL
+		next.linkTitle, next.linkBare, next.linkExplicit = v.Title, v.Bare, v.Explicit
+		return fn.flattenInlines(v.Children, next), true
+	}
+	return nil, false
+}
+
+// flattenDialectMarkInline handles the dialect directives that decorate a
+// span of text: like the core wrappers they push onto the context, except
+// the retired ones, which dissolve to their own children.
+func (fn *normalizer) flattenDialectMarkInline(n ast.Node, ctx fmtMarks) ([]fmtAtom, bool) {
+	next := ctx
+	switch v := n.(type) {
 	case *dialect.Color:
-		next := ctx
 		next.textColor = v.Attrs["color"]
-		return fn.flattenInlines(v.Children, next)
+		return fn.flattenInlines(v.Children, next), true
 	case *dialect.Bg:
-		next := ctx
 		next.bgColor = v.Attrs["color"]
-		return fn.flattenInlines(v.Children, next)
+		return fn.flattenInlines(v.Children, next), true
 	case *dialect.Underline:
-		next := ctx
 		next.underline = true
-		return fn.flattenInlines(v.Children, next)
+		return fn.flattenInlines(v.Children, next), true
 	case *dialect.Sub:
-		next := ctx
 		next.subsup = "sub"
-		return fn.flattenInlines(v.Children, next)
+		return fn.flattenInlines(v.Children, next), true
 	case *dialect.Sup:
-		next := ctx
 		next.subsup = "sup"
-		return fn.flattenInlines(v.Children, next)
+		return fn.flattenInlines(v.Children, next), true
 	case *dialect.FontSize:
 		// fontSize is retired: no product supports the mark, so the
 		// formatter dissolves the directive to its inline text (matching
 		// the ADF encode) and reports the drop.
 		fn.diag(CodeFontSizeDropped, fontSizeDroppedMessage)
-		return fn.flattenInlines(v.Children, ctx)
+		return fn.flattenInlines(v.Children, ctx), true
 	case *dialect.Annotation:
-		id := v.Attrs["id"]
-		if id == "" {
-			return fn.flattenInlines(v.Children, ctx)
-		}
-		annotationType := v.Attrs["annotationType"]
-		if annotationType == "" {
-			annotationType = "inlineComment"
-		}
-		next := ctx
-		next.annotations = append(slices.Clone(ctx.annotations),
-			extension.Annotation{ID: id, AnnotationType: annotationType})
-		return fn.flattenInlines(v.Children, next)
+		return fn.flattenAnnotation(v, ctx), true
+	}
+	return nil, false
+}
+
+// flattenAnnotation pushes one annotation onto the context; an
+// annotation without an id dissolves to its children.
+func (fn *normalizer) flattenAnnotation(v *dialect.Annotation, ctx fmtMarks) []fmtAtom {
+	id := v.Attrs["id"]
+	if id == "" {
+		return fn.flattenInlines(v.Children, ctx)
+	}
+	annotationType := v.Attrs["annotationType"]
+	if annotationType == "" {
+		annotationType = "inlineComment"
+	}
+	next := ctx
+	next.annotations = append(slices.Clone(ctx.annotations),
+		extension.Annotation{ID: id, AnnotationType: annotationType})
+	return fn.flattenInlines(v.Children, next)
+}
+
+// flattenDialectAtomInline handles the dialect's inline atoms, plus the
+// dialect block kinds that have no inline form at all.
+func flattenDialectAtomInline(n ast.Node) ([]fmtAtom, bool) {
+	switch v := n.(type) {
 	case *dialect.Mention:
-		return atomOrNone(normalizeMention(v))
+		return atomOrNone(normalizeMention(v)), true
 	case *dialect.Status:
-		return atomOrNone(normalizeStatus(v))
+		return atomOrNone(normalizeStatus(v)), true
 	case *dialect.MediaInline:
-		return atomOrNone(normalizeMediaInline(v))
+		return atomOrNone(normalizeMediaInline(v)), true
 	case *dialect.Emoji:
-		return flattenEmoji(v)
+		return flattenEmoji(v), true
 	case *dialect.Date:
-		return atomOrNone(normalizeDate(v))
+		return atomOrNone(normalizeDate(v)), true
 	case *dialect.Placeholder:
-		return atomOrNone(normalizePlaceholder(v))
+		return atomOrNone(normalizePlaceholder(v)), true
 	case *dialect.InlineExtension:
-		return atomOrNone(normalizeInlineExtension(v))
+		return atomOrNone(normalizeInlineExtension(v)), true
 	case *dialect.Panel, *dialect.Expand, *dialect.Media, *dialect.MediaCaption,
 		*dialect.JQL, *dialect.LinkCard, *dialect.LinkEmbed, *dialect.Colwidths,
 		*dialect.Decisions, *dialect.Extension, *dialect.SyncBlock,
@@ -324,8 +370,13 @@ func (fn *normalizer) flattenInline(n ast.Node, ctx fmtMarks) []fmtAtom {
 		*dialect.Breakout, *dialect.DataConsumer, *dialect.Fragment:
 		// Dialect block kinds in inline position have no inline ADF form
 		// and drop (they encode to block nodes the inline decode ignores).
-		return nil
+		return nil, true
 	}
+	return nil, false
+}
+
+// flattenForeignInline handles what none of the typed categories claimed.
+func (fn *normalizer) flattenForeignInline(n ast.Node, ctx fmtMarks) []fmtAtom {
 	if _, isExt := n.(extension.Node); isExt {
 		// Foreign extension kinds pass through untouched: without their
 		// ADF leg the formatter cannot re-derive their canonical payload,
@@ -728,172 +779,265 @@ func (fn *normalizer) resolveColwidths(items []encItem) []encItem {
 	)
 }
 
-// encodeBlockNode converts one AST block to its intermediate items.
-//
-//nolint:cyclop,funlen,maintidx // flat type-switch dispatch over the block dialect kinds
+// encodeBlockNode converts one AST block to its intermediate items. The
+// kind list is split by category across the encode*Block helpers below;
+// each answers ok=false for a kind outside its category (ok=true with nil
+// items is a kind that DROPS), and encodeForeignBlock takes what is left.
 func (fn *normalizer) encodeBlockNode(node ast.Node) []encItem {
+	if items, ok := fn.encodeCoreBlock(node); ok {
+		return items
+	}
+	if items, ok := fn.encodeStructuralBlock(node); ok {
+		return items
+	}
+	if items, ok := fn.encodeDialectBlock(node); ok {
+		return items
+	}
+	if items, ok := fn.encodeExtensionBlock(node); ok {
+		return items
+	}
+	if items, ok := fn.encodeBlockMarkNode(node); ok {
+		return items
+	}
+	return fn.encodeForeignBlock(node)
+}
+
+// encodeCoreBlock handles the core AST blocks that map one-to-one.
+func (fn *normalizer) encodeCoreBlock(node ast.Node) ([]encItem, bool) {
 	switch v := node.(type) {
 	case *ast.Paragraph:
-		return normalItem(&ast.Paragraph{Children: fn.normalizeInlines(v.Children)})
+		return normalItem(&ast.Paragraph{Children: fn.normalizeInlines(v.Children)}), true
 	case *ast.Heading:
 		level := min(max(v.Depth, 1), 6)
-		return normalItem(&ast.Heading{Depth: level, ID: v.ID, Children: fn.normalizeInlines(v.Children)})
+		return normalItem(&ast.Heading{Depth: level, ID: v.ID, Children: fn.normalizeInlines(v.Children)}), true
 	case *ast.ThematicBreak:
-		return normalItem(&ast.ThematicBreak{})
+		return normalItem(&ast.ThematicBreak{}), true
 	case *ast.Blockquote:
-		return normalItem(&ast.Blockquote{Children: fn.normalizeBlocks(v.Children)})
+		return normalItem(&ast.Blockquote{Children: fn.normalizeBlocks(v.Children)}), true
 	case *ast.FootnoteDef:
 		// Footnotes survive Normalize: only the ADF leg flattens them
 		// (see footnote.go), and the invariant Normalize owes ToADF holds
 		// because the definition passes through unchanged. Keeping it is
 		// what makes the md → md formatter footnote-preserving.
-		return normalItem(&ast.FootnoteDef{Label: v.Label, Children: fn.normalizeBlocks(v.Children)})
+		return normalItem(&ast.FootnoteDef{Label: v.Label, Children: fn.normalizeBlocks(v.Children)}), true
 	case *ast.Code:
 		fn.checkCodeLanguage(v.Lang)
-		return normalItem(&ast.Code{Lang: v.Lang, Value: strings.TrimRight(v.Value, "\n")})
+		return normalItem(&ast.Code{Lang: v.Lang, Value: strings.TrimRight(v.Value, "\n")}), true
 	case *ast.HTML:
-		return normalItem(&ast.HTML{Value: v.Value})
+		return normalItem(&ast.HTML{Value: v.Value}), true
 	case *ast.Frontmatter:
-		return normalItem(&ast.Frontmatter{Value: v.Value})
+		return normalItem(&ast.Frontmatter{Value: v.Value}), true
+	}
+	return nil, false
+}
+
+// encodeStructuralBlock handles the container blocks: the two that carry
+// their own encoding (lists, tables) and the generic directive shells.
+func (fn *normalizer) encodeStructuralBlock(node ast.Node) ([]encItem, bool) {
+	switch v := node.(type) {
 	case *ast.List:
-		return normalItem(fn.normalizeList(v))
+		return normalItem(fn.normalizeList(v)), true
 	case *ast.Table:
 		t := fn.normalizeTable(v)
 		if t == nil {
-			return nil
+			return nil, true
 		}
-		return []encItem{{kind: encTable, node: t}}
+		return []encItem{{kind: encTable, node: t}}, true
 	case *ast.ContainerDirective:
 		// Generic (unknown) container: a single converted child replaces
 		// it; anything else drops.
 		sub := fn.resolveColwidths(fn.encodeBlocks(v.Children))
 		if len(sub) == 1 {
-			return sub
+			return sub, true
 		}
-		return nil
+		return nil, true
 	case *ast.LeafDirective:
 		// Generic (unknown) leaf directives drop.
-		return nil
+		return nil, true
+	}
+	return nil, false
+}
+
+// encodeDialectBlock handles the dialect's own block directives.
+func (fn *normalizer) encodeDialectBlock(node ast.Node) ([]encItem, bool) {
+	switch v := node.(type) {
 	case *dialect.Colwidths:
 		widths := parseColwidths(ast.PlainText(v.Children))
 		if len(widths) == 0 {
-			return nil
+			return nil, true
 		}
-		return []encItem{{kind: encColwidths, widths: widths}}
+		return []encItem{{kind: encColwidths, widths: widths}}, true
 	case *dialect.Media:
 		m := mediaFromAttrs(v.Attrs, ast.PlainText(v.Children))
 		if v.Attrs["group"] == "true" {
-			return []encItem{{kind: encMediaGroup, medias: []*fmtMedia{m}}}
+			return []encItem{{kind: encMediaGroup, medias: []*fmtMedia{m}}}, true
 		}
 		m.applySingle(v.Attrs)
-		return []encItem{{kind: encMediaSingle, media: m}}
+		return []encItem{{kind: encMediaSingle, media: m}}, true
 	case *dialect.MediaCaption:
-		return fn.encodeMediaCaption(v)
+		return fn.encodeMediaCaption(v), true
 	case *dialect.JQL:
-		return normalOrDrop(fn.normalizeJQL(v))
+		return normalOrDrop(fn.normalizeJQL(v)), true
 	case *dialect.LinkCard:
-		return normalOrDrop(fn.normalizeLinkCard(v))
+		return normalOrDrop(fn.normalizeLinkCard(v)), true
 	case *dialect.LinkEmbed:
-		return normalOrDrop(fn.normalizeLinkEmbed(v))
+		return normalOrDrop(fn.normalizeLinkEmbed(v)), true
 	case *dialect.Decisions:
 		// A ::decisions in a non-sibling position (unreachable through
 		// encodeBlocks) drops like an orphan.
-		return nil
+		return nil, true
 	case *dialect.Panel:
-		return normalItem(&dialect.Panel{PanelType: v.PanelType, Children: fn.normalizeBlocks(v.Children)})
+		return normalItem(&dialect.Panel{PanelType: v.PanelType, Children: fn.normalizeBlocks(v.Children)}), true
 	case *dialect.Expand:
-		return normalItem(fn.normalizeExpand(v))
+		return normalItem(fn.normalizeExpand(v)), true
+	}
+	return nil, false
+}
+
+// encodeExtensionBlock handles the ADF extension points and the layout
+// wrappers built on them.
+func (fn *normalizer) encodeExtensionBlock(node ast.Node) ([]encItem, bool) {
+	switch v := node.(type) {
 	case *dialect.Extension:
 		if v.Attrs["type"] == "" || v.Attrs["key"] == "" {
-			return nil
+			return nil, true
 		}
-		return normalItem(&dialect.Extension{Attrs: extensionAttrPayload(v.Attrs, true)})
+		return normalItem(&dialect.Extension{Attrs: extensionAttrPayload(v.Attrs, true)}), true
 	case *dialect.BodiedExtension:
-		return fn.encodeBodiedExtension(v)
+		return fn.encodeBodiedExtension(v), true
 	case *dialect.Frame:
-		return normalItem(&dialect.Frame{Children: fn.normalizeBlocks(v.Children)})
+		return normalItem(&dialect.Frame{Children: fn.normalizeBlocks(v.Children)}), true
 	case *dialect.SyncBlock:
 		if v.Attrs["resourceId"] == "" {
-			return nil
+			return nil, true
 		}
-		return normalItem(&dialect.SyncBlock{Attrs: syncAttrPayload(v.Attrs)})
+		return normalItem(&dialect.SyncBlock{Attrs: syncAttrPayload(v.Attrs)}), true
 	case *dialect.BodiedSyncBlock:
 		if v.Attrs["resourceId"] == "" {
-			return fn.resolveColwidths(fn.encodeBlocks(v.Children))
+			return fn.resolveColwidths(fn.encodeBlocks(v.Children)), true
 		}
 		return normalItem(&dialect.BodiedSyncBlock{
 			Attrs:    syncAttrPayload(v.Attrs),
 			Children: fn.normalizeBlocks(v.Children),
-		})
+		}), true
 	case *dialect.Section:
-		attrs := map[string]string{}
-		if v.Attrs["columnRuleStyle"] != "" {
-			attrs["columnRuleStyle"] = v.Attrs["columnRuleStyle"]
-		}
-		if v.Attrs["localId"] != "" {
-			attrs["localId"] = v.Attrs["localId"]
-		}
-		return normalItem(&dialect.Section{Attrs: attrs, Children: fn.normalizeBlocks(v.Children)})
+		return normalItem(&dialect.Section{Attrs: sectionAttrs(v.Attrs), Children: fn.normalizeBlocks(v.Children)}), true
 	case *dialect.Column:
-		attrs := map[string]string{}
-		if v.Attrs["localId"] != "" {
-			attrs["localId"] = v.Attrs["localId"]
-		}
-		if v.Attrs["valign"] != "" {
-			attrs["valign"] = v.Attrs["valign"]
-		}
-		if f, err := strconv.ParseFloat(v.Attrs["width"], 64); err == nil {
-			attrs["width"] = formatJSNumber(f)
-		}
-		return normalItem(&dialect.Column{Attrs: attrs, Children: fn.normalizeBlocks(v.Children)})
-	case *dialect.Align:
-		if v.Align != "center" && v.Align != "end" {
-			return fn.resolveColwidths(fn.encodeBlocks(v.Children))
-		}
-		align := v.Align
-		return fn.wrapItems(v.Children, func(kids []ast.Node) ast.Node {
-			return &dialect.Align{Align: align, Children: kids}
-		})
-	case *dialect.Indent:
-		level, err := strconv.Atoi(v.Level())
-		if err != nil || level < 1 {
-			return fn.resolveColwidths(fn.encodeBlocks(v.Children))
-		}
-		return fn.wrapItems(v.Children, func(kids []ast.Node) ast.Node {
-			return &dialect.Indent{Attrs: map[string]string{strconv.Itoa(level): ""}, Children: kids}
-		})
-	case *dialect.Breakout:
-		mode := v.Mode()
-		if mode == "" {
-			return fn.resolveColwidths(fn.encodeBlocks(v.Children))
-		}
-		attrs := map[string]string{mode: ""}
-		if f, err := strconv.ParseFloat(v.Attrs["width"], 64); err == nil {
-			attrs["width"] = formatJSNumber(f)
-		}
-		return fn.wrapItems(v.Children, func(kids []ast.Node) ast.Node {
-			return &dialect.Breakout{Attrs: cloneAttrs(attrs), Children: kids}
-		})
-	case *dialect.DataConsumer:
-		sources := dialect.ParseSources(v.Attrs["sources"])
-		if len(sources) == 0 {
-			return fn.resolveColwidths(fn.encodeBlocks(v.Children))
-		}
-		return fn.wrapItems(v.Children, func(kids []ast.Node) ast.Node {
-			return &dialect.DataConsumer{Attrs: map[string]string{"sources": dialect.EncodeSources(sources)}, Children: kids}
-		})
-	case *dialect.Fragment:
-		if v.Attrs["localId"] == "" {
-			return fn.resolveColwidths(fn.encodeBlocks(v.Children))
-		}
-		attrs := map[string]string{"localId": v.Attrs["localId"]}
-		if v.Attrs["name"] != "" {
-			attrs["name"] = v.Attrs["name"]
-		}
-		return fn.wrapItems(v.Children, func(kids []ast.Node) ast.Node {
-			return &dialect.Fragment{Attrs: cloneAttrs(attrs), Children: kids}
-		})
+		return normalItem(&dialect.Column{Attrs: columnAttrs(v.Attrs), Children: fn.normalizeBlocks(v.Children)}), true
 	}
+	return nil, false
+}
+
+// sectionAttrs keeps the two attributes a canonical ::section carries.
+func sectionAttrs(src map[string]string) map[string]string {
+	attrs := map[string]string{}
+	if src["columnRuleStyle"] != "" {
+		attrs["columnRuleStyle"] = src["columnRuleStyle"]
+	}
+	if src["localId"] != "" {
+		attrs["localId"] = src["localId"]
+	}
+	return attrs
+}
+
+// columnAttrs keeps the attributes a canonical ::column carries; a
+// non-numeric width drops.
+func columnAttrs(src map[string]string) map[string]string {
+	attrs := map[string]string{}
+	if src["localId"] != "" {
+		attrs["localId"] = src["localId"]
+	}
+	if src["valign"] != "" {
+		attrs["valign"] = src["valign"]
+	}
+	if f, err := strconv.ParseFloat(src["width"], 64); err == nil {
+		attrs["width"] = formatJSNumber(f)
+	}
+	return attrs
+}
+
+// encodeBlockMarkNode handles the directives that decorate whole blocks
+// rather than standing on their own: each pushes a wrapper onto every
+// item its children encode to, and an invalid one unwraps to just those
+// children.
+func (fn *normalizer) encodeBlockMarkNode(node ast.Node) ([]encItem, bool) {
+	switch v := node.(type) {
+	case *dialect.Align:
+		return fn.encodeAlign(v), true
+	case *dialect.Indent:
+		return fn.encodeIndent(v), true
+	case *dialect.Breakout:
+		return fn.encodeBreakout(v), true
+	case *dialect.DataConsumer:
+		return fn.encodeDataConsumer(v), true
+	case *dialect.Fragment:
+		return fn.encodeFragment(v), true
+	}
+	return nil, false
+}
+
+func (fn *normalizer) encodeAlign(v *dialect.Align) []encItem {
+	if v.Align != "center" && v.Align != "end" {
+		return fn.resolveColwidths(fn.encodeBlocks(v.Children))
+	}
+	align := v.Align
+	return fn.wrapItems(v.Children, func(kids []ast.Node) ast.Node {
+		return &dialect.Align{Align: align, Children: kids}
+	})
+}
+
+func (fn *normalizer) encodeIndent(v *dialect.Indent) []encItem {
+	level, err := strconv.Atoi(v.Level())
+	if err != nil || level < 1 {
+		return fn.resolveColwidths(fn.encodeBlocks(v.Children))
+	}
+	return fn.wrapItems(v.Children, func(kids []ast.Node) ast.Node {
+		return &dialect.Indent{Attrs: map[string]string{strconv.Itoa(level): ""}, Children: kids}
+	})
+}
+
+func (fn *normalizer) encodeBreakout(v *dialect.Breakout) []encItem {
+	mode := v.Mode()
+	if mode == "" {
+		return fn.resolveColwidths(fn.encodeBlocks(v.Children))
+	}
+	attrs := map[string]string{mode: ""}
+	if f, err := strconv.ParseFloat(v.Attrs["width"], 64); err == nil {
+		attrs["width"] = formatJSNumber(f)
+	}
+	return fn.wrapItems(v.Children, func(kids []ast.Node) ast.Node {
+		return &dialect.Breakout{Attrs: cloneAttrs(attrs), Children: kids}
+	})
+}
+
+func (fn *normalizer) encodeDataConsumer(v *dialect.DataConsumer) []encItem {
+	sources := dialect.ParseSources(v.Attrs["sources"])
+	if len(sources) == 0 {
+		return fn.resolveColwidths(fn.encodeBlocks(v.Children))
+	}
+	return fn.wrapItems(v.Children, func(kids []ast.Node) ast.Node {
+		return &dialect.DataConsumer{
+			Attrs:    map[string]string{"sources": dialect.EncodeSources(sources)},
+			Children: kids,
+		}
+	})
+}
+
+func (fn *normalizer) encodeFragment(v *dialect.Fragment) []encItem {
+	if v.Attrs["localId"] == "" {
+		return fn.resolveColwidths(fn.encodeBlocks(v.Children))
+	}
+	attrs := map[string]string{"localId": v.Attrs["localId"]}
+	if v.Attrs["name"] != "" {
+		attrs["name"] = v.Attrs["name"]
+	}
+	return fn.wrapItems(v.Children, func(kids []ast.Node) ast.Node {
+		return &dialect.Fragment{Attrs: cloneAttrs(attrs), Children: kids}
+	})
+}
+
+// encodeForeignBlock handles what none of the typed categories claimed.
+func (fn *normalizer) encodeForeignBlock(node ast.Node) []encItem {
 	if _, isExt := node.(extension.Node); isExt {
 		// Foreign extension kinds pass through untouched (see the inline
 		// counterpart above).
@@ -1138,24 +1282,58 @@ func (fn *normalizer) decisionsList(list *ast.List) ast.Node {
 // children drop, spans stay only when >1, and every row pads to the
 // header row's visual column count (rowspan carries included). A table
 // without rows drops.
+// encTableCell is one cell flattened to atoms, with its spans kept only
+// where they span.
+type encTableCell struct {
+	atoms  []fmtAtom
+	cs, rs int
+}
+
+// encRowConverter rebuilds the canonical rows from the flattened cells,
+// carrying the rowspan state between them (see table_carry.go).
+type encRowConverter struct {
+	carryState
+	colCount int
+}
+
 func (fn *normalizer) normalizeTable(v *ast.Table) ast.Node {
-	type encCell struct {
-		atoms  []fmtAtom
-		cs, rs int
+	rows := fn.flattenTableRows(v)
+	if len(rows) == 0 {
+		return nil
 	}
-	var rows [][]encCell
+	conv := &encRowConverter{colCount: encVisualColCount(rows[0])}
+
+	var mdRows []ast.Node
+	// No cell survived in the first row, so it is not a header markdown
+	// can spell: prepend a blank one and keep every row as data.
+	if len(rows[0]) == 0 {
+		mdRows = append(mdRows, emptyTableRow(conv.colCount))
+	}
+	for _, row := range rows {
+		mdRows = append(mdRows, conv.convertRow(row))
+	}
+	// Alignment survives the ADF leg on the synthetic carrier, so the
+	// formatter must carry it too or format and conversion would disagree
+	// (see format_contract_test.go).
+	return &ast.Table{Children: mdRows, Align: v.Align}
+}
+
+// flattenTableRows drops the non-row/cell children and flattens every
+// surviving cell's inlines to atoms.
+func (fn *normalizer) flattenTableRows(v *ast.Table) [][]encTableCell {
+	var rows [][]encTableCell
 	for i := range v.Children {
 		row, ok := v.Children[i].(*ast.TableRow)
 		if !ok {
 			continue
 		}
-		var cells []encCell
+		var cells []encTableCell
 		for j := range row.Children {
 			cell, ok := row.Children[j].(*ast.TableCell)
 			if !ok {
 				continue
 			}
-			cells = append(cells, encCell{
+			cells = append(cells, encTableCell{
 				atoms: fn.flattenInlines(cell.Children, fmtMarks{}),
 				cs:    spanValue(cell.ColSpan),
 				rs:    spanValue(cell.RowSpan),
@@ -1163,69 +1341,43 @@ func (fn *normalizer) normalizeTable(v *ast.Table) ast.Node {
 		}
 		rows = append(rows, cells)
 	}
-	if len(rows) == 0 {
-		return nil
-	}
+	return rows
+}
 
-	isHeader := len(rows[0]) > 0
-	colCount := 0
-	for _, c := range rows[0] {
-		colCount += max(c.cs, 1)
+// encVisualColCount is the row's width in visual columns.
+func encVisualColCount(cells []encTableCell) int {
+	count := 0
+	for _, cell := range cells {
+		count += max(cell.cs, 1)
 	}
+	return count
+}
 
-	type rowCarry struct{ rowsLeft, width int }
-	var carries []rowCarry
-
-	convertRow := func(cells []encCell) ast.Node {
-		var mdCells []ast.Node
-		var newCarries []rowCarry
-		width := 0
-		for _, c := range carries {
-			width += c.width
+// convertRow rebuilds one row, padding it out to the table's visual
+// column count and advancing the rowspan carries.
+func (c *encRowConverter) convertRow(cells []encTableCell) ast.Node {
+	var mdCells []ast.Node
+	var fresh []rowspanCarry
+	width := c.carriedWidth()
+	for _, cell := range cells {
+		mdCell := &ast.TableCell{Children: regroupAtoms(cell.atoms)}
+		cs := max(cell.cs, 1)
+		if cs > 1 {
+			mdCell.ColSpan = cs
 		}
-		for _, cell := range cells {
-			mdCell := &ast.TableCell{Children: regroupAtoms(cell.atoms)}
-			cs := max(cell.cs, 1)
-			if cs > 1 {
-				mdCell.ColSpan = cs
-			}
-			if cell.rs > 1 {
-				mdCell.RowSpan = cell.rs
-				newCarries = append(newCarries, rowCarry{rowsLeft: cell.rs - 1, width: cs})
-			}
-			width += cs
-			mdCells = append(mdCells, mdCell)
+		if cell.rs > 1 {
+			mdCell.RowSpan = cell.rs
+			fresh = append(fresh, rowspanCarry{rowsLeft: cell.rs - 1, width: cs})
 		}
-		for width < colCount {
-			mdCells = append(mdCells, &ast.TableCell{})
-			width++
-		}
-		var next []rowCarry
-		for _, c := range carries {
-			if c.rowsLeft > 1 {
-				next = append(next, rowCarry{rowsLeft: c.rowsLeft - 1, width: c.width})
-			}
-		}
-		next = append(next, newCarries...)
-		carries = next
-		return &ast.TableRow{Children: mdCells}
+		width += cs
+		mdCells = append(mdCells, mdCell)
 	}
-
-	var mdRows []ast.Node
-	if !isHeader {
-		emptyHeader := &ast.TableRow{Children: make([]ast.Node, colCount)}
-		for i := range emptyHeader.Children {
-			emptyHeader.Children[i] = &ast.TableCell{}
-		}
-		mdRows = append(mdRows, emptyHeader)
+	for width < c.colCount {
+		mdCells = append(mdCells, &ast.TableCell{})
+		width++
 	}
-	for _, row := range rows {
-		mdRows = append(mdRows, convertRow(row))
-	}
-	// Alignment survives the ADF leg on the synthetic carrier, so the
-	// formatter must carry it too or format and conversion would disagree
-	// (see format_contract_test.go).
-	return &ast.Table{Children: mdRows, Align: v.Align}
+	c.advance(fresh)
+	return &ast.TableRow{Children: mdCells}
 }
 
 // spanValue keeps a span only when it spans (>1).

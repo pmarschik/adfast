@@ -263,32 +263,47 @@ type Registration struct {
 // mid-conversion. The markdown and convert registries call Validate when
 // extensions are supplied.
 func (r Registration) Validate() error {
+	if err := r.validateHooks(); err != nil {
+		return err
+	}
+	if err := validateCtors(r, r.Containers, blankContainer, true, false); err != nil {
+		return err
+	}
+	if err := validateCtors(r, r.Leaves, blankLeaf, false, false); err != nil {
+		return err
+	}
+	return validateCtors(r, r.Texts, blankText, false, true)
+}
+
+// validateHooks checks that the bundle has both directions wired: at
+// least one parse constructor and one decode hook (or the DecodedByCore
+// exemption).
+func (r Registration) validateHooks() error {
 	if len(r.Containers)+len(r.Leaves)+len(r.Texts) == 0 {
 		return errors.New("extension registration " + r.Kind + ": no parse constructors (Containers/Leaves/Texts)")
 	}
 	if r.DecodeBlock == nil && r.DecodeBlockList == nil && r.DecodeInline == nil && r.DecodeTextMark == nil && !r.DecodedByCore {
 		return errors.New("extension registration " + r.Kind + ": no decode hook (DecodeBlock/DecodeBlockList/DecodeInline/DecodeTextMark) and not DecodedByCore")
 	}
-	for name, ctor := range r.Containers {
-		n := ctor(&ast.ContainerDirective{Name: name})
-		if err := r.validatePrototype(name, n, true, false); err != nil {
-			return err
-		}
-	}
-	for name, ctor := range r.Leaves {
-		n := ctor(&ast.LeafDirective{Name: name})
-		if err := r.validatePrototype(name, n, false, false); err != nil {
-			return err
-		}
-	}
-	for name, ctor := range r.Texts {
-		n := ctor(&ast.TextDirective{Name: name})
-		if err := r.validatePrototype(name, n, false, true); err != nil {
+	return nil
+}
+
+// validateCtors runs every constructor of one position on an empty
+// directive of that position and validates the prototype it returns. The
+// three positions differ only in their directive type, which blank
+// supplies.
+func validateCtors[D any](r Registration, ctors map[string]func(D) Node, blank func(name string) D, wantContainer, wantInline bool) error {
+	for name, ctor := range ctors {
+		if err := r.validatePrototype(name, ctor(blank(name)), wantContainer, wantInline); err != nil {
 			return err
 		}
 	}
 	return nil
 }
+
+func blankContainer(name string) *ast.ContainerDirective { return &ast.ContainerDirective{Name: name} }
+func blankLeaf(name string) *ast.LeafDirective           { return &ast.LeafDirective{Name: name} }
+func blankText(name string) *ast.TextDirective           { return &ast.TextDirective{Name: name} }
 
 // validatePrototype checks one constructed instance against the
 // structural requirements of its position.
@@ -321,36 +336,48 @@ func (r Registration) validatePrototype(name string, n Node, wantContainer, want
 // one set a duplicate is a configuration bug, and the registries panic
 // on the returned error at registration time.
 func ValidateSet(regs []Registration) error {
-	type seenKey struct{ position, name string }
-	seen := map[seenKey]string{}
-	note := func(position, name, kind string) error {
-		key := seenKey{position, name}
-		if prev, dup := seen[key]; dup {
-			return errors.New("extension registrations " + prev + " and " + kind +
-				" both register " + position + " directive name " + name +
-				" — duplicate names within one set are ambiguous")
-		}
-		seen[key] = kind
-		return nil
-	}
+	seen := dirNames{}
 	for _, reg := range regs {
 		if err := reg.Validate(); err != nil {
 			return err
 		}
-		for name := range reg.Containers {
-			if err := note("container", name, reg.Kind); err != nil {
-				return err
-			}
+		if err := claimNames(seen, "container", reg.Containers, reg.Kind); err != nil {
+			return err
 		}
-		for name := range reg.Leaves {
-			if err := note("leaf", name, reg.Kind); err != nil {
-				return err
-			}
+		if err := claimNames(seen, "leaf", reg.Leaves, reg.Kind); err != nil {
+			return err
 		}
-		for name := range reg.Texts {
-			if err := note("text", name, reg.Kind); err != nil {
-				return err
-			}
+		if err := claimNames(seen, "text", reg.Texts, reg.Kind); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// dirNames records which registration claimed each (position, name) pair
+// within one set.
+type dirNames map[dirNameKey]string
+
+type dirNameKey struct{ position, name string }
+
+// claim records one directive name for a position, reporting the clash
+// when an earlier registration in the same set already took it.
+func (s dirNames) claim(position, name, kind string) error {
+	key := dirNameKey{position, name}
+	if prev, dup := s[key]; dup {
+		return errors.New("extension registrations " + prev + " and " + kind +
+			" both register " + position + " directive name " + name +
+			" — duplicate names within one set are ambiguous")
+	}
+	s[key] = kind
+	return nil
+}
+
+// claimNames claims every name in one position's constructor map.
+func claimNames[D any](s dirNames, position string, ctors map[string]func(D) Node, kind string) error {
+	for name := range ctors {
+		if err := s.claim(position, name, kind); err != nil {
+			return err
 		}
 	}
 	return nil

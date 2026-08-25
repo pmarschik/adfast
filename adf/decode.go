@@ -133,31 +133,200 @@ func (d *decoder) content(m map[string]any, depth int) []Node {
 type nodeShape int
 
 const (
-	shapeUnknown  nodeShape = iota
-	shapeBranch             // content allowed, no text
-	shapeLeaf               // neither content nor text
-	shapeTextLeaf           // text allowed, no content
+	shapeBranch   nodeShape = iota // content allowed, no text
+	shapeLeaf                      // neither content nor text
+	shapeTextLeaf                  // text allowed, no content
 )
 
-var nodeShapes = map[string]nodeShape{
-	"paragraph": shapeBranch, "heading": shapeBranch, "blockquote": shapeBranch,
-	"codeBlock": shapeBranch, "bulletList": shapeBranch, "orderedList": shapeBranch,
-	"listItem": shapeBranch, "taskList": shapeBranch, "taskItem": shapeBranch,
-	"decisionList": shapeBranch, "decisionItem": shapeBranch, "table": shapeBranch,
-	"tableRow": shapeBranch, "tableCell": shapeBranch, "tableHeader": shapeBranch,
-	"panel": shapeBranch, "expand": shapeBranch, "nestedExpand": shapeBranch,
-	"mediaSingle": shapeBranch, "mediaGroup": shapeBranch, "image": shapeBranch,
-	"caption": shapeBranch, "blockTaskItem": shapeBranch,
-	"layoutSection": shapeBranch, "layoutColumn": shapeBranch,
-	"bodiedExtension": shapeBranch, "multiBodiedExtension": shapeBranch,
-	"extensionFrame": shapeBranch, "bodiedSyncBlock": shapeBranch,
-	"rule": shapeLeaf, "media": shapeLeaf, "blockCard": shapeLeaf,
-	"embedCard": shapeLeaf, "inlineCard": shapeLeaf, "hardBreak": shapeLeaf,
-	"emoji": shapeLeaf, "mention": shapeLeaf, "status": shapeLeaf,
-	"mediaInline": shapeLeaf, ColwidthsHintType: shapeLeaf,
-	"date": shapeLeaf, "placeholder": shapeLeaf, "extension": shapeLeaf,
-	"inlineExtension": shapeLeaf, "syncBlock": shapeLeaf,
-	"text": shapeTextLeaf, "frontmatter": shapeTextLeaf, "html": shapeTextLeaf,
+// nodeDecoder ties one wire type string to its generic-slot shape and its
+// typed constructor.
+//
+// Shape and constructor live in one entry on purpose. They used to be a
+// shape map next to a parallel switch, and the two drifted: "image",
+// "frontmatter", and "html" carried a shape but had no constructor, so a
+// document containing one decoded to a nil Node that blew up the first
+// caller to touch it. Here a type string is either absent from the table
+// (RawNode, lossless, with an unknown-node diagnostic) or it has both.
+type nodeDecoder struct {
+	// build receives the attribute reader plus whichever generic slots
+	// the shape permits; the other slot is the zero value.
+	build func(r *attrReader, content []Node, text string) Node
+	shape nodeShape
+}
+
+// nodeDecoders is the known node kind set: the decoder's half of the
+// typed model. A kind absent here decodes to RawNode.
+var nodeDecoders = map[string]nodeDecoder{
+	// Text flow.
+	"paragraph":  {shape: shapeBranch, build: func(_ *attrReader, c []Node, _ string) Node { return &Paragraph{Content: c} }},
+	"blockquote": {shape: shapeBranch, build: func(_ *attrReader, c []Node, _ string) Node { return &Blockquote{Content: c} }},
+	"heading": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &Heading{Level: r.intVal("level"), Anchor: r.str("anchor"), Content: c}
+	}},
+	"codeBlock": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &CodeBlock{Language: r.str("language"), Content: c}
+	}},
+
+	// Lists.
+	"listItem": {shape: shapeBranch, build: func(_ *attrReader, c []Node, _ string) Node { return &ListItem{Content: c} }},
+	"bulletList": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &BulletList{Tight: r.boolPtr("tight"), Content: c}
+	}},
+	"orderedList": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &OrderedList{Order: r.intPtr("order"), Tight: r.boolPtr("tight"), Content: c}
+	}},
+	"taskList": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &TaskList{LocalID: r.strPtr("localId"), Content: c}
+	}},
+	"taskItem": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &TaskItem{LocalID: r.strPtr("localId"), State: r.str("state"), Content: c}
+	}},
+	"blockTaskItem": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &BlockTaskItem{LocalID: r.strPtr("localId"), State: r.str("state"), Content: c}
+	}},
+	"decisionList": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &DecisionList{LocalID: r.strPtr("localId"), Content: c}
+	}},
+	"decisionItem": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &DecisionItem{LocalID: r.strPtr("localId"), State: r.str("state"), Content: c}
+	}},
+
+	// Tables.
+	"tableRow": {shape: shapeBranch, build: func(_ *attrReader, c []Node, _ string) Node { return &TableRow{Content: c} }},
+	"table": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &Table{
+			Align:  r.strs("align"),
+			Layout: r.str("layout"), Width: r.floatPtr("width"),
+			IsNumberColumnEnabled: r.boolPtr("isNumberColumnEnabled"),
+			LocalID:               r.str("localId"), DisplayMode: r.str("displayMode"),
+			Content: c,
+		}
+	}},
+	"tableCell": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &TableCell{
+			Colspan: r.intVal("colspan"), Rowspan: r.intVal("rowspan"),
+			Colwidth: r.floats("colwidth"), Content: c,
+		}
+	}},
+	"tableHeader": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &TableHeader{
+			Colspan: r.intVal("colspan"), Rowspan: r.intVal("rowspan"),
+			Colwidth: r.floats("colwidth"), Content: c,
+		}
+	}},
+
+	// Wrappers and layout.
+	"panel": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &Panel{PanelType: r.str("panelType"), Content: c}
+	}},
+	"expand": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &Expand{Title: r.strPtr("title"), Content: c}
+	}},
+	"nestedExpand": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &NestedExpand{Title: r.strPtr("title"), Content: c}
+	}},
+	"caption": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &Caption{LocalID: r.str("localId"), Content: c}
+	}},
+	"layoutSection": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &LayoutSection{LocalID: r.str("localId"), ColumnRuleStyle: r.str("columnRuleStyle"), Content: c}
+	}},
+	"layoutColumn": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &LayoutColumn{Width: r.floatPtr("width"), LocalID: r.str("localId"), VAlign: r.str("valign"), Content: c}
+	}},
+
+	// Media and cards.
+	"mediaGroup": {shape: shapeBranch, build: func(_ *attrReader, c []Node, _ string) Node { return &MediaGroup{Content: c} }},
+	"mediaSingle": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &MediaSingle{
+			Layout: r.strPtr("layout"), Width: r.floatPtr("width"),
+			WidthType: r.strPtr("widthType"), Content: c,
+		}
+	}},
+	"media": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &Media{
+			Type: r.str("type"), ID: r.str("id"), URL: r.str("url"), Alt: r.str("alt"),
+			Collection: r.strPtr("collection"), Width: r.floatPtr("width"),
+			Height: r.floatPtr("height"), OccurrenceKey: r.strPtr("occurrenceKey"),
+		}
+	}},
+	"mediaInline": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &MediaInline{
+			Type: r.str("type"), ID: r.str("id"),
+			Alt: r.str("alt"), Collection: r.strPtr("collection"),
+		}
+	}},
+	"blockCard": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &BlockCard{URL: r.str("url"), Datasource: r.rawMap("datasource")}
+	}},
+	"embedCard": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &EmbedCard{URL: r.str("url"), Layout: r.str("layout"), Width: r.floatPtr("width")}
+	}},
+	"inlineCard": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &InlineCard{URL: r.strPtr("url")}
+	}},
+
+	// Inline atoms.
+	"rule":      {shape: shapeLeaf, build: func(_ *attrReader, _ []Node, _ string) Node { return &Rule{} }},
+	"hardBreak": {shape: shapeLeaf, build: func(_ *attrReader, _ []Node, _ string) Node { return &HardBreak{} }},
+	"text":      {shape: shapeTextLeaf, build: func(_ *attrReader, _ []Node, t string) Node { return &Text{Text: t} }},
+	"emoji": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &Emoji{ShortName: r.str("shortName"), ID: r.str("id"), Text: r.strPtr("text")}
+	}},
+	"mention": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &Mention{ID: r.str("id"), Text: r.strPtr("text"), AccessLevel: r.str("accessLevel")}
+	}},
+	"status": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &Status{
+			Text: r.strPtr("text"), Color: r.str("color"),
+			Style: r.str("style"), LocalID: r.str("localId"),
+		}
+	}},
+	"date": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &Date{Timestamp: r.str("timestamp"), LocalID: r.str("localId")}
+	}},
+	"placeholder": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &Placeholder{Text: r.str("text"), LocalID: r.str("localId")}
+	}},
+	ColwidthsHintType: {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &ColwidthsHint{Widths: r.floats("widths")}
+	}},
+
+	// Extension points.
+	"extensionFrame": {shape: shapeBranch, build: func(_ *attrReader, c []Node, _ string) Node { return &ExtensionFrame{Content: c} }},
+	"extension": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &Extension{
+			ExtensionType: r.str("extensionType"), ExtensionKey: r.str("extensionKey"),
+			Parameters: r.parameters(), Text: r.str("text"),
+			Layout: r.str("layout"), LocalID: r.str("localId"),
+		}
+	}},
+	"inlineExtension": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &InlineExtension{
+			ExtensionType: r.str("extensionType"), ExtensionKey: r.str("extensionKey"),
+			Parameters: r.parameters(), Text: r.str("text"), LocalID: r.str("localId"),
+		}
+	}},
+	"bodiedExtension": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &BodiedExtension{
+			ExtensionType: r.str("extensionType"), ExtensionKey: r.str("extensionKey"),
+			Parameters: r.parameters(), Text: r.str("text"),
+			Layout: r.str("layout"), LocalID: r.str("localId"), Content: c,
+		}
+	}},
+	"multiBodiedExtension": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &MultiBodiedExtension{
+			ExtensionType: r.str("extensionType"), ExtensionKey: r.str("extensionKey"),
+			Parameters: r.parameters(), Text: r.str("text"),
+			Layout: r.str("layout"), LocalID: r.str("localId"), Content: c,
+		}
+	}},
+	"syncBlock": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
+		return &SyncBlock{ResourceID: r.str("resourceId"), LocalID: r.str("localId")}
+	}},
+	"bodiedSyncBlock": {shape: shapeBranch, build: func(r *attrReader, c []Node, _ string) Node {
+		return &BodiedSyncBlock{ResourceID: r.str("resourceId"), LocalID: r.str("localId"), Content: c}
+	}},
 }
 
 // strField reads a string key from a decoded JSON map ("" when absent
@@ -187,23 +356,20 @@ func (d *decoder) node(m map[string]any, depth int) Node {
 	content := d.content(m, depth)
 	attrMap := mapField(m, "attrs")
 
-	shape := nodeShapes[typ]
-	if shape == shapeUnknown {
+	dec, known := nodeDecoders[typ]
+	if !known {
 		d.report(CodeUnknownNode, "unknown ADF node type "+strconv.Quote(typ)+" kept as RawNode")
 		return &RawNode{Type: typ, Attrs: attrMap, Marks: marks, Text: text, Content: content}
 	}
-	if (shape != shapeTextLeaf && text != "") || (shape != shapeBranch && len(content) > 0) {
+	if (dec.shape != shapeTextLeaf && text != "") || (dec.shape != shapeBranch && len(content) > 0) {
 		// A known kind used with slots its typed struct does not model;
 		// RawNode keeps it lossless.
 		return &RawNode{Type: typ, Attrs: attrMap, Marks: marks, Text: text, Content: content}
 	}
 
 	r := newAttrReader(attrMap)
-	n := decodeBlockKind(typ, r, content)
-	if n == nil {
-		n = decodeLeafKind(typ, r, text)
-	}
-	s := slotsOf(n)
+	n := dec.build(r, content, text)
+	s := n.slots()
 	if s.marks != nil {
 		*s.marks = marks
 	}
@@ -211,144 +377,6 @@ func (d *decoder) node(m map[string]any, depth int) Node {
 		*s.extra = r.finish(d, typ)
 	}
 	return n
-}
-
-// decodeBlockKind builds the content-bearing kinds (nil when typ is not
-// one of them).
-func decodeBlockKind(typ string, r *attrReader, content []Node) Node {
-	switch typ {
-	case "paragraph":
-		return &Paragraph{Content: content}
-	case "heading":
-		return &Heading{Level: r.intVal("level"), Anchor: r.str("anchor"), Content: content}
-	case "blockquote":
-		return &Blockquote{Content: content}
-	case "codeBlock":
-		return &CodeBlock{Language: r.str("language"), Content: content}
-	case "bulletList":
-		return &BulletList{Tight: r.boolPtr("tight"), Content: content}
-	case "orderedList":
-		return &OrderedList{Order: r.intPtr("order"), Tight: r.boolPtr("tight"), Content: content}
-	case "listItem":
-		return &ListItem{Content: content}
-	case "taskList":
-		return &TaskList{LocalID: r.strPtr("localId"), Content: content}
-	case "taskItem":
-		return &TaskItem{LocalID: r.strPtr("localId"), State: r.str("state"), Content: content}
-	case "decisionList":
-		return &DecisionList{LocalID: r.strPtr("localId"), Content: content}
-	case "decisionItem":
-		return &DecisionItem{LocalID: r.strPtr("localId"), State: r.str("state"), Content: content}
-	case "table":
-		return &Table{
-			Align:  r.strs("align"),
-			Layout: r.str("layout"), Width: r.floatPtr("width"),
-			IsNumberColumnEnabled: r.boolPtr("isNumberColumnEnabled"),
-			LocalID:               r.str("localId"), DisplayMode: r.str("displayMode"),
-			Content: content,
-		}
-	case "tableRow":
-		return &TableRow{Content: content}
-	case "tableCell":
-		return &TableCell{Colspan: r.intVal("colspan"), Rowspan: r.intVal("rowspan"), Colwidth: r.floats("colwidth"), Content: content}
-	case "tableHeader":
-		return &TableHeader{Colspan: r.intVal("colspan"), Rowspan: r.intVal("rowspan"), Colwidth: r.floats("colwidth"), Content: content}
-	case "panel":
-		return &Panel{PanelType: r.str("panelType"), Content: content}
-	case "expand":
-		return &Expand{Title: r.strPtr("title"), Content: content}
-	case "nestedExpand":
-		return &NestedExpand{Title: r.strPtr("title"), Content: content}
-	case "mediaSingle":
-		return &MediaSingle{Layout: r.strPtr("layout"), Width: r.floatPtr("width"), WidthType: r.strPtr("widthType"), Content: content}
-	case "mediaGroup":
-		return &MediaGroup{Content: content}
-	}
-	return decodeExtendedBlockKind(typ, r, content)
-}
-
-// decodeExtendedBlockKind builds the extended content-bearing kinds
-// (nil when typ is not one of them).
-func decodeExtendedBlockKind(typ string, r *attrReader, content []Node) Node {
-	switch typ {
-	case "caption":
-		return &Caption{LocalID: r.str("localId"), Content: content}
-	case "blockTaskItem":
-		return &BlockTaskItem{LocalID: r.strPtr("localId"), State: r.str("state"), Content: content}
-	case "layoutSection":
-		return &LayoutSection{LocalID: r.str("localId"), ColumnRuleStyle: r.str("columnRuleStyle"), Content: content}
-	case "layoutColumn":
-		return &LayoutColumn{Width: r.floatPtr("width"), LocalID: r.str("localId"), VAlign: r.str("valign"), Content: content}
-	case "bodiedExtension":
-		return &BodiedExtension{
-			ExtensionType: r.str("extensionType"), ExtensionKey: r.str("extensionKey"),
-			Parameters: r.anyVal("parameters"), Text: r.str("text"),
-			Layout: r.str("layout"), LocalID: r.str("localId"), Content: content,
-		}
-	case "multiBodiedExtension":
-		return &MultiBodiedExtension{
-			ExtensionType: r.str("extensionType"), ExtensionKey: r.str("extensionKey"),
-			Parameters: r.anyVal("parameters"), Text: r.str("text"),
-			Layout: r.str("layout"), LocalID: r.str("localId"), Content: content,
-		}
-	case "extensionFrame":
-		return &ExtensionFrame{Content: content}
-	case "bodiedSyncBlock":
-		return &BodiedSyncBlock{ResourceID: r.str("resourceId"), LocalID: r.str("localId"), Content: content}
-	}
-	return nil
-}
-
-// decodeLeafKind builds the leaf and text-leaf kinds.
-func decodeLeafKind(typ string, r *attrReader, text string) Node {
-	switch typ {
-	case "rule":
-		return &Rule{}
-	case "media":
-		return &Media{
-			Type: r.str("type"), ID: r.str("id"), URL: r.str("url"), Alt: r.str("alt"),
-			Collection: r.strPtr("collection"), Width: r.floatPtr("width"),
-			Height: r.floatPtr("height"), OccurrenceKey: r.strPtr("occurrenceKey"),
-		}
-	case "blockCard":
-		return &BlockCard{URL: r.str("url"), Datasource: r.rawMap("datasource")}
-	case "embedCard":
-		return &EmbedCard{URL: r.str("url"), Layout: r.str("layout"), Width: r.floatPtr("width")}
-	case "inlineCard":
-		return &InlineCard{URL: r.strPtr("url")}
-	case "hardBreak":
-		return &HardBreak{}
-	case "emoji":
-		return &Emoji{ShortName: r.str("shortName"), ID: r.str("id"), Text: r.strPtr("text")}
-	case "mention":
-		return &Mention{ID: r.str("id"), Text: r.strPtr("text"), AccessLevel: r.str("accessLevel")}
-	case "status":
-		return &Status{Text: r.strPtr("text"), Color: r.str("color"), Style: r.str("style"), LocalID: r.str("localId")}
-	case "mediaInline":
-		return &MediaInline{Type: r.str("type"), ID: r.str("id"), Alt: r.str("alt"), Collection: r.strPtr("collection")}
-	case ColwidthsHintType:
-		return &ColwidthsHint{Widths: r.floats("widths")}
-	case "date":
-		return &Date{Timestamp: r.str("timestamp"), LocalID: r.str("localId")}
-	case "placeholder":
-		return &Placeholder{Text: r.str("text"), LocalID: r.str("localId")}
-	case "extension":
-		return &Extension{
-			ExtensionType: r.str("extensionType"), ExtensionKey: r.str("extensionKey"),
-			Parameters: r.anyVal("parameters"), Text: r.str("text"),
-			Layout: r.str("layout"), LocalID: r.str("localId"),
-		}
-	case "inlineExtension":
-		return &InlineExtension{
-			ExtensionType: r.str("extensionType"), ExtensionKey: r.str("extensionKey"),
-			Parameters: r.anyVal("parameters"), Text: r.str("text"), LocalID: r.str("localId"),
-		}
-	case "syncBlock":
-		return &SyncBlock{ResourceID: r.str("resourceId"), LocalID: r.str("localId")}
-	case "text":
-		return &Text{Text: text}
-	}
-	return nil
 }
 
 // marks decodes a node map's "marks" array (non-map entries and a
@@ -370,100 +398,47 @@ func (d *decoder) marks(m map[string]any) []Mark {
 func (d *decoder) mark(m map[string]any) Mark {
 	typ := strField(m, "type")
 	attrMap := mapField(m, "attrs")
-	r := newAttrReader(attrMap)
-	mk := decodeMarkKind(typ, r)
-	if mk == nil {
+	build, known := markDecoders[typ]
+	if !known {
 		d.report(CodeUnknownMark, "unknown ADF mark type "+strconv.Quote(typ)+" kept as RawMark")
 		return &RawMark{Type: typ, Attrs: attrMap}
 	}
-	setMarkExtra(mk, r.finish(d, typ+" mark"))
+	r := newAttrReader(attrMap)
+	mk := build(r)
+	mk.setExtra(r.finish(d, typ+" mark"))
 	return mk
 }
 
-func decodeMarkKind(typ string, r *attrReader) Mark {
-	switch typ {
-	case "strong":
-		return &Strong{}
-	case "em":
-		return &Em{}
-	case "strike":
-		return &Strike{}
-	case "code":
-		return &Code{}
-	case "underline":
-		return &Underline{}
-	case "link":
-		return &Link{Href: r.strPtr("href")}
-	case "textColor":
-		return &TextColor{Color: r.str("color")}
-	case "backgroundColor":
+// markDecoders is the known mark kind set, the mark counterpart of
+// nodeDecoders. A kind absent here decodes to RawMark.
+var markDecoders = map[string]func(r *attrReader) Mark{
+	"strong":    func(*attrReader) Mark { return &Strong{} },
+	"em":        func(*attrReader) Mark { return &Em{} },
+	"strike":    func(*attrReader) Mark { return &Strike{} },
+	"code":      func(*attrReader) Mark { return &Code{} },
+	"underline": func(*attrReader) Mark { return &Underline{} },
+	"link":      func(r *attrReader) Mark { return &Link{Href: r.strPtr("href")} },
+	"textColor": func(r *attrReader) Mark { return &TextColor{Color: r.str("color")} },
+	"backgroundColor": func(r *attrReader) Mark {
 		return &BackgroundColor{Color: r.str("color")}
-	case "subsup":
-		return &SubSup{Type: r.str("type")}
-	case "alignment":
-		return &Alignment{Align: r.str("align")}
-	case "indentation":
-		return &Indentation{Level: r.intVal("level")}
-	case "breakout":
+	},
+	"subsup":       func(r *attrReader) Mark { return &SubSup{Type: r.str("type")} },
+	"alignment":    func(r *attrReader) Mark { return &Alignment{Align: r.str("align")} },
+	"indentation":  func(r *attrReader) Mark { return &Indentation{Level: r.intVal("level")} },
+	"fontSize":     func(r *attrReader) Mark { return &FontSize{Size: r.str("fontSize")} },
+	"dataConsumer": func(r *attrReader) Mark { return &DataConsumer{Sources: r.strs("sources")} },
+	"breakout": func(r *attrReader) Mark {
 		return &Breakout{Mode: r.str("mode"), Width: r.floatPtr("width")}
-	case "border":
+	},
+	"border": func(r *attrReader) Mark {
 		return &Border{Color: r.str("color"), Size: r.intVal("size")}
-	case "annotation":
+	},
+	"annotation": func(r *attrReader) Mark {
 		return &Annotation{ID: r.str("id"), AnnotationType: r.str("annotationType")}
-	case "dataConsumer":
-		return &DataConsumer{Sources: r.strs("sources")}
-	case "fragment":
+	},
+	"fragment": func(r *attrReader) Mark {
 		return &Fragment{LocalID: r.str("localId"), Name: r.str("name")}
-	case "fontSize":
-		return &FontSize{Size: r.str("fontSize")}
-	}
-	return nil
-}
-
-func setMarkExtra(m Mark, extra map[string]any) {
-	switch t := m.(type) {
-	case *Strong:
-		t.Extra = extra
-	case *Em:
-		t.Extra = extra
-	case *Strike:
-		t.Extra = extra
-	case *Code:
-		t.Extra = extra
-	case *Underline:
-		t.Extra = extra
-	case *Link:
-		t.Extra = extra
-	case *TextColor:
-		t.Extra = extra
-	case *BackgroundColor:
-		t.Extra = extra
-	case *SubSup:
-		t.Extra = extra
-	default:
-		setExtendedMarkExtra(m, extra)
-	}
-}
-
-func setExtendedMarkExtra(m Mark, extra map[string]any) {
-	switch t := m.(type) {
-	case *Alignment:
-		t.Extra = extra
-	case *Indentation:
-		t.Extra = extra
-	case *Breakout:
-		t.Extra = extra
-	case *Border:
-		t.Extra = extra
-	case *Annotation:
-		t.Extra = extra
-	case *DataConsumer:
-		t.Extra = extra
-	case *Fragment:
-		t.Extra = extra
-	case *FontSize:
-		t.Extra = extra
-	}
+	},
 }
 
 // attrReader lifts known attributes into typed values, keeping every
@@ -635,11 +610,12 @@ func (r *attrReader) strs(k string) []string {
 	return out
 }
 
-// anyVal reads an attribute of arbitrary JSON shape verbatim (nil when
-// absent; a present-but-null value stays in extra).
-//
-//nolint:unparam // keyed like the other readers; only "parameters" today
-func (r *attrReader) anyVal(k string) any {
+// parameters reads the extension "parameters" attribute verbatim: it is
+// the one modeled attribute of arbitrary JSON shape, so it keeps its own
+// reader rather than a keyed one (nil when absent; a present-but-null
+// value stays in extra).
+func (r *attrReader) parameters() any {
+	const k = "parameters"
 	r.known[k] = true
 	v, ok := r.src[k]
 	if !ok {

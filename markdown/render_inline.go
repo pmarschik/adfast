@@ -55,7 +55,7 @@ type inlineContext struct {
 	// directiveLabel marks content written inside a text directive's
 	// [label], where a nested text directive is lossy rather than merely
 	// unstable: the label is read back with ast.PlainText, which has no
-	// text for a directive node. See writeColonEscapePrefix.
+	// text for a directive node. See escapesColon.
 	directiveLabel bool
 }
 

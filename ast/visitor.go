@@ -62,69 +62,116 @@ type FootnoteVisitor[T any] interface {
 	VisitFootnoteRef(*FootnoteRef) T
 }
 
-// Visit dispatches n to the matching Visitor method. This switch is the
-// single dispatch point, maintained in-package next to the kind list.
+// Visit dispatches n to the matching Visitor method. The kind list is
+// split by category across the visit*Kind helpers below; each answers
+// ok=false for a kind outside its category, and the fallthrough is the
+// open-node contract: anything none of them claims is an extension.
 func Visit[T any](n Node, v Visitor[T]) T {
+	if r, ok := visitBlockKind(n, v); ok {
+		return r
+	}
+	if r, ok := visitContainerKind(n, v); ok {
+		return r
+	}
+	if r, ok := visitInlineKind(n, v); ok {
+		return r
+	}
+	if r, ok := visitFootnoteKind(n, v); ok {
+		return r
+	}
+	return v.VisitExtension(n)
+}
+
+// visitBlockKind dispatches the leaf and flow blocks.
+func visitBlockKind[T any](n Node, v Visitor[T]) (T, bool) {
 	switch n := n.(type) {
 	case *Root:
-		return v.VisitRoot(n)
+		return v.VisitRoot(n), true
 	case *Paragraph:
-		return v.VisitParagraph(n)
+		return v.VisitParagraph(n), true
 	case *Heading:
-		return v.VisitHeading(n)
+		return v.VisitHeading(n), true
 	case *ThematicBreak:
-		return v.VisitThematicBreak(n)
+		return v.VisitThematicBreak(n), true
 	case *Blockquote:
-		return v.VisitBlockquote(n)
+		return v.VisitBlockquote(n), true
 	case *List:
-		return v.VisitList(n)
+		return v.VisitList(n), true
 	case *ListItem:
-		return v.VisitListItem(n)
+		return v.VisitListItem(n), true
 	case *Code:
-		return v.VisitCode(n)
+		return v.VisitCode(n), true
 	case *HTML:
-		return v.VisitHTML(n)
+		return v.VisitHTML(n), true
 	case *Frontmatter:
-		return v.VisitFrontmatter(n)
-	case *Table:
-		return v.VisitTable(n)
-	case *TableRow:
-		return v.VisitTableRow(n)
-	case *TableCell:
-		return v.VisitTableCell(n)
-	case *ContainerDirective:
-		return v.VisitContainerDirective(n)
-	case *LeafDirective:
-		return v.VisitLeafDirective(n)
-	case *Text:
-		return v.VisitText(n)
-	case *Emphasis:
-		return v.VisitEmphasis(n)
-	case *Strong:
-		return v.VisitStrong(n)
-	case *Delete:
-		return v.VisitDelete(n)
-	case *InlineCode:
-		return v.VisitInlineCode(n)
-	case *Break:
-		return v.VisitBreak(n)
-	case *Link:
-		return v.VisitLink(n)
-	case *Image:
-		return v.VisitImage(n)
-	case *TextDirective:
-		return v.VisitTextDirective(n)
-	case *FootnoteDef:
-		if fv, ok := v.(FootnoteVisitor[T]); ok {
-			return fv.VisitFootnoteDef(n)
-		}
-		return v.VisitExtension(n)
-	case *FootnoteRef:
-		if fv, ok := v.(FootnoteVisitor[T]); ok {
-			return fv.VisitFootnoteRef(n)
-		}
-		return v.VisitExtension(n)
-	default:
-		return v.VisitExtension(n)
+		return v.VisitFrontmatter(n), true
 	}
+	var zero T
+	return zero, false
+}
+
+// visitContainerKind dispatches the table parts and the block-level
+// directives.
+func visitContainerKind[T any](n Node, v Visitor[T]) (T, bool) {
+	switch n := n.(type) {
+	case *Table:
+		return v.VisitTable(n), true
+	case *TableRow:
+		return v.VisitTableRow(n), true
+	case *TableCell:
+		return v.VisitTableCell(n), true
+	case *ContainerDirective:
+		return v.VisitContainerDirective(n), true
+	case *LeafDirective:
+		return v.VisitLeafDirective(n), true
+	}
+	var zero T
+	return zero, false
+}
+
+// visitInlineKind dispatches the inline kinds.
+func visitInlineKind[T any](n Node, v Visitor[T]) (T, bool) {
+	switch n := n.(type) {
+	case *Text:
+		return v.VisitText(n), true
+	case *Emphasis:
+		return v.VisitEmphasis(n), true
+	case *Strong:
+		return v.VisitStrong(n), true
+	case *Delete:
+		return v.VisitDelete(n), true
+	case *InlineCode:
+		return v.VisitInlineCode(n), true
+	case *Break:
+		return v.VisitBreak(n), true
+	case *Link:
+		return v.VisitLink(n), true
+	case *Image:
+		return v.VisitImage(n), true
+	case *TextDirective:
+		return v.VisitTextDirective(n), true
+	}
+	var zero T
+	return zero, false
+}
+
+// visitFootnoteKind dispatches the two GFM footnote kinds through the
+// optional FootnoteVisitor, falling back to VisitExtension for a visitor
+// that does not implement it.
+func visitFootnoteKind[T any](n Node, v Visitor[T]) (T, bool) {
+	fv, hasFootnotes := v.(FootnoteVisitor[T])
+	switch n := n.(type) {
+	case *FootnoteDef:
+		if hasFootnotes {
+			return fv.VisitFootnoteDef(n), true
+		}
+		return v.VisitExtension(n), true
+	case *FootnoteRef:
+		if hasFootnotes {
+			return fv.VisitFootnoteRef(n), true
+		}
+		return v.VisitExtension(n), true
+	}
+	var zero T
+	return zero, false
 }

@@ -1,7 +1,6 @@
 package assets
 
 import (
-	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,71 +13,29 @@ import (
 // its target's content.
 func TestSymlinkRead_PlantedLinkRejected(t *testing.T) {
 	mdDir := t.TempDir()
-	outside := t.TempDir()
-	secret := filepath.Join(outside, "secret.txt")
-	if err := os.WriteFile(secret, []byte("s3cr3t material"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(mdDir, "assets")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(secret, filepath.Join(dir, "leak.png")); err != nil {
-		t.Fatal(err)
-	}
-	s, err := NewFSStore(mdDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	secret := filepath.Join(t.TempDir(), "secret.txt")
+	mustDo(t, os.WriteFile(secret, []byte("s3cr3t material"), 0o600))
+	dir := mustMkdir(t, filepath.Join(mdDir, "assets"))
+	mustDo(t, os.Symlink(secret, filepath.Join(dir, "leak.png")))
+	s := mustStore(t, mdDir)
 
-	if _, ok := s.Lookup("", "assets/leak.png"); ok {
-		t.Error("Lookup must not read through a planted symlink")
-	}
-	pending, err := s.Pending("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pending) != 0 {
-		t.Errorf("Pending must exclude planted symlinks, got %v", pending)
-	}
-	if _, err := s.Load("assets/leak.png"); err == nil {
-		t.Error("Load must reject a planted symlink")
-	}
-	if _, _, ok := s.Dims("assets/leak.png"); ok {
-		t.Error("Dims must reject a planted symlink")
-	}
+	// No read path reaches the planted link's target, and Sync finds
+	// nothing to send.
+	wantNoLookup(t, s, "", "assets/leak.png")
+	wantPending(t, s)
+	wantLoadRefused(t, s, "assets/leak.png")
+	wantNoDims(t, s, "assets/leak.png")
 	if _, err := s.Associate("", uuidA, "assets/leak.png"); err == nil {
 		t.Error("Associate must reject a planted symlink")
 	}
-	uploaded := false
-	if _, syncErr := Sync(t.Context(), s, UploaderFunc(
-		func(_ context.Context, batch []PendingAsset) ([]UploadResult, error) {
-			uploaded = uploaded || len(batch) > 0
-			return nil, nil
-		},
-	)); syncErr != nil {
-		t.Fatal(syncErr)
-	}
-	if uploaded {
-		t.Error("Sync must not upload a planted symlink's target")
-	}
+	wantNothingToUpload(t, s)
 
 	// The store's OWN friendly symlinks (into .store/) keep working.
-	if _, addErr := s.Add("", uuidA, "shot.png", tinyPNG(t, 2, 2)); addErr != nil {
-		t.Fatal(addErr)
-	}
-	if fi, lerr := os.Lstat(filepath.Join(dir, "shot.png")); lerr != nil || fi.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("fixture must be a store symlink, err=%v", lerr)
-	}
-	if _, ok := s.Lookup("", "assets/shot.png"); !ok {
-		t.Error("store-created symlink must stay readable")
-	}
-	if content, loadErr := s.Load("assets/shot.png"); loadErr != nil || len(content) == 0 {
-		t.Errorf("store-created symlink must load: %v", loadErr)
-	}
-	if w, h, ok := s.Dims("assets/shot.png"); !ok || w != 2 || h != 2 {
-		t.Errorf("store-created symlink dims: %d %d %v", w, h, ok)
-	}
+	mustAdd(t, s, uuidA, "shot.png", tinyPNG(t, 2, 2))
+	wantSymlink(t, filepath.Join(dir, "shot.png"))
+	wantLookup(t, s, "", "assets/shot.png", uuidA)
+	wantLoad(t, s, "assets/shot.png")
+	wantDims(t, s, "assets/shot.png", 2, 2)
 }
 
 // TestSymlinkRead_SplitStoreLinksAllowed: in the split layout the blob
@@ -86,26 +43,11 @@ func TestSymlinkRead_PlantedLinkRejected(t *testing.T) {
 // point there and must keep working.
 func TestSymlinkRead_SplitStoreLinksAllowed(t *testing.T) {
 	root := t.TempDir()
-	docDir := filepath.Join(root, "docs")
-	if err := os.MkdirAll(docDir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-	s, err := NewFSStoreSplit(root, docDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, addErr := s.Add("", uuidA, "shot.png", tinyPNG(t, 3, 4)); addErr != nil {
-		t.Fatal(addErr)
-	}
-	if id, ok := s.Lookup("", "assets/shot.png"); !ok || id != uuidA {
-		t.Errorf("split-store symlink lookup: %q %v", id, ok)
-	}
-	if _, loadErr := s.Load("assets/shot.png"); loadErr != nil {
-		t.Errorf("split-store symlink load: %v", loadErr)
-	}
-	if w, h, ok := s.Dims("assets/shot.png"); !ok || w != 3 || h != 4 {
-		t.Errorf("split-store symlink dims: %d %d %v", w, h, ok)
-	}
+	s := mustSplitStore(t, root, mustMkdir(t, filepath.Join(root, "docs")))
+	mustAdd(t, s, uuidA, "shot.png", tinyPNG(t, 3, 4))
+	wantLookup(t, s, "", "assets/shot.png", uuidA)
+	wantLoad(t, s, "assets/shot.png")
+	wantDims(t, s, "assets/shot.png", 3, 4)
 }
 
 // TestSymlinkWrite_DanglingLinkNotFollowed: a dangling symlink planted
@@ -113,21 +55,12 @@ func TestSymlinkRead_SplitStoreLinksAllowed(t *testing.T) {
 // to materialize the file — that would be an arbitrary file write.
 func TestSymlinkWrite_DanglingLinkNotFollowed(t *testing.T) {
 	mdDir := t.TempDir()
-	s, err := NewFSStore(mdDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, addErr := s.Add("", uuidA, "shot.png", tinyPNG(t, 2, 2)); addErr != nil {
-		t.Fatal(addErr)
-	}
+	s := mustStore(t, mdDir)
+	mustAdd(t, s, uuidA, "shot.png", tinyPNG(t, 2, 2))
 	friendly := filepath.Join(mdDir, "assets", "shot.png")
-	if rmErr := os.Remove(friendly); rmErr != nil {
-		t.Fatal(rmErr)
-	}
+	mustDo(t, os.Remove(friendly))
 	victim := filepath.Join(t.TempDir(), "victim.txt")
-	if linkErr := os.Symlink(victim, friendly); linkErr != nil {
-		t.Fatal(linkErr)
-	}
+	mustDo(t, os.Symlink(victim, friendly))
 
 	if _, ok := s.Resolve(uuidA); ok {
 		t.Error("Resolve must not materialize over a planted symlink")
@@ -142,28 +75,17 @@ func TestSymlinkWrite_DanglingLinkNotFollowed(t *testing.T) {
 // and on reload-merge.
 func TestIndexSanitization_CraftedEntriesIgnored(t *testing.T) {
 	mdDir := t.TempDir()
-	blobDir := filepath.Join(mdDir, "assets", ".store")
 	// A store constructed BEFORE the crafted index exists exercises the
 	// reload-merge path later.
-	early, err := NewFSStore(mdDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mkErr := os.MkdirAll(blobDir, 0o750); mkErr != nil {
-		t.Fatal(mkErr)
-	}
+	early := mustStore(t, mdDir)
+	blobDir := mustMkdir(t, filepath.Join(mdDir, "assets", ".store"))
 	crafted := `{"media":{` +
 		`"` + uuidA + `":{"hash":"0123456789abcdef","name":"../../evil"},` +
 		`"` + uuidB + `":{"hash":"NOT-A-HASH","name":"fine.png"},` +
 		`"` + uuidC + `":{"hash":"0123456789abcdef","name":"fine.png"}}}`
-	if writeErr := os.WriteFile(filepath.Join(blobDir, "index.json"), []byte(crafted), 0o600); writeErr != nil {
-		t.Fatal(writeErr)
-	}
+	mustDo(t, os.WriteFile(filepath.Join(blobDir, "index.json"), []byte(crafted), 0o600))
 
-	s, err := NewFSStore(mdDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := mustStore(t, mdDir)
 	if _, ok := s.media[uuidA]; ok {
 		t.Error("traversal name must be dropped on load")
 	}
@@ -195,46 +117,23 @@ func TestIndexSanitization_CraftedEntriesIgnored(t *testing.T) {
 // (size-checked before any read).
 func TestSizeCap(t *testing.T) {
 	mdDir := t.TempDir()
-	dir := filepath.Join(mdDir, "assets")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-	huge := filepath.Join(dir, "huge.bin")
-	f, err := os.Create(huge)
-	if err != nil {
-		t.Fatal(err)
-	}
+	dir := mustMkdir(t, filepath.Join(mdDir, "assets"))
+	f, err := os.Create(filepath.Join(dir, "huge.bin"))
+	mustDo(t, err)
 	// Sparse file: size over the cap without writing the bytes.
-	if truncErr := f.Truncate(MaxAssetSize + 1); truncErr != nil {
-		t.Fatal(truncErr)
-	}
-	if closeErr := f.Close(); closeErr != nil {
-		t.Fatal(closeErr)
-	}
-	s, err := NewFSStore(mdDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, loadErr := s.Load("assets/huge.bin"); loadErr == nil {
-		t.Error("Load must refuse files over MaxAssetSize")
-	}
-	pending, err := s.Pending("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pending) != 0 {
-		t.Errorf("Pending must skip oversized files, got %v", pending)
-	}
+	mustDo(t, f.Truncate(MaxAssetSize+1))
+	mustDo(t, f.Close())
+
+	s := mustStore(t, mdDir)
+	// Load refuses it, and Pending skips it (size-checked before any read).
+	wantLoadRefused(t, s, "assets/huge.bin")
+	wantPending(t, s)
 }
 
 // TestSentinelErrors: traversal and absolute-path rejections are
 // distinguishable with errors.Is.
 func TestSentinelErrors(t *testing.T) {
-	mdDir := t.TempDir()
-	s, err := NewFSStore(mdDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := mustStore(t, t.TempDir())
 	if _, loadErr := s.Load("../outside.png"); !errors.Is(loadErr, ErrPathEscapes) {
 		t.Errorf("escape error = %v, want ErrPathEscapes", loadErr)
 	}
