@@ -38,6 +38,20 @@ func TestEncodeRichText(t *testing.T) {
 			t.Errorf("EncodeRichText(adf) produced %+v, want a doc with content", doc)
 		}
 	})
+	// The document names a submission, so nothing synthetic may be on it. A
+	// GFM table's column alignment is the case that reaches here: adf.Table
+	// carries it so md → adf → md stays faithful, and no ADF table has an
+	// attribute Jira could store it in.
+	t.Run("adf format is wire-safe", func(t *testing.T) {
+		got := EncodeRichText("| a | b |\n| :- | --: |\n| 1 | 2 |\n", RichTextADF)
+		doc, ok := got.(adf.Doc)
+		if !ok {
+			t.Fatalf("EncodeRichText(adf) = %T, want adf.Doc", got)
+		}
+		if !adf.IsWireSafe(doc) {
+			t.Errorf("EncodeRichText(adf) kept a synthetic attribute: %+v", doc)
+		}
+	})
 	t.Run("text format trims trailing whitespace", func(t *testing.T) {
 		if got := EncodeRichText("plain text\n\t ", RichTextText); got != "plain text" {
 			t.Errorf("EncodeRichText(text) = %q, want %q", got, "plain text")

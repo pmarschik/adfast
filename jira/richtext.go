@@ -2,6 +2,7 @@ package jira
 
 import (
 	adfast "github.com/pmarschik/adfast"
+	"github.com/pmarschik/adfast/adf"
 )
 
 // RichTextFormat identifies how a Jira rich-text field value is encoded:
@@ -40,9 +41,15 @@ func InferRichTextFormat(existingValue any) RichTextFormat {
 // anything else — RichTextText or an unknown format — submits the
 // markdown as a plain string with trailing whitespace trimmed. Pair with
 // InferRichTextFormat to match whatever format the field currently holds.
+//
+// The ADF it returns is wire-safe (adf.IsWireSafe). This function names the
+// submission, so the strip belongs here rather than at every caller: a
+// document that reached Jira with a synthetic attribute on it would come
+// back without one, and every comparison after that would report a change
+// nobody made.
 func EncodeRichText(markdown string, format RichTextFormat, opts ...adfast.Option) any {
 	if format == RichTextADF {
-		return adfast.ToADF(adfast.FromMarkdown(markdown, opts...), opts...)
+		return adf.StripSynthetic(adfast.ToADF(adfast.FromMarkdown(markdown, opts...), opts...))
 	}
 	return trimEnd(markdown)
 }
