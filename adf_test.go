@@ -539,6 +539,52 @@ func roundTripCases() []roundTripCase {
 	}
 }
 
+// Confluence stores a hardBreak as the break node plus a text node holding the
+// newline that followed the <br/> in storage format. That newline is
+// whitespace, and no renderer shows whitespace that sits right after a line
+// break — but folding it to a space left the space at the head of the next
+// line, where markdown can only write it as an escaped one. Every second and
+// later line of such a paragraph came back with a &#x20; the document never
+// had, and a diff reported the page as changed forever.
+func TestAdfToMarkdown_DropsWhitespaceNextToAHardBreak(t *testing.T) {
+	tests := []struct {
+		name, adf, want string
+	}{
+		{
+			name: "newline after the break",
+			adf: `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[
+				{"type":"text","text":"Status:","marks":[{"type":"strong"}]},
+				{"type":"text","text":" DRAFT"},
+				{"type":"hardBreak"},
+				{"type":"text","text":"\n"},
+				{"type":"text","text":"Spec:","marks":[{"type":"strong"}]},
+				{"type":"text","text":" See"}]}]}`,
+			want: "**Status:** DRAFT\\\n**Spec:** See\n",
+		},
+		{
+			name: "newline before the break",
+			adf: `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[
+				{"type":"text","text":"one\n"},
+				{"type":"hardBreak"},
+				{"type":"text","text":"two"}]}]}`,
+			want: "one\\\ntwo\n",
+		},
+		{
+			name: "a break folded between words is still a space",
+			adf: `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[
+				{"type":"text","text":"one\ntwo"}]}]}`,
+			want: "one two\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := adfToMD([]byte(tt.adf)); got != tt.want {
+				t.Errorf("markdown = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRoundTrip_NoNewlinesInAdfTextNodes(t *testing.T) {
 	adfDoc := mdToADF("The context includes transaction information when available (enough to\nsupport cutoff-date safeguards without additional call-site changes).")
 	js, marshalErr := json.Marshal(adfDoc)

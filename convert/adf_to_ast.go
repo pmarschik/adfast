@@ -942,18 +942,29 @@ func flatInlineSpanOps(rc renderCtx) spanOps[flatInline] {
 	}
 }
 
-// trimBreakEdges drops the space a folded line break left at the very start or
-// end of a block's inline run, where it would render as an escaped space
-// rather than as the separator it was.
+// trimBreakEdges drops the space a folded line break left where nothing renders
+// it: at the very start or end of a block's inline run, and against a hardBreak
+// on either side.
+//
+// The hardBreak case is how Confluence stores one — the break node, then a text
+// node holding the newline that followed the <br/> in storage format. Folding
+// that newline to a space put it at the head of the next line, which markdown
+// can only write as &#x20;, so every second and later line of the paragraph came
+// back carrying a character the document never had.
+//
+// Whitespace beside an explicit break is the producer's wrap either way: the
+// break already ended the line, and a renderer that honors it shows nothing for
+// the space. A fold between two words is a different thing and stays a space.
 func trimBreakEdges(items []flatInline) {
-	if len(items) == 0 {
-		return
-	}
-	if first := &items[0]; first.breakLead {
-		first.text = strings.TrimPrefix(first.text, " ")
-	}
-	if last := &items[len(items)-1]; last.breakTrail {
-		last.text = strings.TrimSuffix(last.text, " ")
+	unrendered := func(i int) bool { return i < 0 || i >= len(items) || items[i].isBreak }
+	for i := range items {
+		item := &items[i]
+		if item.breakLead && unrendered(i-1) {
+			item.text = strings.TrimPrefix(item.text, " ")
+		}
+		if item.breakTrail && unrendered(i+1) {
+			item.text = strings.TrimSuffix(item.text, " ")
+		}
 	}
 }
 
