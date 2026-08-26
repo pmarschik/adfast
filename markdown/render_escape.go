@@ -222,13 +222,35 @@ func (r *mdRenderer) escapeOrderedMarker(s string, i int, nextLead byte, nodeAtL
 
 // escapeAmpersand: '&' before '#' or a letter could form a character
 // reference on re-parse; remark escapes it ("AT\&T", "\&#0;") and leaves
-// bare ampersands alone ("a & b").
+// bare ampersands alone ("a & b"). prettier escapes a narrower set: only an
+// '&' that actually opens a reference the parse would decode, which is why
+// "AT&T" stays bare while "\&#169;" and "\&amp;" keep their backslash
+// (measured against prettier 3.9.6). Without the escape, a text value that
+// literally contains e.g. "&#169;" is written bare, and the NEXT parse
+// decodes it — a silent character change in prose, and a document with two
+// different renderings depending on the pass.
+//
+// escapeText sees one text node's value plus a single lookahead byte
+// (nextLead), so a reference split across two AST nodes would not be
+// detected. That is unreachable in practice: any mark boundary inserts a
+// marker byte ('*', '`', '[') between the '&' and the rest, which breaks the
+// reference, and text-node coalescing merges adjacent same-mark runs first.
 func (r *mdRenderer) escapeAmpersand(s string, i int, nextLead byte) bool {
 	if r.cfg.prettierText {
-		return false
+		return startsCharacterReference(s, i)
 	}
 	n := byteAt(s, i+1, nextLead)
 	return n == '#' || isASCIILetter(n)
+}
+
+// startsCharacterReference reports whether s[i] opens a character reference
+// the parse would decode. It is the escaper's half of
+// decodeCharacterReference (goldmark_to_ast.go) — the two must agree, by
+// construction, or a render is not a fixpoint: what the escaper lets through
+// bare, the next parse would decode.
+func startsCharacterReference(s string, i int) bool {
+	_, _, ok := decodeCharacterReference(s, i)
+	return ok
 }
 
 // escapeAt reports whether an '@' would form a GFM email autolink literal

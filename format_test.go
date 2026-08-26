@@ -37,6 +37,12 @@ func TestFormatMarkdown_PrettierParity(t *testing.T) {
 		{"space hard break preserved", "a  \nb\n", "a  \nb\n"},
 		{"backslash hard break preserved", "a\\\nb\n", "a\\\nb\n"},
 		{"code fence trailing space trimmed", "```\nx   \n```\n", "```\nx\n```\n"},
+		{"numeric reference escape preserved", "a \\&#169; b\n", "a \\&#169; b\n"},
+		{"named entity escape preserved", "a \\&amp; b\n", "a \\&amp; b\n"},
+		{"hex reference escape preserved", "a \\&#xA9; b\n", "a \\&#xA9; b\n"},
+		{"bare ampersand stays bare", "AT&T x\n", "AT&T x\n"},
+		{"non-reference ampersand stays bare", "AT&T; x\n", "AT&T; x\n"},
+		{"reference in a code span untouched", "code `&#169;` x\n", "code `&#169;` x\n"},
 		{
 			"prefix-aware wrap in blockquote",
 			"> the quick brown fox jumps over the lazy dog and keeps going until the line has to wrap somewhere\n",
@@ -71,6 +77,37 @@ func TestFormatMarkdown_PrettierParity(t *testing.T) {
 			// Idempotence: formatting the output again must be stable.
 			if once := fmtMD(tc.in); fmtMD(once) != once {
 				t.Errorf("not idempotent for %q", tc.in)
+			}
+		})
+	}
+}
+
+// A literal "&#169;" in prose is not a character reference; written bare it
+// becomes one on re-parse and decodes to "©" — a silent character change,
+// and a document with two different renderings depending on the pass. See
+// markdown.escapeAmpersand.
+func TestCharacterReferenceInTextSurvivesAReformat(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, in, want string }{
+		{"numeric reference", "a \\&#169; b\n", "a \\&#169; b\n"},
+		{"named entity", "a \\&amp; b\n", "a \\&amp; b\n"},
+		{"hex reference", "a \\&#xA9; b\n", "a \\&#xA9; b\n"},
+		{"inside emphasis", "**\\&#169;** x\n", "**\\&#169;** x\n"},
+		{"inside a link label", "[lab \\&#169;](http://x)\n", "[lab \\&#169;](http://x)\n"},
+		{"bare ampersand unaffected", "AT&T x\n", "AT&T x\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fmtMD(tc.in)
+			if got != tc.want {
+				t.Errorf("FormatMarkdown mismatch\n in:  %q\n got: %q\n want:%q", tc.in, got, tc.want)
+			}
+			if again := fmtMD(got); again != got {
+				t.Errorf("not idempotent\n got:   %q\n again: %q", got, again)
+			}
+			// The escape must not change what the ADF says the text is.
+			if wantADF, gotADF := marshalADF(t, tc.in), marshalADF(t, got); wantADF != gotADF {
+				t.Errorf("format changed ADF meaning\n before: %s\n after:  %s", wantADF, gotADF)
 			}
 		})
 	}

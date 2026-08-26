@@ -36,6 +36,9 @@ var fuzzSeeds = []string{
 	"a[^a b] c[^]\n\n[^a b]: not a footnote\n\n[^]: neither",
 	// escape sequences
 	"\\`backtick\\` and \\_underscore\\_",
+	// A character reference in text must survive as text: written bare it
+	// decodes on the next parse.
+	"a \\&#169; b\n\nAT&T and \\&amp; and \\&#xA9;\n",
 	// colon-after-backtick (the remark-directive trap)
 	"\\`bisearch:partner-sync-opt-out\\`",
 	// autolinks
