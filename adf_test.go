@@ -358,17 +358,6 @@ func TestAdfToMarkdown_MarkCombinations(t *testing.T) {
 		}
 	})
 
-	t.Run("strong + code (bold wrapping code inference)", func(t *testing.T) {
-		md := adfToMD(doc(p(
-			txt("AC3: ", &adf.Strong{}),
-			txt("GET /healthz", &adf.Code{}),
-			txt(" Endpoint"),
-		)))
-		if !strings.Contains(md, "**AC3: `GET /healthz` Endpoint**") {
-			t.Errorf("got %q, want containing **AC3: `GET /healthz` Endpoint**", md)
-		}
-	})
-
 	t.Run("strong + link", func(t *testing.T) {
 		md := adfToMD(doc(p(txt("click",
 			&adf.Strong{},
@@ -376,17 +365,6 @@ func TestAdfToMarkdown_MarkCombinations(t *testing.T) {
 		))))
 		if !strings.Contains(md, "**[click](https://example.com)**") {
 			t.Errorf("got %q, want containing **[click](https://example.com)**", md)
-		}
-	})
-
-	t.Run("em + code", func(t *testing.T) {
-		md := adfToMD(doc(p(
-			txt("pre ", &adf.Em{}),
-			txt("code", &adf.Code{}),
-			txt(" post"),
-		)))
-		if !strings.Contains(md, "_pre `code` post_") {
-			t.Errorf("got %q, want containing _pre `code` post_", md)
 		}
 	})
 
@@ -415,6 +393,84 @@ func TestAdfToMarkdown_MarkCombinations(t *testing.T) {
 		md := adfToMD(doc(p(txt("a`b", &adf.Code{}))))
 		if !strings.Contains(md, "``a`b``") {
 			t.Errorf("got %q, want containing ``a`b``", md)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// ADF → MD: the marks a code span shed on the way into ADF
+// ---------------------------------------------------------------------------
+
+// ADF's code mark is exclusive, so a code span written inside emphasis
+// arrives carrying nothing but code. convert.inferAcrossCode reads the mark
+// back off the neighboring run so the round trip returns the form the author
+// wrote — see the doc comments there for what each direction turns on.
+func TestAdfToMarkdown_CodeMarkInference(t *testing.T) {
+	t.Run("strong closes after the code span", func(t *testing.T) {
+		md := adfToMD(doc(p(
+			txt("AC3: ", &adf.Strong{}),
+			txt("GET /healthz", &adf.Code{}),
+			txt(" Endpoint"),
+		)))
+		if !strings.Contains(md, "**AC3: `GET /healthz` Endpoint**") {
+			t.Errorf("got %q, want containing **AC3: `GET /healthz` Endpoint**", md)
+		}
+	})
+
+	t.Run("em closes after the code span", func(t *testing.T) {
+		md := adfToMD(doc(p(
+			txt("pre ", &adf.Em{}),
+			txt("code", &adf.Code{}),
+			txt(" post"),
+		)))
+		if !strings.Contains(md, "_pre `code` post_") {
+			t.Errorf("got %q, want containing _pre `code` post_", md)
+		}
+	})
+
+	t.Run("strike closes after the code span", func(t *testing.T) {
+		md := adfToMD(doc(p(
+			txt("a ", &adf.Strike{}),
+			txt("b", &adf.Code{}),
+			txt(" c"),
+		)))
+		if !strings.Contains(md, "~~a `b` c~~") {
+			t.Errorf("got %q, want containing ~~a `b` c~~", md)
+		}
+	})
+
+	// Backward: the space the following run opens with is what says the
+	// emphasis began on the code span. Without the inference these render
+	// as "`raw_data`**&#x20;is freeform**".
+	t.Run("strong opens on the code span", func(t *testing.T) {
+		md := adfToMD(doc(p(
+			txt("raw_data", &adf.Code{}),
+			txt(" is freeform", &adf.Strong{}),
+		)))
+		if !strings.Contains(md, "**`raw_data` is freeform**") {
+			t.Errorf("got %q, want containing **`raw_data` is freeform**", md)
+		}
+	})
+
+	t.Run("strike opens on the code span", func(t *testing.T) {
+		md := adfToMD(doc(p(
+			txt("a", &adf.Code{}),
+			txt(" b", &adf.Strike{}),
+		)))
+		if !strings.Contains(md, "~~`a` b~~") {
+			t.Errorf("got %q, want containing ~~`a` b~~", md)
+		}
+	})
+
+	// Without that space the two readings are the same ADF, and the plain
+	// one wins: the emphasis stays outside the code span.
+	t.Run("no space keeps the code span outside the emphasis", func(t *testing.T) {
+		md := adfToMD(doc(p(
+			txt("a", &adf.Code{}),
+			txt("b", &adf.Strong{}),
+		)))
+		if !strings.Contains(md, "`a`**b**") {
+			t.Errorf("got %q, want containing `a`**b**", md)
 		}
 	})
 }

@@ -1,6 +1,8 @@
 package convert
 
-import "github.com/pmarschik/adfast/ast"
+import (
+	"github.com/pmarschik/adfast/ast"
+)
 
 // This file is the single implementation of the flat→nested inline mark
 // regrouping the library performs in two places: the ADF decode
@@ -23,18 +25,18 @@ const (
 )
 
 // spanOps adapts one flat inline item type T to the spanning algorithm:
-// the three nesting-mark predicates, the code-span predicate, the two
-// setters inferAcrossCode needs, and the leaf constructor. Predicates and
-// setters take *T so the caller can read and mutate items in place
+// the three nesting-mark predicates, the code-span predicate, the text and
+// the setter inferAcrossCode needs, and the leaf constructor. Predicates
+// and setters take *T so the caller can read and mutate items in place
 // without T having to satisfy an interface.
 type spanOps[T any] struct {
-	strong    func(*T) bool
-	em        func(*T) bool
-	strike    func(*T) bool
-	isCode    func(*T) bool
-	setStrong func(*T)
-	setEm     func(*T)
-	leaf      func(*T) ast.Node
+	strong func(*T) bool
+	em     func(*T) bool
+	strike func(*T) bool
+	isCode func(*T) bool
+	text   func(*T) string
+	set    func(*T, spanMark)
+	leaf   func(*T) ast.Node
 }
 
 func (ops spanOps[T]) has(item *T, mark spanMark) bool {
@@ -82,57 +84,129 @@ func (o openMarks) with(mark spanMark) openMarks {
 	return o
 }
 
-// carriesAcrossCode reports whether items[i] is a marked non-code item
-// followed immediately by an unmarked code span — the shape ADF produces
-// for `**text `code`**`, whose marks inferAcrossCode re-infers.
-func carriesAcrossCode[T any](items []T, ops spanOps[T], i int) bool {
+// spanMarks are the three nesting marks, in the order a wrapper opens
+// them. Ranging over this is how a rule stays exhaustive when a fourth
+// one is added.
+var spanMarks = [...]spanMark{spanStrong, spanEm, spanStrike}
+
+// marked reports whether an item carries any nesting mark of its own.
+func marked[T any](ops spanOps[T], item *T) bool {
+	return ops.strong(item) || ops.em(item) || ops.strike(item)
+}
+
+// bareCode reports whether items[i] is a code span that carries no
+// nesting mark — the shape a code span always has in ADF, whatever it was
+// written inside, because the code mark is exclusive there.
+func bareCode[T any](items []T, ops spanOps[T], i int) bool {
+	if i < 0 || i >= len(items) {
+		return false
+	}
 	item := &items[i]
-	if ops.isCode(item) || (!ops.strong(item) && !ops.em(item)) {
-		return false
-	}
-	if i+1 >= len(items) {
-		return false
-	}
-	next := &items[i+1]
-	return ops.isCode(next) && !ops.strong(next) && !ops.em(next)
+	return ops.isCode(item) && !marked(ops, item)
 }
 
 // unmarkedRunEnd returns the exclusive end of the run starting at start
 // whose items carry no nesting mark of their own — how far a re-inferred
-// mark may reach.
+// mark may reach forward.
 func unmarkedRunEnd[T any](items []T, ops spanOps[T], start int) int {
 	end := start
-	for end < len(items) {
-		it := &items[end]
-		if ops.strong(it) || ops.em(it) || ops.strike(it) {
-			break
-		}
+	for end < len(items) && !marked(ops, &items[end]) {
 		end++
 	}
 	return end
 }
 
-// inferAcrossCode propagates strong/em marks across code boundaries: ADF
-// strips strong/em from code spans, so `**text `code` more**` re-infers
-// the marks onto the code span and the trailing run from the preceding
-// item.
+// codeRunStart returns the first index of the run of bare code spans
+// ending at i — how far a re-inferred mark may reach backward.
+func codeRunStart[T any](items []T, ops spanOps[T], i int) int {
+	start := i
+	for bareCode(items, ops, start-1) {
+		start--
+	}
+	return start
+}
+
+// inferAcrossCode restores the nesting marks a code span shed on the way
+// into ADF.
+//
+// ADF's code mark is exclusive, so `**text `code` more**` arrives as a
+// strong run, a bare code span, and another strong run — the emphasis is
+// still there on both sides, but nothing says the code span was inside
+// it. Left alone the decode closes the emphasis at the code span and
+// opens it again after. Reading the mark back off the neighboring run is
+// what keeps the round trip on the form the author wrote.
 func inferAcrossCode[T any](items []T, ops spanOps[T]) {
-	for i := 0; i < len(items); i++ {
-		if !carriesAcrossCode(items, ops, i) {
+	inferBeforeCode(items, ops)
+	inferAfterCode(items, ops)
+}
+
+// inferAfterCode carries the marks of an item forward over the bare code
+// span that follows it, and over the unmarked run after that.
+func inferAfterCode[T any](items []T, ops spanOps[T]) {
+	for i := range items {
+		item := &items[i]
+		if ops.isCode(item) || !marked(ops, item) || !bareCode(items, ops, i+1) {
 			continue
 		}
-		item := &items[i]
 		end := unmarkedRunEnd(items, ops, i+1)
-		for k := i + 1; k < end; k++ {
-			if ops.strong(item) {
-				ops.setStrong(&items[k])
+		for _, mark := range spanMarks {
+			if !ops.has(item, mark) {
+				continue
 			}
-			if ops.em(item) {
-				ops.setEm(&items[k])
+			for k := i + 1; k < end; k++ {
+				ops.set(&items[k], mark)
 			}
 		}
-		i = end - 1
 	}
+}
+
+// inferBeforeCode carries the marks of an item backward over the bare
+// code spans that precede it, for the emphasis that opened on one.
+//
+// The evidence is the space the item starts with. `**`a` b**` is stored
+// as a bare code span and a strong run holding " b": the space sat
+// between the code span and the word inside the emphasis, so an emphasis
+// whose content opens on whitespace is one that began before the code
+// span. Markdown cannot write that space where ADF holds it — `** b**` is
+// not emphasis to a parser — so the decode used to emit the character
+// reference for it and hand back "`a`**&#x20;b**".
+//
+// Without the space the two readings are the same bytes: “ `a`**b** “
+// and “ **`a`b** “ both store one bare code span beside one strong run,
+// and the plain one is what the author more likely wrote.
+//
+// This is a deliberate divergence from remark, which has no notion of the
+// exclusive code mark and so renders the run as written, character
+// reference and all. The corpus entry for it in
+// testdata/directive_fixtures.json is re-pinned to this form: the ADF the
+// two spellings encode to is byte-identical, so only the markdown surface
+// moved. inferAfterCode is the same divergence in the other direction.
+func inferBeforeCode[T any](items []T, ops spanOps[T]) {
+	for i := range items {
+		item := &items[i]
+		if ops.isCode(item) || !marked(ops, item) || !opensOnSpace(ops, item) {
+			continue
+		}
+		if !bareCode(items, ops, i-1) {
+			continue
+		}
+		start := codeRunStart(items, ops, i-1)
+		for _, mark := range spanMarks {
+			if !ops.has(item, mark) {
+				continue
+			}
+			for k := start; k < i; k++ {
+				ops.set(&items[k], mark)
+			}
+		}
+	}
+}
+
+// opensOnSpace reports whether an item's text begins with the whitespace
+// that a shed code mark leaves at the head of an emphasis.
+func opensOnSpace[T any](ops spanOps[T], item *T) bool {
+	text := ops.text(item)
+	return text != "" && (text[0] == ' ' || text[0] == '\t')
 }
 
 // groupSpans builds nested strong/em/delete wrappers from a flat run of

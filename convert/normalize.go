@@ -139,13 +139,22 @@ func (fn *normalizer) normalizeInlines(nodes []ast.Node) []ast.Node {
 // algorithm (spanning.go): the nesting marks live under the atom's
 // inherited mark context, the code flag on the atom itself.
 var fmtAtomSpanOps = spanOps[fmtAtom]{
-	strong:    func(a *fmtAtom) bool { return a.m.strong },
-	em:        func(a *fmtAtom) bool { return a.m.em },
-	strike:    func(a *fmtAtom) bool { return a.m.strike },
-	isCode:    func(a *fmtAtom) bool { return a.isCode },
-	setStrong: func(a *fmtAtom) { a.m.strong = true },
-	setEm:     func(a *fmtAtom) { a.m.em = true },
-	leaf:      func(a *fmtAtom) ast.Node { return atomLeaf(*a) },
+	strong: func(a *fmtAtom) bool { return a.m.strong },
+	em:     func(a *fmtAtom) bool { return a.m.em },
+	strike: func(a *fmtAtom) bool { return a.m.strike },
+	isCode: func(a *fmtAtom) bool { return a.isCode },
+	text:   func(a *fmtAtom) string { return a.text },
+	set: func(a *fmtAtom, mark spanMark) {
+		switch mark {
+		case spanStrong:
+			a.m.strong = true
+		case spanEm:
+			a.m.em = true
+		default: // spanStrike
+			a.m.strike = true
+		}
+	},
+	leaf: func(a *fmtAtom) ast.Node { return atomLeaf(*a) },
 }
 
 // regroupAtoms re-infers marks across code spans and regroups a flat atom
