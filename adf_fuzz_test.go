@@ -39,6 +39,11 @@ var fuzzSeeds = []string{
 	// A character reference in text must survive as text: written bare it
 	// decodes on the next parse.
 	"a \\&#169; b\n\nAT&T and \\&amp; and \\&#xA9;\n",
+	// A tight list item holding a paragraph immediately followed by a GFM
+	// table (no source blank) forces an internal gap on render; the item
+	// must separate from its successor too, or the render is a fixpoint
+	// only after two passes.
+	"- a\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n- b\n",
 	// colon-after-backtick (the remark-directive trap)
 	"\\`bisearch:partner-sync-opt-out\\`",
 	// autolinks
