@@ -178,10 +178,13 @@ through unchanged. Express structure with directives instead.
 
 ## Supported code languages
 
-Code-block language tags encode verbatim, but each product highlights
-only its own set. Configure the check with `WithCodeLanguages`:
+Code-block language tags encode verbatim; `WithCodeLanguages` only
+controls a diagnostic, not the encoding. Configure it with
 `jira.CodeLanguages` (Jira Cloud's editor list) or
-`confluence.CodeLanguages` (Confluence Cloud's code block macro list —
-much smaller; no `go`, `json`, `kotlin`, `rust`, `typescript`, `yaml`).
-Unknown languages render as plain, monospaced text in the product; the
-`unsupported-code-language` diagnostic flags them at encode time.
+`confluence.CodeLanguages`. Both products use the same `@atlaskit`
+editor picker, so the two sets are nearly identical;
+`confluence.CodeLanguages` additionally accepts the two legacy code
+block macro spellings `html/xml` and `vb`, which the atlaskit picker
+does not recognize. Unknown languages render as plain, monospaced text
+in the product; the `unsupported-code-language` diagnostic flags them
+at encode time.
