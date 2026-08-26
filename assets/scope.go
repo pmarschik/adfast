@@ -24,8 +24,15 @@ import "github.com/pmarschik/adfast/convert"
 // scope. Encode every document with the view of ITS container.
 func ForScope(store Store, scope string) Store {
 	view := &scopedStore{inner: store, scope: scope}
-	if meta, ok := MetaOf(store); ok {
+	meta, keeps := MetaOf(store)
+	cat, lists := CatalogOf(store)
+	switch {
+	case keeps && lists:
+		return &scopedMetaList{scopedStore: view, Metadata: meta, Catalog: cat}
+	case keeps:
 		return &scopedMeta{scopedStore: view, Metadata: meta}
+	case lists:
+		return &scopedList{scopedStore: view, Catalog: cat}
 	}
 	return view
 }
@@ -87,4 +94,22 @@ func (s *scopedStore) Dims(path string) (width, height int, ok bool) {
 type scopedMeta struct {
 	*scopedStore
 	Metadata
+}
+
+// scopedList and scopedMetaList are the same for the Catalog face, and it
+// is a pass-through for the same reason: an inventory says what content
+// the store holds, and content belongs to no container. The media ids on
+// a record are left whole rather than narrowed to the bound scope,
+// because "attached in PROJ-7 as well" is the answer a caller asking for
+// an inventory came for — a view that hid it would report an asset in
+// use elsewhere as one nothing uses.
+type scopedList struct {
+	*scopedStore
+	Catalog
+}
+
+type scopedMetaList struct {
+	*scopedStore
+	Metadata
+	Catalog
 }

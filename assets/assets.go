@@ -10,7 +10,8 @@
 // content. assets/.store/index.json holds one record per distinct piece of
 // content, keyed by that content's hash and carrying the friendly name, the
 // media ids pointing at it, and any metadata the embedder keeps beside it —
-// the markdown itself carries no ids. See Metadata for the second half.
+// the markdown itself carries no ids. See Metadata for the second half,
+// and Catalog for reading the records back as an inventory.
 //
 // Reference paths are hardened at the store boundary: they must stay
 // inside the assets folder, symlinked entries must resolve into the

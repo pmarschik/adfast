@@ -28,10 +28,34 @@ import (
 // associate back into whichever layer holds the file.
 func Layered(layers ...Store) Store {
 	stack := layeredStore(layers)
-	if !slices.ContainsFunc(layers, func(s Store) bool { _, ok := MetaOf(s); return ok }) {
-		return stack
+	keeps := slices.ContainsFunc(layers, func(s Store) bool { _, ok := MetaOf(s); return ok })
+	cats, lists := catalogsOf(layers)
+	switch {
+	case keeps && lists:
+		return &layeredMetaList{layeredMeta: &layeredMeta{layeredStore: stack}, layeredCatalog: layeredCatalog{layers: cats}}
+	case keeps:
+		return &layeredMeta{layeredStore: stack}
+	case lists:
+		return &layeredList{layeredStore: stack, layeredCatalog: layeredCatalog{layers: cats}}
 	}
-	return &layeredMeta{layeredStore: stack}
+	return stack
+}
+
+// layeredList and layeredMetaList carry the optional faces of the layers
+// across the composition, so CatalogOf and MetaOf answer for a stack
+// exactly when they answer for something inside it. There is one type
+// per combination because a Go interface is satisfied by a method set:
+// a single type carrying a face it does not have would claim it, and a
+// caller would find an inventory that panics instead of a store that
+// says it has none.
+type layeredList struct {
+	layeredStore
+	layeredCatalog
+}
+
+type layeredMetaList struct {
+	*layeredMeta
+	layeredCatalog
 }
 
 type layeredStore []Store
