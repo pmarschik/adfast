@@ -3,6 +3,7 @@ package assets
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -71,7 +72,7 @@ func ContentHash(content []byte) string { return contentHash(content) }
 // ErrUnknownContent reports metadata addressed to content the store does
 // not hold. Store the content first — a record with metadata and no blob
 // would describe a picture nothing can show.
-var ErrUnknownContent = fmt.Errorf("no asset with that content hash")
+var ErrUnknownContent = errors.New("no asset with that content hash")
 
 // Put implements Metadata.
 func (s *FSStore) Put(suggestedName string, content []byte) (convert.MediaAsset, error) {

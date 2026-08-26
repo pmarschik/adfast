@@ -32,11 +32,11 @@ func Layered(layers ...Store) Store {
 	cats, lists := catalogsOf(layers)
 	switch {
 	case keeps && lists:
-		return &layeredMetaList{layeredMeta: &layeredMeta{layeredStore: stack}, layeredCatalog: layeredCatalog{layers: cats}}
+		return &layeredMetaList{layeredMeta: &layeredMeta{layeredStore: stack}, layers: cats}
 	case keeps:
 		return &layeredMeta{layeredStore: stack}
 	case lists:
-		return &layeredList{layeredStore: stack, layeredCatalog: layeredCatalog{layers: cats}}
+		return &layeredList{layeredStore: stack, layers: cats}
 	}
 	return stack
 }

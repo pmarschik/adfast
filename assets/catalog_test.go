@@ -1,6 +1,7 @@
 package assets
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -97,7 +98,7 @@ func TestRecordsNamesTheBlobAndItsSize(t *testing.T) {
 		t.Errorf("blob = %q, want %q", rec.Blob, want)
 	}
 	got, err := os.ReadFile(rec.Blob)
-	if err != nil || string(got) != string(content) {
+	if err != nil || !bytes.Equal(got, content) {
 		t.Errorf("reading the named blob: %q, err %v", got, err)
 	}
 }
