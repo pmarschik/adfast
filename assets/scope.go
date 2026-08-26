@@ -23,7 +23,11 @@ import "github.com/pmarschik/adfast/convert"
 // globally (one blob, one friendly file); only the media ids are per
 // scope. Encode every document with the view of ITS container.
 func ForScope(store Store, scope string) Store {
-	return &scopedStore{inner: store, scope: scope}
+	view := &scopedStore{inner: store, scope: scope}
+	if meta, ok := MetaOf(store); ok {
+		return &scopedMeta{scopedStore: view, Metadata: meta}
+	}
+	return view
 }
 
 type scopedStore struct {
@@ -72,4 +76,15 @@ func (s *scopedStore) Load(path string) ([]byte, error) {
 // Dims implements Store.
 func (s *scopedStore) Dims(path string) (width, height int, ok bool) {
 	return s.inner.Dims(path)
+}
+
+// scopedMeta is the view over a store that has metadata, so that MetaOf
+// answers for a view exactly when it answers for what it wraps. Records
+// are addressed by content, which no scope narrows, so every method is a
+// pass-through: Put records no media id, and it is the id — not the
+// content and not what the embedder knows about it — that belongs to one
+// container.
+type scopedMeta struct {
+	*scopedStore
+	Metadata
 }

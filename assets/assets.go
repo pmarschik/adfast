@@ -7,8 +7,10 @@
 // attachments are content-addressed under a hidden assets/.store/ directory
 // (<sha256[:16]>.<ext>) with the friendly name symlinked to the store file
 // (plain copy where symlinks are unavailable), deduplicating identical
-// content. assets/.store/index.json maps media ids to content hashes and
-// friendly names — the markdown itself carries no ids.
+// content. assets/.store/index.json holds one record per distinct piece of
+// content, keyed by that content's hash and carrying the friendly name, the
+// media ids pointing at it, and any metadata the embedder keeps beside it —
+// the markdown itself carries no ids. See Metadata for the second half.
 //
 // Reference paths are hardened at the store boundary: they must stay
 // inside the assets folder, symlinked entries must resolve into the
@@ -33,7 +35,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -51,7 +52,7 @@ const Dir = "assets"
 // storeDir is the hidden content-addressed store inside Dir.
 const storeDir = ".store"
 
-// indexFile maps media ids to content hashes and friendly names.
+// indexFile holds the content-hash-keyed asset records — see index.
 const indexFile = "index.json"
 
 // MaxAssetSize is the largest asset file the store reads or hands to an
@@ -116,35 +117,6 @@ type Store interface {
 	Dims(path string) (width, height int, ok bool)
 }
 
-// indexEntry is one media-id record in index.json. Scope is the
-// visibility container the id is valid in (Jira issue, Confluence
-// page); empty for pre-scope (legacy) records.
-type indexEntry struct {
-	Hash  string `json:"hash"`
-	Name  string `json:"name"`
-	Scope string `json:"scope,omitempty"`
-}
-
-// storeHashRe is the shape of a content hash in the index — the
-// 16-hex-digit sha256 prefix contentHash produces.
-var storeHashRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
-
-// validIndexEntry vets an index record loaded from disk: the friendly
-// name must be a plain filename (no separators, no traversal segments,
-// exactly what sanitizeName would produce) and the hash must have the
-// store's hash shape. index.json is data, not trusted input — a crafted
-// record must not steer any filesystem path.
-func validIndexEntry(e indexEntry) bool {
-	if !storeHashRe.MatchString(e.Hash) {
-		return false
-	}
-	n := e.Name
-	if n == "" || filepath.IsAbs(n) || strings.ContainsAny(n, `/\`) || strings.Contains(n, "..") {
-		return false
-	}
-	return n == sanitizeName(n)
-}
-
 // FSStore is the filesystem Store for one assets folder. All markdown
 // documents next to that folder share it — paths are folder-relative —
 // and multiple FSStore instances over the same folder cooperate: every
@@ -157,7 +129,8 @@ func validIndexEntry(e indexEntry) bool {
 // writers are serialized only by the atomic index replacement (last
 // write wins per full index write).
 type FSStore struct {
-	media        map[string]indexEntry
+	// records is the index keyed by content hash — see assetRecord.
+	records      map[string]assetRecord
 	mu           *sync.Mutex
 	docDir       string
 	assetsParent string
@@ -231,7 +204,7 @@ func NewFSStoreSplit(blobParent, docDir string, opts ...Option) (*FSStore, error
 }
 
 func openFSStore(blobParent, assetsParent, docDir string, opts ...Option) (*FSStore, error) {
-	s := &FSStore{blobParent: blobParent, assetsParent: assetsParent, docDir: docDir, media: map[string]indexEntry{}, storeSubdir: filepath.Join(Dir, storeDir)}
+	s := &FSStore{blobParent: blobParent, assetsParent: assetsParent, docDir: docDir, records: map[string]assetRecord{}, storeSubdir: filepath.Join(Dir, storeDir)}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -248,15 +221,14 @@ func openFSStore(blobParent, assetsParent, docDir string, opts ...Option) (*FSSt
 	if err != nil {
 		return nil, fmt.Errorf("read asset index: %w", err)
 	}
-	var idx struct {
-		Media map[string]indexEntry `json:"media"`
-	}
+	var idx index
 	if err := json.Unmarshal(raw, &idx); err != nil {
 		return nil, fmt.Errorf("parse asset index: %w", err)
 	}
-	for id, entry := range idx.Media {
-		if validIndexEntry(entry) {
-			s.media[id] = entry
+	for hash, record := range idx.Assets {
+		if validRecord(hash, record) {
+			sortIDs(record.IDs)
+			s.records[hash] = record
 		}
 	}
 	return s, nil
@@ -401,21 +373,40 @@ func (s *FSStore) indexPath() string {
 func (s *FSStore) Resolve(mediaID string) (convert.MediaAsset, bool) {
 	s.mu.Lock()
 	s.reloadIndex()
-	entry, ok := s.media[strings.ToLower(mediaID)]
+	hash, record, ok := s.recordFor(mediaID)
 	s.mu.Unlock()
 	if !ok {
 		return convert.MediaAsset{}, false
 	}
-	full, err := s.securePath(false, entry.Name)
+	return s.assetOf(hash, record.Name)
+}
+
+// recordFor finds the record a media id points at. Caller holds the lock.
+func (s *FSStore) recordFor(mediaID string) (string, assetRecord, bool) {
+	key := idKey(mediaID)
+	for hash, record := range s.records {
+		for _, ref := range record.IDs {
+			if idKey(ref.ID) == key {
+				return hash, record, true
+			}
+		}
+	}
+	return "", assetRecord{}, false
+}
+
+// assetOf is the render asset for a recorded blob, materializing the
+// friendly file from the blob store when this folder has none yet.
+func (s *FSStore) assetOf(hash, name string) (convert.MediaAsset, bool) {
+	full, err := s.securePath(false, name)
 	if err != nil {
 		return convert.MediaAsset{}, false
 	}
 	if _, err := os.Stat(full); err != nil {
-		if !s.materialize(entry) {
+		if !s.materialize(hash, name) {
 			return convert.MediaAsset{}, false
 		}
 	}
-	asset := convert.MediaAsset{Path: s.refPath(entry.Name)}
+	asset := convert.MediaAsset{Path: s.refPath(name)}
 	if w, h, ok := s.dimsAt(full); ok {
 		asset.Width, asset.Height = w, h
 	}
@@ -435,41 +426,38 @@ func (s *FSStore) Lookup(scope, path string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.reloadIndex()
-	hash := contentHash(content)
-	legacy, legacyOK := "", false
-	for id, entry := range s.media {
-		if entry.Hash != hash {
-			continue
-		}
-		switch {
-		case scope == "" || entry.Scope == scope:
-			return id, true
-		case entry.Scope == "":
-			legacy, legacyOK = id, true
-		}
+	record, ok := s.records[contentHash(content)]
+	if !ok {
+		return "", false
 	}
-	return legacy, legacyOK
+	return record.scopeFor(scope)
 }
 
 // reloadIndex merges the on-disk index into the in-memory map so
 // mutations through other instances of the same folder are not lost.
 // Records are vetted like at open time — a crafted index never
-// contributes a path-steering entry.
+// contributes a path-steering entry. See assetRecord.mergeFrom for which
+// half of a record each side wins.
 func (s *FSStore) reloadIndex() {
 	raw, err := os.ReadFile(s.indexPath())
 	if err != nil {
 		return
 	}
-	var idx struct {
-		Media map[string]indexEntry `json:"media"`
-	}
+	var idx index
 	if json.Unmarshal(raw, &idx) != nil {
 		return
 	}
-	for id, entry := range idx.Media {
-		if _, ours := s.media[id]; !ours && validIndexEntry(entry) {
-			s.media[id] = entry
+	for hash, disk := range idx.Assets {
+		if !validRecord(hash, disk) {
+			continue
 		}
+		ours, mine := s.records[hash]
+		if !mine {
+			sortIDs(disk.IDs)
+			s.records[hash] = disk
+			continue
+		}
+		s.records[hash] = ours.mergeFrom(disk)
 	}
 }
 
@@ -480,57 +468,63 @@ func (s *FSStore) Add(scope, mediaID, suggestedName string, content []byte) (con
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.reloadIndex()
-	if err := os.MkdirAll(s.blobDir(), 0o750); err != nil {
-		return convert.MediaAsset{}, fmt.Errorf("create asset store: %w", err)
-	}
-	if err := os.MkdirAll(s.assetsDir(), 0o750); err != nil {
-		return convert.MediaAsset{}, fmt.Errorf("create assets dir: %w", err)
-	}
-	hash := contentHash(content)
-	ext := filepath.Ext(sanitizeName(suggestedName))
-	storeName := hash + ext
-	storePath, err := s.securePath(true, storeName)
+	hash, name, err := s.store(suggestedName, content)
 	if err != nil {
 		return convert.MediaAsset{}, err
 	}
-	if _, err := os.Stat(storePath); errors.Is(err, fs.ErrNotExist) {
-		if err := os.WriteFile(storePath, content, 0o600); err != nil {
-			return convert.MediaAsset{}, fmt.Errorf("write asset content: %w", err)
-		}
-	}
-
-	// Reuse a friendly name that already references this content.
-	name := ""
-	for _, entry := range s.media {
-		if entry.Hash == hash && s.friendlyMatches(entry.Name, storeName) {
-			name = entry.Name
-			break
-		}
-	}
-	if name == "" {
-		var err error
-		name, err = s.createFriendly(sanitizeName(suggestedName), storeName, content)
-		if err != nil {
-			return convert.MediaAsset{}, err
-		}
-	}
-
-	s.media[strings.ToLower(mediaID)] = indexEntry{Hash: hash, Name: name, Scope: scope}
+	s.records[hash] = s.records[hash].withID(mediaID, scope)
 	if err := s.saveIndex(); err != nil {
 		return convert.MediaAsset{}, err
 	}
 	return s.mustAsset(name), nil
 }
 
-// materialize creates the friendly file for an index entry from the
+// store writes content to its blob, makes sure a friendly name reaches
+// it, and records the pairing — everything an asset needs except a media
+// id. It returns the content hash the record is keyed by and the friendly
+// name the markdown references. The caller holds the lock and saves.
+func (s *FSStore) store(suggestedName string, content []byte) (hash, name string, err error) {
+	if err := os.MkdirAll(s.blobDir(), 0o750); err != nil {
+		return "", "", fmt.Errorf("create asset store: %w", err)
+	}
+	if err := os.MkdirAll(s.assetsDir(), 0o750); err != nil {
+		return "", "", fmt.Errorf("create assets dir: %w", err)
+	}
+	hash = contentHash(content)
+	storeName := hash + filepath.Ext(sanitizeName(suggestedName))
+	storePath, err := s.securePath(true, storeName)
+	if err != nil {
+		return "", "", err
+	}
+	if _, statErr := os.Stat(storePath); errors.Is(statErr, fs.ErrNotExist) {
+		if err := os.WriteFile(storePath, content, 0o600); err != nil {
+			return "", "", fmt.Errorf("write asset content: %w", err)
+		}
+	}
+
+	// Reuse the friendly name that already references this content.
+	record, known := s.records[hash]
+	if known && s.friendlyMatches(record.Name, storeName) {
+		return hash, record.Name, nil
+	}
+	name, err = s.createFriendly(sanitizeName(suggestedName), storeName, content)
+	if err != nil {
+		return "", "", err
+	}
+	record.Name = name
+	s.records[hash] = record
+	return hash, name, nil
+}
+
+// materialize creates the friendly file for an index record from the
 // blob store — the self-healing path of a split store, where another
 // view recorded the asset and this document's folder has no friendly
 // file yet. It only ever CREATES: when anything already occupies the
 // friendly path (a regular file, a dangling or planted symlink), it
 // refuses — writing there would follow the symlink to an arbitrary
 // destination.
-func (s *FSStore) materialize(entry indexEntry) bool {
-	storeName := entry.Hash + filepath.Ext(entry.Name)
+func (s *FSStore) materialize(hash, name string) bool {
+	storeName := hash + filepath.Ext(name)
 	blob, err := s.securePath(true, storeName)
 	if err != nil {
 		return false
@@ -541,7 +535,7 @@ func (s *FSStore) materialize(entry indexEntry) bool {
 	if mkErr := os.MkdirAll(s.assetsDir(), 0o750); mkErr != nil {
 		return false
 	}
-	full, err := s.securePath(false, entry.Name)
+	full, err := s.securePath(false, name)
 	if err != nil {
 		return false
 	}
@@ -653,10 +647,10 @@ func (s *FSStore) mustAsset(name string) convert.MediaAsset {
 func (s *FSStore) Pending(scope string) ([]string, error) {
 	s.mu.Lock()
 	s.reloadIndex()
-	known := make(map[string]bool, len(s.media))
-	for _, entry := range s.media {
-		if scope == "" || entry.Scope == "" || entry.Scope == scope {
-			known[entry.Hash] = true
+	known := make(map[string]bool, len(s.records))
+	for hash, record := range s.records {
+		if _, ok := record.scopeFor(scope); ok {
+			known[hash] = true
 		}
 	}
 	s.mu.Unlock()
@@ -705,14 +699,17 @@ func (s *FSStore) Associate(scope, mediaID, path string) (convert.MediaAsset, er
 func (s *FSStore) Assets() map[string]convert.MediaAsset {
 	s.mu.Lock()
 	s.reloadIndex()
-	ids := make([]string, 0, len(s.media))
-	for id := range s.media {
-		ids = append(ids, id)
+	type named struct{ hash, name string }
+	held := make(map[string]named, len(s.records))
+	for hash, record := range s.records {
+		for _, ref := range record.IDs {
+			held[idKey(ref.ID)] = named{hash: hash, name: record.Name}
+		}
 	}
 	s.mu.Unlock()
 	out := map[string]convert.MediaAsset{}
-	for _, id := range ids {
-		if asset, ok := s.Resolve(id); ok {
+	for id, n := range held {
+		if asset, ok := s.assetOf(n.hash, n.name); ok {
 			out[id] = asset
 		}
 	}
@@ -728,10 +725,7 @@ func (s *FSStore) Assets() map[string]convert.MediaAsset {
 // (v1) sorting map keys — revisit if this ever migrates to
 // encoding/json/v2, which preserves insertion order instead.
 func (s *FSStore) saveIndex() error {
-	payload := struct {
-		Media map[string]indexEntry `json:"media"`
-	}{Media: s.media}
-	raw, err := json.MarshalIndent(payload, "", "  ")
+	raw, err := json.MarshalIndent(index{Assets: s.records}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode asset index: %w", err)
 	}

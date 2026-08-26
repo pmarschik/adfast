@@ -79,37 +79,39 @@ func TestIndexSanitization_CraftedEntriesIgnored(t *testing.T) {
 	// reload-merge path later.
 	early := mustStore(t, mdDir)
 	blobDir := mustMkdir(t, filepath.Join(mdDir, "assets", ".store"))
-	crafted := `{"media":{` +
-		`"` + uuidA + `":{"hash":"0123456789abcdef","name":"../../evil"},` +
-		`"` + uuidB + `":{"hash":"NOT-A-HASH","name":"fine.png"},` +
-		`"` + uuidC + `":{"hash":"0123456789abcdef","name":"fine.png"}}}`
+	const (
+		traversal  = "0123456789abcdef"
+		malformed  = "NOT-A-HASH"
+		wellFormed = "fedcba9876543210"
+	)
+	crafted := `{"assets":{` +
+		`"` + traversal + `":{"name":"../../evil","ids":[{"id":"` + uuidA + `"}]},` +
+		`"` + malformed + `":{"name":"fine.png","ids":[{"id":"` + uuidB + `"}]},` +
+		`"` + wellFormed + `":{"name":"fine.png","ids":[{"id":"` + uuidC + `"}]}}}`
 	mustDo(t, os.WriteFile(filepath.Join(blobDir, "index.json"), []byte(crafted), 0o600))
 
-	s := mustStore(t, mdDir)
-	if _, ok := s.media[uuidA]; ok {
-		t.Error("traversal name must be dropped on load")
-	}
-	if _, ok := s.media[uuidB]; ok {
-		t.Error("malformed hash must be dropped on load")
-	}
-	if _, ok := s.media[uuidC]; !ok {
-		t.Error("well-formed entry must survive")
-	}
-	if _, ok := s.Resolve(uuidA); ok {
-		t.Error("crafted entry must not resolve")
-	}
-
-	// Reload-merge path: the store constructed before the crafted index
-	// existed must also drop the bad records when it merges.
-	_ = early.Assets()
-	if _, ok := early.media[uuidA]; ok {
-		t.Error("traversal name must be dropped on reload-merge")
-	}
-	if _, ok := early.media[uuidB]; ok {
-		t.Error("malformed hash must be dropped on reload-merge")
-	}
-	if _, ok := early.media[uuidC]; !ok {
-		t.Error("well-formed entry must survive reload-merge")
+	for _, tc := range []struct {
+		store *FSStore
+		when  string
+	}{
+		// The store constructed before the crafted index existed reaches
+		// the records through the reload-merge path instead of the load.
+		{store: mustStore(t, mdDir), when: "load"},
+		{store: early, when: "reload-merge"},
+	} {
+		_ = tc.store.Assets()
+		if _, ok := tc.store.records[traversal]; ok {
+			t.Errorf("traversal name must be dropped on %s", tc.when)
+		}
+		if _, ok := tc.store.records[malformed]; ok {
+			t.Errorf("malformed hash must be dropped on %s", tc.when)
+		}
+		if _, ok := tc.store.records[wellFormed]; !ok {
+			t.Errorf("well-formed record must survive %s", tc.when)
+		}
+		if _, ok := tc.store.Resolve(uuidA); ok {
+			t.Errorf("crafted record must not resolve after %s", tc.when)
+		}
 	}
 }
 
