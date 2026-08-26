@@ -37,6 +37,11 @@ func TestFormatMarkdown_PrettierParity(t *testing.T) {
 		{"space hard break preserved", "a  \nb\n", "a  \nb\n"},
 		{"backslash hard break preserved", "a\\\nb\n", "a\\\nb\n"},
 		{"code fence trailing space trimmed", "```\nx   \n```\n", "```\nx\n```\n"},
+		{
+			"table attaches to a paragraph in a tight item",
+			"- a\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n- b\n",
+			"- a\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n- b\n",
+		},
 		{"numeric reference escape preserved", "a \\&#169; b\n", "a \\&#169; b\n"},
 		{"named entity escape preserved", "a \\&amp; b\n", "a \\&amp; b\n"},
 		{"hex reference escape preserved", "a \\&#xA9; b\n", "a \\&#xA9; b\n"},
@@ -113,28 +118,41 @@ func TestCharacterReferenceInTextSurvivesAReformat(t *testing.T) {
 	}
 }
 
-// An item the renderer had to break open with a blank line (a paragraph
-// immediately followed by a GFM table, with no source blank between them) is
-// spread when the next parse reads it back, so it needs its separator from
-// the FIRST render. Without it the render was a fixpoint only after two
+// An item the renderer had to break open with a blank line is spread when
+// the next parse reads it back, so it needs its separator from the FIRST
+// render. Without that separator the render was a fixpoint only after two
 // passes: pass 1 wrote the forced internal blank but no separator before the
 // next item; pass 2 read that blank back as Spread and inserted the
-// separator pass 1 owed. Scoped to goldmark-sourced
-// (PerItemSpread) lists only — the ADF path keeps the old non-fixpoint
-// behavior to preserve remark parity, see
-// runListRoundTrips-based tests in list_nesting_test.go for that side.
+// separator pass 1 owed. Scoped to goldmark-sourced (PerItemSpread) lists
+// only — the ADF path keeps the old non-fixpoint behavior to preserve
+// remark parity, see the runListRoundTrips-based tests in
+// list_nesting_test.go for that side.
+//
+// A GFM table with an ORDINARY header no longer forces a gap at all (see
+// adjacencyIsUnsafe, the narrower adjacency fix), so the first two cases are
+// pure fixpoints with no blank line anywhere — matching prettier exactly.
+// The third case keeps the gap, and therefore still needs the separator,
+// because its table's OWN header row is itself delimiter-shaped (the real
+// hazard 1B narrows down to); it is the pinned fuzz repro from
+// TestTableAfterParagraphInAListItemKeepsItsHeader, extended with a second
+// item to exercise the separator this test is about.
 func TestForcedItemGapSeparatesTheNextItem(t *testing.T) {
 	t.Parallel()
 	cases := []struct{ name, in, want string }{
 		{
-			"tight list, paragraph then table, no source blank",
+			"tight list, paragraph then ordinary-header table: no gap needed",
 			"- a\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n- b\n",
-			"- a\n\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n\n- b\n",
+			"- a\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n- b\n",
 		},
 		{
-			"three items, the middle one forces the gap before the next item",
+			"three items, ordinary-header table attaches tight throughout",
 			"- a\n- b\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n- c\n",
-			"- a\n- b\n\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n\n- c\n",
+			"- a\n- b\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n- c\n",
+		},
+		{
+			"delimiter-shaped header still forces the gap and the separator",
+			"*     0\n  0\n\n  --\n--\n0\n- b\n",
+			"- ```\n  0\n  ```\n  0\n\n  | -- |\n  | -- |\n  | 0  |\n\n* b\n",
 		},
 	}
 	for _, tc := range cases {

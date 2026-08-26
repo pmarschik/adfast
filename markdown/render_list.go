@@ -292,17 +292,95 @@ func followBlockNeedsGap(item *ast.ListItem, i int, loose, perItemSpread bool) b
 	if perItemSpread {
 		gap = ast.GapBefore(child)
 	}
-	if blockRunsToBlankLine(item.Children[i-1]) && blockIsAbsorbable(child) {
+	if adjacencyIsUnsafe(item.Children[i-1], child) {
 		gap = true
 	}
 	return gap
 }
 
+// adjacencyIsUnsafe reports whether writing child directly under prev inside
+// a list item re-parses as something else.
+//
+// A GFM table CAN interrupt a paragraph — goldmark's paragraph transformer
+// and micromark both split at the FIRST delimiter row, so the table keeps
+// its own header, and prettier writes the two adjacent with no blank
+// between them. The exception is a table whose OWN header row itself reads
+// as a delimiter row: then the split lands one line early and the
+// paragraph's last line is promoted to header, which is the shape
+// TestTableAfterParagraphInAListItemKeepsItsHeader pins. Only that case
+// needs the forced blank; every other run-on pairing (table→paragraph,
+// table→table, run-on nested list→anything) still does, unconditionally.
+func adjacencyIsUnsafe(prev, child ast.Node) bool {
+	if !blockRunsToBlankLine(prev) || !blockIsAbsorbable(child) {
+		return false
+	}
+	if _, isPara := prev.(*ast.Paragraph); isPara {
+		if t, isTable := child.(*ast.Table); isTable {
+			return tableHeaderReadsAsDelimiter(t)
+		}
+	}
+	return true
+}
+
+// tableHeaderReadsAsDelimiter reports whether the table's own header row
+// would itself be read as a GFM delimiter row (so a run-on paragraph before
+// it would swallow it instead of leaving it as the table's header).
+func tableHeaderReadsAsDelimiter(t *ast.Table) bool {
+	if len(t.Children) == 0 {
+		return false
+	}
+	row, ok := t.Children[0].(*ast.TableRow)
+	if !ok || len(row.Children) == 0 {
+		return false
+	}
+	for _, c := range row.Children {
+		cell, ok := c.(*ast.TableCell)
+		if !ok || !isDelimiterCellText(strings.TrimSpace(nodePlainText(cell))) {
+			return false
+		}
+	}
+	return true
+}
+
+// isDelimiterCellText reports whether a cell's text spells a GFM delimiter
+// cell: optional leading/trailing colon around at least one dash. This is
+// cell-count blind (it does not check the cell count matches the
+// paragraph's last line), which makes it conservative — it forces the blank
+// in some cases where the adjacency would in fact be safe, never the other
+// way around.
+func isDelimiterCellText(s string) bool {
+	s = strings.TrimPrefix(s, ":")
+	s = strings.TrimSuffix(s, ":")
+	if s == "" {
+		return false
+	}
+	return strings.Trim(s, "-") == ""
+}
+
+// nodePlainText concatenates every Text/Code value under n.
+func nodePlainText(n ast.Node) string {
+	var sb strings.Builder
+	var walk func(ast.Node)
+	walk = func(n ast.Node) {
+		switch v := n.(type) {
+		case *ast.Text:
+			sb.WriteString(v.Value)
+		case *ast.Code:
+			sb.WriteString(v.Value)
+		}
+		for _, c := range ast.Children(n) {
+			walk(c)
+		}
+	}
+	walk(n)
+	return sb.String()
+}
+
 // blockIsAbsorbable reports whether a block's opening line can be swallowed
 // by a run-on predecessor. Only a paragraph and a table can: a paragraph
 // line is read as another table row or as a lazy continuation, and a GFM
-// table cannot interrupt a paragraph, so its header row is absorbed the
-// same way. Every other block opens with a marker that breaks the run.
+// table's opening line is read as more rows of a preceding table. Every
+// other block opens with a marker that breaks the run.
 func blockIsAbsorbable(child ast.Node) bool {
 	switch child.(type) {
 	case *ast.Paragraph, *ast.Table:
