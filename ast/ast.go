@@ -420,6 +420,20 @@ func SetChildren(n Node, kids []Node) {
 }
 
 // PlainText concatenates the text content of inline AST nodes.
+//
+// An unregistered TextDirective (one with no typed dialect node, e.g. a
+// stray ":name" or an intraword "word:name") gets the same colon-prefixed
+// literal reconstruction the two other renderers already give it —
+// flattenTextDirective on the ADF leg, normalize.go's md formatter on the
+// markdown leg. Without this case PlainText fell into the default branch
+// below and silently dropped the ":name" text, which truncated an image
+// alt ("![Over:view](x.png)" read back as "Over") and made the colon
+// invisible to any lint that reads PlainText as "what the reader sees".
+// LeafDirective and ContainerDirective need no case here: both are
+// block-level constructs the parser only ever builds while walking block
+// children (markdown/goldmark_to_ast.go's convertStructuredBlock); neither
+// is reachable from convertGoldmarkInline, so neither can occupy a slot in
+// an inline Children slice that PlainText walks.
 func PlainText(nodes []Node) string {
 	var b strings.Builder
 	for _, n := range nodes {
@@ -428,6 +442,9 @@ func PlainText(nodes []Node) string {
 			b.WriteString(v.Value)
 		case *InlineCode:
 			b.WriteString(v.Value)
+		case *TextDirective:
+			b.WriteString(":" + v.Name)
+			b.WriteString(PlainText(v.Children))
 		default:
 			b.WriteString(PlainText(Children(n)))
 		}

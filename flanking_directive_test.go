@@ -212,11 +212,14 @@ func TestDirectiveLabelEscapesNestedDirectiveColon(t *testing.T) {
 	}{
 		{
 			// The fuzz repro: the label's leading ":0" is a directive on
-			// re-parse (the trailing ":0" already degraded on the way in),
-			// and the placeholder was left with no text at all.
+			// re-parse (the trailing ":0" already degraded on the way in).
+			// ast.PlainText used to have no case for a TextDirective node,
+			// so reading the label back silently dropped the first ":0"
+			// and kept only the second; PlainText now reconstructs both,
+			// and the escaping below applies to each in turn.
 			name: "digit-led name at the label start",
 			md:   ":placeholder[:0:0]",
-			want: `:placeholder[\:0]` + "\n",
+			want: `:placeholder[\:0\:0]` + "\n",
 		},
 		{
 			name: "digit-led name inside the label",
