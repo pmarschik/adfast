@@ -229,12 +229,14 @@ caller passes it at the call site.
 
 ## Legacy content: expanding a wrapper the content model forced
 
-ADF gives `listItem` the content model
-`(paragraph | mediaSingle | codeBlock) (paragraph | bulletList |
-orderedList | mediaSingle | codeBlock | taskList)*` — a blockquote or a
-table nested inside a list item has no representation. Confluence
-accepts the submission anyway and rewrites the offending subtree on
-save into a bodiless extension:
+ADF gives `listItem` the content model (the pinned schema oracle,
+`docs/adf-coverage.md`)
+`(paragraph | bulletList | orderedList | taskList | mediaSingle |
+codeBlock | unsupportedBlock | extension)+` — a single flat repeatable
+alternation. A blockquote or a table nested inside a list item has no
+representation there, but an extension does — it is in the alternation.
+Confluence accepts a blockquote-or-table submission anyway and rewrites
+the offending subtree on save into a bodiless extension:
 
 ```json
 {
@@ -295,7 +297,25 @@ without bound.
 The write side deliberately still emits the forbidden `listItem`
 content instead of pre-wrapping it: reproducing Confluence's own
 migration wrapper on submission is tracked as separate follow-up work,
-not part of this repair.
+not part of this repair. It now _reports_ the situation while still
+emitting it, though: `ToADF` runs `adf.ListItemViolations` over the
+produced document as a post-pass (next to the existing
+`checkUnsupportedKinds`, not at the two places a `listItem` is actually
+built — a footnote definition's blockquote lands in the tail's ordered
+list via a second producer, and an extension's `EncodeADF` can return
+arbitrary content with no diagnostics sink of its own) and emits one
+`list-item-content` diagnostic per distinct offending kind (see
+`README.md`'s "List item content" section). The pinned model is one flat
+alternation, so there is no first-position restriction to enforce —
+older ADF schema revisions did restrict what could open a listItem, but
+this repo's pin postdates that rule. A list item whose first block is a
+nested list (`- - x`) is therefore not a violation, and adfast does not
+report it. The one rewrite actually measured (the blockquote/table case
+above) is a set violation — a kind outside the alternation — and no
+order-shaped rewrite has ever been observed. The diagnostic describes
+the document, not the push, so it fires on every encode; a consumer that
+encodes only to compare (as a diff does) is expected to stay quiet
+rather than surface it on every run.
 
 ## Table column alignment: a carrier with no lowering
 

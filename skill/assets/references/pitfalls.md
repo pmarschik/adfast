@@ -85,6 +85,15 @@ vocabulary:
   the end of the document. One per definition, naming its label and its
   number. Nothing is lost from the page, but the reference no longer
   links to its definition and the round trip returns the flattened form.
+- `list-item-content` — a block inside a list item that ADF's `listItem`
+  content model does not allow (only `paragraph`, `bulletList`,
+  `orderedList`, `taskList`, `mediaSingle`, `codeBlock`,
+  `unsupportedBlock`, `extension`). A blockquote or a table in a list
+  item is the common case; an extension is allowed and never fires this.
+  One per distinct kind;
+  conversion output is unchanged and the push succeeds, but Confluence
+  stores the subtree rewritten into a `legacy-content` extension. Fires
+  on every encode — the consumer decides when to say it.
 - `fontsize-dropped` — a retired `:fontSize` construct was dropped to
   plain text: no Atlassian product supports the mark, so adfast never
   produces it. Emitted on encode (`:fontSize[text]{size}` unwraps to its

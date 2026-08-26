@@ -77,6 +77,40 @@ const (
 	// the footnote. One diagnostic fires per definition, naming its
 	// label and its number. Emitted by ToADF.
 	CodeFootnoteFlattened = "footnote-flattened"
+	// CodeListItemContent reports a block inside a list item that ADF's
+	// listItem content model does not allow. The pinned schema oracle
+	// (docs/adf-coverage.md:122) gives the model as
+	//
+	//	(paragraph | bulletList | orderedList | taskList | mediaSingle |
+	//	 codeBlock | unsupportedBlock | extension)+
+	//
+	// so a blockquote, a table, a heading, a rule, a panel or a
+	// mediaGroup in a list item is not representable, and markdown says
+	// all of them. An extension IS representable there — the model above
+	// includes it — so it never raises this diagnostic.
+	//
+	// Conversion output is UNCHANGED — the document encodes exactly as
+	// written, and the submission succeeds. What changes is what the
+	// product STORES: Confluence accepts the push, renders the page
+	// correctly, and rewrites the offending subtree into a bodiless
+	// com.atlassian.confluence.migration / legacy-content extension
+	// (measured on a live page, 2026-08-26; see
+	// confluence.ExpandLegacyContent, which reads that wrapper back).
+	// adfast does not restructure the author's document to avoid it:
+	// lifting the block out of the item changes what the document says,
+	// and re-nesting it changes the structure the author chose.
+	//
+	// One diagnostic fires per DISTINCT offending kind — Diagnostic
+	// carries no position, so a second identical sentence would locate
+	// nothing.
+	//
+	// The consumer decides severity AND WHEN TO SAY IT: this describes
+	// the document, not the push, so it fires on every encode. A consumer
+	// that encodes only to compare should stay quiet (storysmith's
+	// PagePlanner.noteLosses is the reference: it warns only when the
+	// encoded body is the one being published). Emitted by ToADF, only
+	// when a diagnostics sink is configured.
+	CodeListItemContent = "list-item-content"
 	// CodeBeforeEncodeFailed reports a BeforeEncode hook error downgraded
 	// to a diagnostic by the infallible facade conversion.
 	CodeBeforeEncodeFailed = "before-encode-failed"

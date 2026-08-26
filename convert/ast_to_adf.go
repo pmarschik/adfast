@@ -53,6 +53,7 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 		doc = c.dropHeadingAnchors(doc, cfg.noAnchorsProduct)
 	}
 	c.checkUnsupportedKinds(doc)
+	c.checkListItemContent(doc)
 	return doc
 }
 
@@ -121,6 +122,40 @@ func (c *astConverter) checkUnsupportedKinds(doc adf.Doc) {
 			}
 		}
 	}
+}
+
+// checkListItemContent reports every block inside a list item that ADF's
+// listItem content model does not allow (see CodeListItemContent and
+// adf.ListItemViolations). One diagnostic per distinct offending kind.
+//
+// It runs over the produced document rather than at the two places a
+// listItem is built (convertList and footnoteTail): a footnote
+// definition holding a blockquote lands in the tail's ordered list, and
+// an extension.Node's EncodeADF may return any node at all and has no
+// diagnostics sink of its own (see the fontSize note in
+// inlineFlattener.VisitExtension). Conversion output is untouched.
+func (c *astConverter) checkListItemContent(doc adf.Doc) {
+	if c.diagnostics == nil {
+		return
+	}
+	seen := make(map[string]bool)
+	for _, v := range adf.ListItemViolations(doc) {
+		if seen[v.Kind] {
+			continue
+		}
+		seen[v.Kind] = true
+		c.diagnostics(Diagnostic{
+			Code:    CodeListItemContent,
+			Message: listItemContentMessage(v.Kind),
+		})
+	}
+}
+
+// listItemContentMessage is the shared wording for CodeListItemContent.
+func listItemContentMessage(kind string) string {
+	return kind + " inside a list item is outside ADF's listItem content model: " +
+		"the document encodes as written and the push succeeds, but the product " +
+		"stores a rewritten copy"
 }
 
 // ---------------------------------------------------------------------------

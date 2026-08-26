@@ -425,7 +425,10 @@ recovered situation flows through a diagnostics sink instead:
 - an inline `![alt](https://…)` rewritten as a link because ADF has no
   inline image for an external URL (`inline-image-degraded`),
 - a GFM footnote flattened to a superscript and a list at the end of the
-  document, because ADF has no footnote (`footnote-flattened`).
+  document, because ADF has no footnote (`footnote-flattened`),
+- a blockquote, a table or another block inside a list item, which ADF's
+  `listItem` content model cannot carry (`list-item-content`, described
+  below).
 
 One `WithDiagnostics(func(convert.Diagnostic))` wires the sink into
 whichever primitive emits: parse notices on `FromMarkdown`, encode
@@ -469,6 +472,30 @@ described in the `fontSize` note below, so an `unsupported-in-product`
 check for it would be moot. A new kind needs a live-probe confirmation,
 not a missing docs page. The evidence and the full availability data live
 in `docs/adf-coverage.md` and `docs/adf-availability.json`.
+
+### List item content (`list-item-content`)
+
+ADF gives `listItem` the content model `(paragraph | bulletList |
+orderedList | taskList | mediaSingle | codeBlock | unsupportedBlock |
+extension)+` (the pinned schema oracle, `docs/adf-coverage.md`), a
+single flat repeatable alternation, so a blockquote, a table, a heading,
+a rule, a panel or a mediaGroup inside a list item is not representable,
+however sensible the markdown that produced it. `extension` and
+`unsupportedBlock` ARE in the alternation, so those two never raise this
+diagnostic. `ToADF` does not restructure the author's document to fit
+the model — lifting the block out of the item changes what the document
+says, and re-nesting it changes the structure the author chose — so it
+encodes exactly as written and emits one `list-item-content` diagnostic
+per distinct offending kind instead. A live probe (2026-08-26) showed
+Confluence accepting such a push, rendering the page correctly, and
+rewriting the offending subtree on save into a bodiless
+`com.atlassian.confluence.migration` / `legacy-content` extension;
+`confluence.ExpandLegacyContent` reads that wrapper back. The pinned
+model is one flat alternation with no first-position restriction to
+enforce — older ADF schema revisions did restrict what could open a
+listItem, but this repo's pin postdates that rule, so a list item whose
+first block is a nested list (`- - x`) is not a violation at all, and
+adfast does not report it.
 
 ## Supported Markdown
 
