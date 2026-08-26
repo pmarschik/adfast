@@ -114,15 +114,19 @@ func MarkdownOptions(baseURL string) []adfast.Option {
 // RenderOptions bundles the Confluence behavior for the decode direction
 // (adfast.FromADF): inline and block smart-link cards pointing at
 // Confluence pages label with the SPACE/pageID key, the core macros
-// decode to their sugared directives (see Macros), a heading's anchor
-// macro lifts back to its "{#id}" suffix (see LiftAnchors), and a table
-// column whose cells all carry the same alignment mark lifts back to a
-// GFM delimiter row (see adf.LiftTableAlign). See MarkdownOptions for
-// the encode side.
+// decode to their sugared directives (see Macros), a legacy-content
+// wrapper expands to the content it stands in for (see
+// ExpandLegacyContent), a heading's anchor macro lifts back to its
+// "{#id}" suffix (see LiftAnchors), and a table column whose cells all
+// carry the same alignment mark lifts back to a GFM delimiter row (see
+// adf.LiftTableAlign). See MarkdownOptions for the encode side.
 func RenderOptions() []adfast.Option {
 	return []adfast.Option{
 		adfast.WithSmartLinks(SmartLinks("")),
 		adfast.WithExtensions(Macros()),
-		adfast.WithADFTransforms(LiftAnchors, adf.LiftTableAlign),
+		// The expansion runs first: the lifts that follow have to see the
+		// content a legacy-content wrapper was standing in for, not the
+		// wrapper.
+		adfast.WithADFTransforms(ExpandLegacyContent, LiftAnchors, adf.LiftTableAlign),
 	}
 }

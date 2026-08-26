@@ -227,6 +227,76 @@ becomes a space, runs of whitespace collapse, and the words join with
 installs. The storage body is per-page data and not an option, so the
 caller passes it at the call site.
 
+## Legacy content: expanding a wrapper the content model forced
+
+ADF gives `listItem` the content model
+`(paragraph | mediaSingle | codeBlock) (paragraph | bulletList |
+orderedList | mediaSingle | codeBlock | taskList)*` — a blockquote or a
+table nested inside a list item has no representation. Confluence
+accepts the submission anyway and rewrites the offending subtree on
+save into a bodiless extension:
+
+```json
+{
+  "type": "extension",
+  "attrs": {
+    "extensionType": "com.atlassian.confluence.migration",
+    "extensionKey": "legacy-content",
+    "parameters": {
+      "cxhtml": "<the original storage format>",
+      "nestedContent": { "type": "doc", "version": 1 }
+    }
+  }
+}
+```
+
+This was measured on a live page on 2026-08-26: a bodiless `extension`
+nested inside a `listItem`, replacing the blockquote the content model
+would not allow there. `parameters` held exactly `cxhtml` and
+`nestedContent`, with no `layout` and no `localId`; `nestedContent` was
+a JSON object — `{"type": "doc", "version": 1, "content": [...]}` — not
+an escaped string. `nestedContentDoc` also accepts an escaped-string
+form, matching how `cxhtml` is carried, but that form is defensive and
+unmeasured on the wire, not something the probed page exercised.
+
+The page still renders, because the extension carries the storage HTML
+in `cxhtml`. The read is what suffers: without a decode hook the node
+falls through to the generic `::extension` directive, and the
+`parameters` attribute JSON-encodes wholesale — a screenful of escaped
+HTML and JSON that makes the remote side of a comparison never match
+the local document.
+
+The measured `nestedContent` itself agrees with what adfast already
+encodes: its blockquote paragraph carries a code span with only the
+code mark, even though the local Markdown for the same text writes the
+code span inside bold. That is not a divergence between the two sides —
+`convert/ast_to_adf.go` drops strong/em/strike from a code span on
+encode because the code mark is exclusive in ADF, and Confluence's own
+migration wrapper applies the identical exclusivity rule, so the marks
+already agree without `ExpandLegacyContent` doing anything about it.
+
+`confluence.ExpandLegacyContent` reads `nestedContent` instead of
+`cxhtml`. It is preferred over the storage HTML because it is already
+ADF — the same document the submission carried — so no storage-format
+parser is needed. The function replaces the wrapper with that document's
+content, in the position the wrapper held, as an `adf.Transform` pass
+(the seam `WithADFTransforms` documents above): it needs to see the
+whole document, not one node at a time, and unlike a decode hook it runs
+before the other transforms in `RenderOptions`, so `LiftAnchors` and
+`adf.LiftTableAlign` see the real content and not the wrapper.
+
+The expansion is additive and never destructive: an extension whose
+payload is absent, unparsable, empty, or not a version-1 document is
+left exactly where it was, decoding through `::extension` as before.
+`nestedContent` may itself hold another wrapper, so the pass recurses,
+capped to keep a self-referential payload from growing the stack
+without bound.
+
+The write side deliberately still emits the forbidden `listItem`
+content instead of pre-wrapping it: reproducing Confluence's own
+migration wrapper on submission is tracked as separate follow-up work,
+not part of this repair.
+
 ## Table column alignment: a carrier with no lowering
 
 GFM column alignment (`|:--|--:|:-:|`) is the same shape one layer

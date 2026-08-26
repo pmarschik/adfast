@@ -274,6 +274,18 @@ that the read returned, before `FromADF`. A comparison between the local
 document and the page it published then reports no difference that nobody
 made. `docs/design.md` holds the measurements.
 
+Some pages carry a `legacy-content` extension: Confluence's own wrapper
+for a blockquote or a table nested inside a list item, a shape ADF's
+content model forbids. The page still renders — the wrapper carries the
+original storage HTML — but reading it back as ADF used to hand you the
+wrapper itself, a screenful of escaped HTML and JSON through the generic
+`::extension` directive. `confluence.RenderOptions()` installs
+`confluence.ExpandLegacyContent`, which replaces the wrapper with the
+ADF content its `nestedContent` parameter carries, in the position the
+wrapper held. It is also available standalone
+(`adfast.WithADFTransforms(confluence.ExpandLegacyContent)`) for a
+caller composing options by hand. `docs/design.md` holds the details.
+
 Both bundles also install `confluence.Macros()`, named directives for the
 core Confluence macros. The generic `::extension{key type parameters}`
 directive can express each one, but the `parameters` attribute carries a
