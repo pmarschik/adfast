@@ -43,10 +43,12 @@ func TestHeadingAnchor_Parse(t *testing.T) {
 		{"bare braces", "## Title {bare}\n", "", "Title {bare}"},
 		{"not at end", "## {#a} Title\n", "", "{#a} Title"},
 		{"backslash in id", `## Title {#a\}b}` + "\n", "", "Title {#a}b}"},
-		// A ':' opens a text directive, so ":b" is not plain text at all —
-		// which is exactly why the id charset excludes it: there is no one
-		// text node to strip and no way to render the id back verbatim.
-		{"colon in id", "## T {#a:b}\n", "", "T {#a}"},
+		// A ':' opens a text directive, so ":b" is not one plain-text node
+		// but a nested TextDirective — which is exactly why the id charset
+		// excludes it: there is no single text node to strip. ast.PlainText
+		// now reconstructs an unregistered directive's literal form (":b"),
+		// so the un-stripped heading text comes back whole.
+		{"colon in id", "## T {#a:b}\n", "", "T {#a:b}"},
 		{"leading underscore", "## T {#_a}\n", "", "T {#_a}"},
 		{"inside code span", "## Title `{#c}`\n", "", "Title {#c}"},
 	}
