@@ -67,21 +67,37 @@ func TestBlockAfterNestedListSurvivesReparse(t *testing.T) {
 	})
 }
 
-// A table after a paragraph inside a list item must be blank-separated too:
-// a GFM table cannot interrupt a paragraph, so attached they re-parse as one
-// table whose header is the paragraph's last line — the table's own header
-// slides down into the body. See markdown.blockRunsToBlankLine; only the
-// pairing is new, the rule is the run-on one above.
+// A table after a paragraph inside a list item is blank-separated ONLY when
+// the table's OWN header row is itself delimiter-shaped (e.g. "--"): then
+// the paragraph transformer's split lands one line early, the paragraph's
+// last line is promoted to header, and the table's own header row slides
+// down into the delimiter/body — see markdown.tableHeaderReadsAsDelimiter.
+// A GFM table with an ORDINARY header CAN interrupt a paragraph — goldmark's
+// paragraph transformer and micromark both split at the first delimiter row
+// and keep the table's own header, and prettier writes the two adjacent with
+// no blank between them (the narrower adjacency fix; the earlier, broader
+// claim that "a table cannot interrupt a paragraph" was wrong). See
+// markdown.adjacencyIsUnsafe.
 func TestTableAfterParagraphInAListItemKeepsItsHeader(t *testing.T) {
 	t.Parallel()
 	runListRoundTrips(t, []listRoundTrip{
 		{
 			// The fuzz repro: the item's blocks are a code block, a
 			// paragraph and a table, and nothing in the item's spread
-			// asked for the blank the table needs.
-			name: "table after a paragraph",
+			// asked for the blank the table needs. The table's own header
+			// row ("--") is itself delimiter-shaped, which is the real
+			// hazard — the blank is still required.
+			name: "table with a delimiter-shaped header after a paragraph",
 			md:   "*     0\n  0\n\n  --\n--\n0",
 			want: "- ```\n  0\n  ```\n  0\n\n  | -- |\n  | -- |\n  | 0  |\n",
+		},
+		{
+			// An ORDINARY header is safe: goldmark parses this straight
+			// into a separate paragraph and table, and reattaching them
+			// with no blank re-parses identically — matching prettier.
+			name: "table with an ordinary header after a paragraph stays tight",
+			md:   "- a\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n",
+			want: "- a\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n",
 		},
 		{
 			// Blocks that open with their own marker still attach.

@@ -454,19 +454,28 @@ preserve the construct. A named regression test pins each of these:
   name, where a re-derived escape would have separated it. See
   `markdown.needsPunctTrail`, `flanking_directive_test.go` and
   `format_contract_test.go`.
-- **A run-on block inside a list item is blank-separated.** A GFM table
-  runs to the first blank line, and a paragraph does too. A table cannot
-  interrupt a paragraph, so an attached table donates its header row to
-  the paragraph and pushes its own header into the body. A nested list
-  that ends in a paragraph leaves the next block on the content column
-  of the outer item as a lazy continuation. remark emits no blank line
-  in any of these cases and merges the blocks silently: `- - x` plus `y`
-  becomes the one paragraph `x y`. adfast forces the blank line when the
-  following block is a paragraph or a table, the only two blocks that
-  can be absorbed. See `markdown.blockRunsToBlankLine` and
-  `list_nesting_test.go`. The one re-pinned entry in
-  `testdata/directive_fixtures.json` (`- before … after list`) records
-  this against the reference corpus.
+- **A run-on block inside a list item is blank-separated, when the
+  adjacency is actually unsafe.** A GFM table runs to the first blank
+  line, and a paragraph does too. A GFM table CAN interrupt a paragraph
+  with an ordinary header — goldmark's paragraph transformer and
+  micromark both split at the first delimiter row and keep the table's
+  own header, and prettier writes the two adjacent with no blank between
+  them. The narrower real hazard is a table whose OWN header row is
+  itself delimiter-shaped: then the split lands one line early, the
+  paragraph's last line is promoted to header, and the table's own
+  header row slides down into the delimiter/body. A nested list that
+  ends in a paragraph leaves the next block on the content column of the
+  outer item as a lazy continuation, unconditionally unsafe. remark
+  emits no blank line in any of these cases and merges the blocks
+  silently: `- - x` plus `y` becomes the one paragraph `x y`. adfast
+  forces the blank line for the nested-list case and for the
+  delimiter-shaped-header table case — the only two blocks that can be
+  absorbed are a paragraph and a table, and an ordinary-header table
+  attaches tight. See `markdown.adjacencyIsUnsafe`,
+  `markdown.blockRunsToBlankLine` and `list_nesting_test.go`. The one
+  re-pinned entry in `testdata/directive_fixtures.json`
+  (`- before … after list`) records the nested-list case against the
+  reference corpus.
 - **A backslash in a directive label is escaped where it could start an
   escape sequence.** remark writes label text verbatim, so the alt text
   `\!0` round-trips as `!0`, because the re-parse consumes the
