@@ -1,56 +1,50 @@
 package confluence
 
+import (
+	"slices"
+
+	"github.com/pmarschik/adfast"
+)
+
 // CodeLanguages lists every code-block language identifier Confluence
-// Cloud's code block macro accepts, for use with
-// adfast.WithCodeLanguages (see MarkdownOptions, which wires it
-// automatically).
+// Cloud's ADF code block accepts, for use with adfast.WithCodeLanguages
+// (see MarkdownOptions, which wires it automatically).
 //
-// Source: the Confluence Cloud code block macro documentation
-// (https://support.atlassian.com/confluence-cloud/docs/insert-the-code-block-macro/)
-// enumerates the supported languages: ActionScript, AppleScript, Bash,
-// C#, C++, CSS, ColdFusion, Delphi, Diff, Erlang, Groovy, HTML and
-// XML, Java, Java FX, JavaScript, Plain Text, PowerShell, Python,
-// Ruby, SQL, Sass, Scala, and Visual Basic. This is a much smaller set
-// than Jira's editor list (jira.CodeLanguages) — notably no Go, JSON,
-// Kotlin, Rust, TypeScript, or YAML — and also smaller than the
-// Confluence DATA CENTER macro's 80-language list
-// (https://confluence.atlassian.com/doc/code-block-macro-139390.html).
-// The set carries each language's storage-format parameter value (the
-// value of the macro's "language" parameter, as documented across the
-// Data Center macro doc lineage) plus the lowercased display name where
-// the two differ, since adfast.WithCodeLanguages matches fence info
-// strings case-insensitively without alias normalization. Retrieved
-// 2026-07-21.
+// Confluence Cloud's editor renders ADF codeBlock nodes through the code
+// snippet element, whose language picker is the same @atlaskit list
+// Jira's editor uses (adfast.AtlaskitCodeLanguages). MEASURED read-only
+// against ixolit.atlassian.net page 1190100993 on 2026-08-25: the ADF
+// read returned codeBlock language "go" (2 nodes) and "json" (11
+// nodes), neither of which the legacy code block macro's set contains.
+// This set therefore derives from the atlaskit list, not from the macro
+// documentation.
 //
-// Note the distinction: Confluence Cloud's NEW editor renders ADF
-// codeBlock nodes through the code snippet element, whose language
-// picker is the same @atlaskit list Jira's editor uses; this set is
-// the legacy code block macro's, which is what the Cloud macro
-// documentation specifies.
-//
-// Grouped one language per line, storage parameter value leading.
-var CodeLanguages = []string{
-	"actionscript3", "actionscript",
-	"applescript",
-	"bash",
-	"c#", "csharp",
-	"coldfusion",
-	"cpp", "c++",
-	"css",
-	"delphi",
-	"diff",
-	"erl", "erlang",
-	"groovy",
-	"html/xml", "html", "xml",
-	"java",
-	"jfx", "javafx",
-	"js", "javascript",
-	"powershell",
-	"py", "python",
-	"ruby",
-	"sass",
-	"scala",
-	"sql",
-	"text",
-	"vb", "visualbasic",
+// legacyMacroOnlyLanguages carries the two spellings the LEGACY code
+// block macro accepts and the atlaskit picker does not, so that a
+// document authored against the macro keeps encoding without a
+// diagnostic. The remaining 31 macro values are all present in the
+// atlaskit list already. Macro source: the Confluence Cloud code block
+// macro documentation
+// (https://support.atlassian.com/confluence-cloud/docs/insert-the-code-block-macro/),
+// retrieved 2026-07-21, whose set is ActionScript, AppleScript, Bash,
+// C#, C++, CSS, ColdFusion, Delphi, Diff, Erlang, Groovy, HTML and XML,
+// Java, Java FX, JavaScript, Plain Text, PowerShell, Python, Ruby, SQL,
+// Sass, Scala, and Visual Basic — carried here as its storage-format
+// parameter value plus the lowercased display name where the two
+// differ, because adfast.WithCodeLanguages matches fence info strings
+// case-insensitively without alias normalization.
+var legacyMacroOnlyLanguages = []string{
+	"html/xml", // the macro's combined value; atlaskit has html and xml separately
+	"vb",       // the macro's Visual Basic value; atlaskit has vbnet/vb.net/visualbasic
 }
+
+// CodeLanguages is the atlaskit list plus legacyMacroOnlyLanguages: a
+// superset, chosen so a document authored against the legacy macro
+// keeps encoding without a diagnostic while the ADF path's much larger
+// set also passes. See legacyMacroOnlyLanguages for why the macro set
+// is not exported: nothing in this repo renders storage format, so a
+// second exported slice would be dead public API.
+var CodeLanguages = append(
+	slices.Clone(adfast.AtlaskitCodeLanguages),
+	legacyMacroOnlyLanguages...,
+)

@@ -255,15 +255,21 @@ The typed `jira.ExpandMode` constants select the bare-key expansion:
 `RichTextADF` and `RichTextText`, where `InferRichTextFormat` matches
 whatever an existing field holds. `jira.CodeLanguages` is the code-block
 language set of the Jira Cloud editor, for the `WithCodeLanguages` check.
+It is exactly `adfast.AtlaskitCodeLanguages`, the root module's shared
+`@atlaskit` editor language list, which both product submodules derive
+from.
 
 The [`confluence/`](confluence/) submodule bundles the Confluence
 conventions the same way. `confluence.MarkdownOptions(baseURL)` and
 `confluence.RenderOptions()` wire smart links for the page URLs of
 Confluence Cloud: `…/wiki/spaces/KEY/pages/123456789/Title` ⇄ the stable
 `KEY/123456789` key. The mutable title slug is deliberately not part of
-the key. The submodule also ships `confluence.CodeLanguages`, the
-language set of the code block macro of Confluence Cloud, which is a much
-smaller set than the editor list of Jira.
+the key. The submodule also ships `confluence.CodeLanguages`: the same
+`@atlaskit` editor language set as Jira's (Confluence Cloud's ADF code
+snippet element uses the same picker — measured against
+ixolit.atlassian.net page 1190100993 on 2026-08-25), plus the two legacy
+code block macro spellings (`html/xml`, `vb`) the atlaskit list does not
+carry.
 
 `confluence.RepairReadBack(doc, storage)` repairs what a page read
 loses. Confluence converts a page to ADF from its own storage format,

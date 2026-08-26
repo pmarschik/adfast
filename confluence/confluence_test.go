@@ -128,8 +128,11 @@ func TestCodeLanguages_WiredIntoMarkdownOptions(t *testing.T) {
 	if len(diags) != 0 {
 		t.Fatalf("supported languages must not report: %+v", diags)
 	}
-	// Go is in Jira's editor set but NOT in the Confluence macro set.
-	adfast.ToADF(adfast.FromMarkdown("```go\nx\n```\n", opts...), opts...)
+	// A genuinely unknown language still reports. Go is now accepted
+	// (see languages_test.go: TestCodeLanguages_ADFPathLanguages) because
+	// confluence.CodeLanguages derives from the atlaskit editor list the
+	// Confluence Cloud ADF path actually uses, not the legacy macro set.
+	adfast.ToADF(adfast.FromMarkdown("```brainfuck\nx\n```\n", opts...), opts...)
 	if len(diags) != 1 || diags[0].Code != convert.CodeUnsupportedCodeLanguage {
 		t.Fatalf("expected one unsupported-code-language diagnostic: %+v", diags)
 	}
