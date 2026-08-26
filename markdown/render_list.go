@@ -30,6 +30,7 @@ func (r *mdRenderer) renderList(b *strings.Builder, node *ast.List, indent, bull
 	first := true
 	itemIdx := 0
 	var prevItem *ast.ListItem
+	prevGapsInternally := false
 	for idx := range node.Children {
 		item, ok := node.Children[idx].(*ast.ListItem)
 		if !ok {
@@ -38,12 +39,15 @@ func (r *mdRenderer) renderList(b *strings.Builder, node *ast.List, indent, bull
 		// Per-item looseness like prettier: a blank separates two items when
 		// the source had one there (GapAfter) or the previous item contains
 		// blank-separated blocks (Spread). List-level loose covers the
-		// ADF-side "tight" attribute flow.
-		if !first && itemNeedsBlankBefore(loose, prevItem) {
+		// ADF-side "tight" attribute flow. prevGapsInternally covers a third
+		// case Spread cannot see: the previous item was written with a
+		// forced internal gap (see itemGapsInternally).
+		if !first && (itemNeedsBlankBefore(loose, prevItem) || prevGapsInternally) {
 			b.WriteByte('\n')
 		}
 		first = false
 		prevItem = item
+		prevGapsInternally = itemGapsInternally(item, loose, node.PerItemSpread)
 		prefix := bullet + " "
 		if node.Ordered {
 			prefix = orderedItemPrefix(node, start, itemIdx, ordDelim)
@@ -171,6 +175,33 @@ func (r *mdRenderer) renderItemFollowBlock(b *strings.Builder, item *ast.ListIte
 // item (GapAfter), or blank-separated blocks inside it (Spread).
 func itemNeedsBlankBefore(loose bool, prevItem *ast.ListItem) bool {
 	return loose || (prevItem != nil && (prevItem.Spread || prevItem.GapAfter))
+}
+
+// itemGapsInternally reports whether rendering this item writes a blank line
+// between two of its own blocks. The source-derived Spread flag does not see
+// the gaps followBlockNeedsGap forces for re-parse safety, so without this an
+// item is written spread but separated from its successor as if it were
+// tight — and the NEXT parse, which reads the forced blank back as Spread,
+// inserts the separator that was missing. That is what made the render a
+// fixpoint only after TWO passes.
+func itemGapsInternally(item *ast.ListItem, loose, perItemSpread bool) bool {
+	if !perItemSpread {
+		// ADF-sourced lists carry only the list-level tight/loose flag and
+		// separate their items exactly like remark-stringify, which reads
+		// that flag alone. Pinned in testdata/directive_fixtures.json.
+		// Deliberately not fixed there — the ADF render path keeps this
+		// non-fixpoint behavior to preserve remark parity.
+		return false
+	}
+	for i := 1; i < len(item.Children); i++ {
+		if _, isNested := nestedPlainList(item.Children[i]); isNested {
+			continue // a nested list always attaches with a single newline
+		}
+		if followBlockNeedsGap(item, i, loose, perItemSpread) {
+			return true
+		}
+	}
+	return false
 }
 
 // orderedItemPrefix builds an ordered item's marker prefix. remark-stringify

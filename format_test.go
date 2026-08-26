@@ -113,6 +113,43 @@ func TestCharacterReferenceInTextSurvivesAReformat(t *testing.T) {
 	}
 }
 
+// An item the renderer had to break open with a blank line (a paragraph
+// immediately followed by a GFM table, with no source blank between them) is
+// spread when the next parse reads it back, so it needs its separator from
+// the FIRST render. Without it the render was a fixpoint only after two
+// passes: pass 1 wrote the forced internal blank but no separator before the
+// next item; pass 2 read that blank back as Spread and inserted the
+// separator pass 1 owed. Scoped to goldmark-sourced
+// (PerItemSpread) lists only — the ADF path keeps the old non-fixpoint
+// behavior to preserve remark parity, see
+// runListRoundTrips-based tests in list_nesting_test.go for that side.
+func TestForcedItemGapSeparatesTheNextItem(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ name, in, want string }{
+		{
+			"tight list, paragraph then table, no source blank",
+			"- a\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n- b\n",
+			"- a\n\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n\n- b\n",
+		},
+		{
+			"three items, the middle one forces the gap before the next item",
+			"- a\n- b\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n- c\n",
+			"- a\n- b\n\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n\n- c\n",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := fmtMD(tc.in)
+			if got != tc.want {
+				t.Fatalf("first render = %q, want %q", got, tc.want)
+			}
+			if second := fmtMD(got); second != got {
+				t.Fatalf("not idempotent:\n first:  %q\n second: %q", got, second)
+			}
+		})
+	}
+}
+
 // Format mode and the ADF decode must agree on what a canonical inline
 // :media looks like. The default media type ("file") is re-inferred on
 // encode, so neither path writes it — format used to, which left the
