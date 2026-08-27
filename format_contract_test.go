@@ -281,10 +281,14 @@ func TestDirectiveBeforeUnescapedSyntaxIsTerminated(t *testing.T) {
 			want: ":media{}[x]\n",
 		},
 		{
-			// An underscore that opens intraword is left bare too.
+			// The trailing '_' keeps this out of the directive grammar
+			// entirely: the formatter parse hands the renderer one plain
+			// text node, ":media_x_". Written bare it would re-parse as a
+			// directive, so the colon escapes (see markdown.escapesColon)
+			// and no terminator is involved.
 			name: "intraword underscore",
 			md:   ":media_x_",
-			want: ":media_x\\_\n",
+			want: "\\:media_x\\_\n",
 		},
 		{
 			// A space separates the name from the marker; no repair.
@@ -936,14 +940,6 @@ func skipFmtDirectiveTextClasses(doc adf.Doc) (reason string, skip bool) {
 	if docHasColonInInlineLabel(doc) {
 		return "colon in an inline directive label; the reference pipeline is equally unstable", true
 	}
-	// A directive-shaped token inside plain text (":name{…}",
-	// ":name[…]" — often assembled by a soft-break collapse) re-parses
-	// as a text directive and sheds its payload; the reference
-	// pipeline degrades it identically (extends the digit-led rule in
-	// skipRenderedTokenClasses to letter-led names).
-	if docHasDirectiveShapedText(doc) {
-		return "directive-shaped token in text; the reference pipeline is equally unstable", true
-	}
 	return "", false
 }
 
@@ -1292,42 +1288,6 @@ func docHasEmphasisBeforeCode(doc adf.Doc) bool {
 				if adf.HasMark(cur.Marks, "strong") || adf.HasMark(cur.Marks, "em") {
 					return true
 				}
-			}
-		}
-	}
-	return false
-}
-
-// directiveShapedTextRe matches a directive-shaped token inside plain
-// text (see the skip above).
-var directiveShapedTextRe = regexp.MustCompile(`:[A-Za-z][A-Za-z0-9_-]*[\[{]`)
-
-// knownDirectiveTokenRe matches a KNOWN dialect directive name as a
-// bare token — re-parsing promotes it into the typed kind even without
-// label or attributes (":u" -> empty underline, dropped).
-var knownDirectiveTokenRe = regexp.MustCompile(`:(annotation|bg|color|date|emoji|extension|fontSize|media|mention|placeholder|status|sub|sup|u)([^A-Za-z0-9_-]|$)`)
-
-// docHasDirectiveShapedText reports a directive-shaped token in the
-// document's text (adjacent text siblings are joined first — the token
-// may span the boundary a dropped construct left behind).
-func docHasDirectiveShapedText(doc adf.Doc) bool {
-	for _, root := range doc.Content {
-		for n := range adf.Walk(root) {
-			var run strings.Builder
-			for _, child := range adf.NodeContent(n) {
-				// Only plain (non-code) text joins a run: a code span
-				// renders with backtick delimiters between the pieces.
-				if text, ok := child.(*adf.Text); ok && !adf.HasMark(text.Marks, "code") {
-					run.WriteString(text.Text)
-					continue
-				}
-				if directiveShapedTextRe.MatchString(run.String()) || knownDirectiveTokenRe.MatchString(run.String()) {
-					return true
-				}
-				run.Reset()
-			}
-			if directiveShapedTextRe.MatchString(run.String()) || knownDirectiveTokenRe.MatchString(run.String()) {
-				return true
 			}
 		}
 	}

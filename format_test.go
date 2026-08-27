@@ -1,6 +1,48 @@
 package adfast
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/pmarschik/adfast/adf"
+)
+
+// The prettier render must not let directive-shaped prose decay. On the
+// ADF path the text carries no source provenance to fall back on, so an
+// unescaped colon re-parses: a name the dialect registers is promoted and
+// then DROPPED (":status" becomes an empty status node, so "the
+// value:status is set" came back as "the value" + " is set"), ":media"
+// invents a mediaInline node, and even a name nothing registers splits
+// the one text node into three. Prettier itself has no directive grammar
+// and writes none of these escapes, so the escape is a deliberate
+// divergence — see markdown.escapesColon.
+func TestPrettierRenderKeepsDirectiveShapedTextIntact(t *testing.T) {
+	t.Parallel()
+	// Registered names first (the lossy ones), then names the dialect
+	// leaves generic — those keep every character but still resegment.
+	names := []string{"status", "media", "u", "emoji", "date", "scream", "statuses", "x"}
+	for _, name := range names {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			src := map[string]any{
+				"type": "doc", "version": 1,
+				"content": []any{map[string]any{
+					"type": "paragraph",
+					"content": []any{map[string]any{
+						"type": "text", "text": "the value:" + name + " is set",
+					}},
+				}},
+			}
+			md := adfToMD(src, WithPrettierFormat())
+			want, ok := adf.DecodeDocOpts(src, adf.DecodeOptions{})
+			if !ok {
+				t.Fatal("could not decode the source document")
+			}
+			if got, want := marshalDoc(t, mdToADF(md)), marshalDoc(t, want); got != want {
+				t.Errorf("prettier render changed the text\n rendered: %q\n after:    %s\n before:   %s", md, got, want)
+			}
+		})
+	}
+}
 
 // Each case pins FormatMarkdown against measured prettier 3.8 output
 // (--prose-wrap always --print-width 80 --embedded-language-formatting off).
@@ -37,7 +79,13 @@ func TestFormatMarkdown_PrettierParity(t *testing.T) {
 		// which closes the strike right after the code span).
 		{"strike at code boundary does not leak onto trailing text", "~0`0`~!\n", "~~0`0`~~!\n"},
 		{"colon escape preserved", "1\\:yes and https\\://x\n", "1\\:yes and https\\://x\n"},
-		{"bare colon-word stays", "update:scream: here\n", "update:scream: here\n"},
+		// A DELIBERATE divergence from prettier, which has no directive
+		// grammar and leaves this colon bare. Bare, the text re-parses as
+		// a ":scream" directive, so the one text node comes back as three
+		// — and for a name the dialect registers the text is dropped
+		// outright. See markdown.escapesColon and
+		// TestPrettierRenderKeepsDirectiveShapedTextIntact.
+		{"bare colon-word escapes, unlike prettier", "update:scream: here\n", "update\\:scream: here\n"},
 		{"dash escape preserved", "a \\- b\n", "a \\- b\n"},
 		{"literal backslash before letter bare", "use \\App\\Services here\n", "use \\App\\Services here\n"},
 		{"space hard break preserved", "a  \nb\n", "a  \nb\n"},
