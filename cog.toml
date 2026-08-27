@@ -6,6 +6,7 @@
 # - parser     goldmark parser assembly (GFM tweaks, autolinks, strikethrough)
 # - AST      the Markdown AST and goldmark→AST lifting
 # - render     AST→markdown rendering (remark-compatible output)
+# - markdown   markdown/ source-anchored views over an unmodified document
 # - adf        ADF types, codecs, the ADF model
 # - assets     assets/ content-addressed media store + upload/sync
 # - directives the directive dialect (media, panels, smart links, …)
@@ -25,6 +26,7 @@ scopes = [
   "parser",
   "AST",
   "render",
+  "markdown",
   "adf",
   "assets",
   "directives",
