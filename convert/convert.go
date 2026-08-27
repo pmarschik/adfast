@@ -116,6 +116,7 @@ type config struct {
 	mediaAssets           mediaAssetMap
 	resolveMediaAsset     MediaAssetResolver
 	codeLanguages         map[string]bool
+	codeLanguageAliases   map[string]string
 	unsupportedKinds      map[string]bool
 	unsupportedProduct    string
 	noAnchorsProduct      string
@@ -210,8 +211,10 @@ func WithAssetIDResolver(r AssetIDResolver) Option {
 // CodeUnsupportedCodeLanguage). Conversion behavior is unchanged — the
 // language encodes verbatim either way; a code block without a language
 // never reports. Matching is case-insensitive on the fence info string's
-// first word; no alias normalization is applied, so the set should list
-// every accepted alias. An empty set disables the check. Read by ToADF.
+// first word; the set should list every accepted alias, since by default
+// no alias normalization is applied (see WithCanonicalCodeLanguages,
+// which runs before this check when it is configured). An empty set
+// disables the check. Read by ToADF.
 func WithCodeLanguages(langs []string) Option {
 	return func(c *config) {
 		if len(langs) == 0 {
@@ -222,6 +225,41 @@ func WithCodeLanguages(langs []string) Option {
 			set[strings.ToLower(lang)] = true
 		}
 		c.codeLanguages = set
+	}
+}
+
+// WithCanonicalCodeLanguages supplies an alias→canonical map for
+// code-block language tags, keyed by the LOWERCASE alias (see
+// adfast.AtlaskitCodeLanguageAliases, which carries the @atlaskit
+// editor's own picker). ToADF then encodes the canonical spelling: a
+// ```bash fence produces codeBlock language "shell", the identifier the
+// editor writes back for that entry, instead of the alias the author
+// typed. A tag with no entry encodes verbatim, and so does a code block
+// without a language.
+//
+// Canonicalization runs BEFORE the WithCodeLanguages check, so a
+// normalized tag never reports unsupported-code-language; an unknown tag
+// still does.
+//
+// This is the MARKDOWN→ADF direction only, deliberately. The reverse has
+// nothing to normalize — ADF already holds one spelling — and rewriting
+// on read would fight the file. The cost this leaves is real and worth
+// naming: an alias is not recoverable from the ADF, so a document PULLED
+// back from a product that stored the canonical spelling renders
+// ```shell where the author wrote ```bash. What the option buys is that
+// the difference stops being reported as a change, because a diff that
+// canonicalizes the local side the same way (md→ADF→md) sees "shell" on
+// both sides. Do not pair it with a canonical→alias reverse map: that
+// would rewrite an author's genuine ```shell.
+//
+// The map is retained, not copied; do not mutate it afterwards. An empty
+// or nil map leaves conversion unchanged. Read by ToADF.
+func WithCanonicalCodeLanguages(aliases map[string]string) Option {
+	return func(c *config) {
+		if len(aliases) == 0 {
+			return
+		}
+		c.codeLanguageAliases = aliases
 	}
 }
 

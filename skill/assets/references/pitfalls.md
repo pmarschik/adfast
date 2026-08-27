@@ -64,7 +64,8 @@ vocabulary:
   "render this inline" intent is lost. An inline image the asset store
   resolves to a media id is unaffected.
 - `unsupported-code-language` — a fenced code block whose language tag
-  is not in the configured `WithCodeLanguages` set; the language still
+  is not in the configured `WithCodeLanguages` set (after any
+  `WithCanonicalCodeLanguages` normalization); the language still
   encodes verbatim.
 - `unsupported-in-product` — the produced ADF uses a node or mark kind
   the target product does not render, per `WithUnsupportedKinds`
@@ -178,8 +179,8 @@ through unchanged. Express structure with directives instead.
 
 ## Supported code languages
 
-Code-block language tags encode verbatim; `WithCodeLanguages` only
-controls a diagnostic, not the encoding. Configure it with
+Code-block language tags encode verbatim by default; `WithCodeLanguages`
+only controls a diagnostic, not the encoding. Configure it with
 `jira.CodeLanguages` (Jira Cloud's editor list) or
 `confluence.CodeLanguages`. Both products use the same `@atlaskit`
 editor picker, so the two sets are nearly identical;
@@ -188,3 +189,12 @@ block macro spellings `html/xml` and `vb`, which the atlaskit picker
 does not recognize. Unknown languages render as plain, monospaced text
 in the product; the `unsupported-code-language` diagnostic flags them
 at encode time.
+
+The picker accepts several spellings per language and writes back one of
+them, so `` ```bash `` pushes the alias `bash` where the editor
+itself would store `shell`. `WithCanonicalCodeLanguages(jira.CodeLanguageAliases)`
+(or the `confluence` clone) normalizes the alias on the way into ADF —
+encode direction only, opt-in, not wired by `MarkdownOptions`. An
+unmapped tag is left alone, and the render direction never rewrites a
+fence, so a working copy keeps the author's spelling; what a pull from a
+product that stored the canonical spelling brings back is `shell`.

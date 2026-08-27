@@ -15,7 +15,8 @@ import (
 // The common md→adf conversion is ToADF(FromMarkdown(md)); a leading
 // ast.Frontmatter node has no ADF form and drops.
 //
-// Options read: WithSmartLinks, WithCodeLanguages, WithUnsupportedKinds,
+// Options read: WithSmartLinks, WithCodeLanguages,
+// WithCanonicalCodeLanguages, WithUnsupportedKinds,
 // WithPreserveListTightness, WithImageDimsResolver, WithAssetIDResolver,
 // WithExtensions, WithDocTransforms, and WithDiagnostics (colwidths-orphan,
 // decisions-orphan, unresolved-asset, unsupported-code-language,
