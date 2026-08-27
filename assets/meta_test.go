@@ -19,12 +19,15 @@ func mustMeta(t *testing.T, s Store) Metadata {
 	return m
 }
 
-// mustPut stores generated content with no media id.
-func mustPut(t *testing.T, m Metadata, name string, content []byte) string {
+// putName is the suggested name every mustPut call offers the store.
+const putName = "chart.png"
+
+// mustPut stores generated content under putName with no media id.
+func mustPut(t *testing.T, m Metadata, content []byte) string {
 	t.Helper()
-	asset, err := m.Put(name, content)
+	asset, err := m.Put(putName, content)
 	if err != nil {
-		t.Fatalf("Put(%q): %v", name, err)
+		t.Fatalf("Put(%q): %v", putName, err)
 	}
 	return asset.Path
 }
@@ -38,12 +41,12 @@ func TestPut_GeneratedContentIsAStoreSymlink(t *testing.T) {
 	s := mustStore(t, mdDir)
 	content := tinyPNG(t, 5, 6)
 
-	if got := mustPut(t, mustMeta(t, s), "chart.png", content); got != "assets/chart.png" {
+	if got := mustPut(t, mustMeta(t, s), content); got != "assets/chart.png" {
 		t.Errorf("Put path = %q, want assets/chart.png", got)
 	}
 	friendly := filepath.Join(mdDir, "assets", "chart.png")
 	wantSymlink(t, friendly)
-	wantEntryCount(t, filepath.Join(mdDir, "assets", ".store"), 2) // the blob + index.json
+	wantSingleBlob(t, filepath.Join(mdDir, "assets", ".store"))
 
 	// No id yet, so it is on the upload worklist and resolves to nothing.
 	wantPending(t, s, "assets/chart.png")
@@ -53,7 +56,7 @@ func TestPut_GeneratedContentIsAStoreSymlink(t *testing.T) {
 	// file stays the same link and no duplicate blob appears.
 	wantPath(t, mustAssociate(t, s, "", uuidA, "assets/chart.png"), "assets/chart.png")
 	wantSymlink(t, friendly)
-	wantEntryCount(t, filepath.Join(mdDir, "assets", ".store"), 2)
+	wantSingleBlob(t, filepath.Join(mdDir, "assets", ".store"))
 	wantLookup(t, s, "", "assets/chart.png", uuidA)
 	wantPending(t, s)
 }
@@ -70,13 +73,13 @@ func TestPut_IdenticalContentSharesOneRecord(t *testing.T) {
 	for _, doc := range []string{"one", "two"} {
 		docDir := mustMkdir(t, filepath.Join(root, doc))
 		s := mustSplitStore(t, root, docDir, WithStoreDir(".asset-store"))
-		paths = append(paths, mustPut(t, mustMeta(t, s), "chart.png", content))
+		paths = append(paths, mustPut(t, mustMeta(t, s), content))
 		wantSymlink(t, filepath.Join(docDir, "assets", "chart.png"))
 	}
 	if paths[0] != "assets/chart.png" || paths[1] != "assets/chart.png" {
 		t.Errorf("paths = %v, want both assets/chart.png", paths)
 	}
-	wantEntryCount(t, blobs, 2) // one blob for both documents + index.json
+	wantSingleBlob(t, blobs)
 
 	shared := mustSplitStore(t, root, filepath.Join(root, "one"), WithStoreDir(".asset-store"))
 	if got := len(shared.records); got != 1 {
@@ -90,7 +93,7 @@ func TestMeta_RoundTripAndRemoval(t *testing.T) {
 	s := mustStore(t, t.TempDir())
 	m := mustMeta(t, s)
 	content := tinyPNG(t, 1, 1)
-	mustPut(t, m, "chart.png", content)
+	mustPut(t, m, content)
 	hash := ContentHash(content)
 
 	const ns = "diagram"
@@ -149,7 +152,7 @@ func TestMeta_SurvivesAnotherWriter(t *testing.T) {
 	early := mustStore(t, mdDir)
 
 	late := mustStore(t, mdDir)
-	mustPut(t, mustMeta(t, late), "chart.png", content)
+	mustPut(t, mustMeta(t, late), content)
 	value := json.RawMessage(`{"lang":"d2"}`)
 	if err := mustMeta(t, late).SetMeta(hash, "diagram", value); err != nil {
 		t.Fatalf("SetMeta: %v", err)
@@ -174,7 +177,7 @@ func TestMeta_ThroughWrappers(t *testing.T) {
 	s := mustStore(t, mdDir)
 	content := tinyPNG(t, 2, 2)
 	hash := ContentHash(content)
-	mustPut(t, mustMeta(t, s), "chart.png", content)
+	mustPut(t, mustMeta(t, s), content)
 
 	for name, wrapped := range map[string]Store{
 		"ForScope": ForScope(s, "PROJ-1"),

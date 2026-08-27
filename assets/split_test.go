@@ -58,7 +58,7 @@ func TestFSStoreSplit_SharedTruthPerDocView(t *testing.T) {
 	// Download through view A: blob lands in the shared store, the
 	// friendly file next to A's documents, reference path doc-local.
 	wantPath(t, mustAdd(t, viewA, uuidA, "shot.png", tinyPNG(t, 3, 4)), "assets/shot.png")
-	wantEntryCount(t, blobDir, 2) // blob + index.json
+	wantSingleBlob(t, blobDir)
 	wantExists(t, filepath.Join(docA, "assets", "shot.png"))
 
 	// View B resolves the same id through the shared index and
@@ -69,7 +69,7 @@ func TestFSStoreSplit_SharedTruthPerDocView(t *testing.T) {
 	// Identical content added through view B deduplicates in the
 	// shared blob store.
 	mustAdd(t, viewB, uuidB, "copy.png", tinyPNG(t, 3, 4))
-	wantEntryCount(t, blobDir, 2)
+	wantSingleBlob(t, blobDir)
 }
 
 // TestFormat_RewritesReferencesOnLayoutChange: re-rendering markdown

@@ -246,9 +246,11 @@ func wantExists(t *testing.T, path string) {
 	}
 }
 
-// wantEntryCount pins how many entries a physical directory holds.
-func wantEntryCount(t *testing.T, dir string, want int) {
+// wantSingleBlob pins that a blob store holds one blob and nothing but
+// its index beside it — the shape that says content was not duplicated.
+func wantSingleBlob(t *testing.T, dir string) {
 	t.Helper()
+	const want = 2 // the blob + index.json
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read %s: %v", dir, err)

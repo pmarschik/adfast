@@ -248,7 +248,7 @@ func (bareStore) Lookup(string, string) (string, bool)      { return "", false }
 func (bareStore) Assets() map[string]convert.MediaAsset     { return nil }
 func (bareStore) Pending(string) ([]string, error)          { return nil, nil }
 func (bareStore) Load(string) ([]byte, error)               { return nil, os.ErrNotExist }
-func (bareStore) Dims(string) (int, int, bool)              { return 0, 0, false }
+func (bareStore) Dims(string) (width, height int, ok bool)  { return 0, 0, false }
 
 func (bareStore) Add(string, string, string, []byte) (convert.MediaAsset, error) {
 	return convert.MediaAsset{}, os.ErrInvalid

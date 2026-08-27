@@ -427,7 +427,7 @@ func (s *FSStore) Lookup(scope, path string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.reloadIndex()
-	record, ok := s.records[contentHash(content)]
+	record, ok := s.records[hashContent(content)]
 	if !ok {
 		return "", false
 	}
@@ -485,21 +485,21 @@ func (s *FSStore) Add(scope, mediaID, suggestedName string, content []byte) (con
 // id. It returns the content hash the record is keyed by and the friendly
 // name the markdown references. The caller holds the lock and saves.
 func (s *FSStore) store(suggestedName string, content []byte) (hash, name string, err error) {
-	if err := os.MkdirAll(s.blobDir(), 0o750); err != nil {
-		return "", "", fmt.Errorf("create asset store: %w", err)
+	if mkErr := os.MkdirAll(s.blobDir(), 0o750); mkErr != nil {
+		return "", "", fmt.Errorf("create asset store: %w", mkErr)
 	}
-	if err := os.MkdirAll(s.assetsDir(), 0o750); err != nil {
-		return "", "", fmt.Errorf("create assets dir: %w", err)
+	if mkErr := os.MkdirAll(s.assetsDir(), 0o750); mkErr != nil {
+		return "", "", fmt.Errorf("create assets dir: %w", mkErr)
 	}
-	hash = contentHash(content)
+	hash = hashContent(content)
 	storeName := hash + filepath.Ext(sanitizeName(suggestedName))
 	storePath, err := s.securePath(true, storeName)
 	if err != nil {
 		return "", "", err
 	}
 	if _, statErr := os.Stat(storePath); errors.Is(statErr, fs.ErrNotExist) {
-		if err := os.WriteFile(storePath, content, 0o600); err != nil {
-			return "", "", fmt.Errorf("write asset content: %w", err)
+		if writeErr := os.WriteFile(storePath, content, 0o600); writeErr != nil {
+			return "", "", fmt.Errorf("write asset content: %w", writeErr)
 		}
 	}
 
@@ -610,7 +610,7 @@ func (s *FSStore) createFriendly(base, storeName string, content []byte) (string
 			// plain file stays in place (Resolve/Lookup work on plain
 			// files too).
 			if fi.Mode().IsRegular() {
-				if existing, readErr := os.ReadFile(full); readErr == nil && contentHash(existing) == contentHash(content) {
+				if existing, readErr := os.ReadFile(full); readErr == nil && hashContent(existing) == hashContent(content) {
 					return name, nil
 				}
 			}
@@ -675,7 +675,7 @@ func (s *FSStore) Pending(scope string) ([]string, error) {
 		if readErr != nil {
 			continue
 		}
-		if !known[contentHash(content)] {
+		if !known[hashContent(content)] {
 			pending = append(pending, s.refPath(e.Name()))
 		}
 	}
@@ -770,8 +770,9 @@ func sanitizeName(name string) string {
 	return name
 }
 
-// contentHash is the 16-hex-digit sha256 prefix used for store filenames.
-func contentHash(content []byte) string {
+// hashContent returns the 16-hex-digit sha256 prefix used for store
+// filenames. ContentHash is its exported face.
+func hashContent(content []byte) string {
 	sum := sha256.Sum256(content)
 	return hex.EncodeToString(sum[:])[:16]
 }
