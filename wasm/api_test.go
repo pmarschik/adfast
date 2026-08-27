@@ -250,6 +250,49 @@ func TestScanSpans_Corpus(t *testing.T) {
 	t.Logf("scanned %d directive spans across %d corpus documents", total, len(fixtures.Markdown))
 }
 
+// TestScanSpans_GoldenIsUnchanged pins the WIRE OUTPUT of scanSpans, byte
+// for byte, against a capture taken before the walk behind it moved into
+// markdown.Directives.
+//
+// The other tests here check properties, and a property test cannot see the
+// kind of break that matters most for this export: `globalThis.adfast
+// .scanSpans` is a shipped JavaScript surface, so a renamed key, a dropped
+// field, an `[]` where `null` used to be, or a span that shifted by one
+// byte are all breaking changes to somebody else's editor plugin, and every
+// one of them still satisfies "spans are in document order and name a
+// directive".
+//
+// The golden file is therefore not a convenience — it is the contract. When
+// a change here reddens it, the answer is a conversation about a breaking
+// JS change, not a re-record.
+func TestScanSpans_GoldenIsUnchanged(t *testing.T) {
+	data, err := os.ReadFile("testdata/scanspans_golden.json")
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	var rows []struct {
+		Md   string `json:"md"`
+		JSON string `json:"json"`
+	}
+	if err := json.Unmarshal(data, &rows); err != nil {
+		t.Fatalf("unmarshal golden: %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("golden is empty")
+	}
+	for _, r := range rows {
+		got, err := bridgeScanSpans(r.Md)
+		if err != nil {
+			t.Errorf("bridgeScanSpans(%q): %v", r.Md, err)
+			continue
+		}
+		if got != r.JSON {
+			t.Errorf("bridgeScanSpans(%q)\n got %s\nwant %s", r.Md, got, r.JSON)
+		}
+	}
+	t.Logf("compared %d recorded scanSpans payloads", len(rows))
+}
+
 // TestCatalog derives the expected entries from dialect.Registrations()
 // the same way api.go does, but independently: the point is not to prove
 // the two loops agree, it is to prove the catalog is a FUNCTION of the

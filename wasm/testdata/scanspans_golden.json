@@ -1,0 +1,730 @@
+[
+  {
+    "md": "::media[shot.png]{#abc collection height=\"551\" layoutWidth=\"686\" width=\"2308\" widthType=\"pixel\"}\n",
+    "json": "[{\"attrs\":{\"collection\":\"\",\"height\":\"551\",\"id\":\"abc\",\"layoutWidth\":\"686\",\"width\":\"2308\",\"widthType\":\"pixel\"},\"name\":\"media\",\"start\":0,\"end\":96,\"level\":2}]"
+  },
+  {
+    "md": "::media{#g1 collection group=\"true\"}\n::media[b.pdf]{#g2 collection group=\"true\"}\n",
+    "json": "[{\"attrs\":{\"collection\":\"\",\"group\":\"true\",\"id\":\"g1\"},\"name\":\"media\",\"start\":0,\"end\":36,\"level\":2},{\"attrs\":{\"collection\":\"\",\"group\":\"true\",\"id\":\"g2\"},\"name\":\"media\",\"start\":37,\"end\":80,\"level\":2}]"
+  },
+  {
+    "md": "inline :media{#c8387bc1 collection} here\n",
+    "json": "[{\"attrs\":{\"collection\":\"\",\"id\":\"c8387bc1\"},\"name\":\"media\",\"start\":7,\"end\":35,\"level\":1}]"
+  },
+  {
+    "md": "::colwidths[79,320]\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n",
+    "json": "[{\"attrs\":{},\"name\":\"colwidths\",\"start\":0,\"end\":19,\"level\":2}]"
+  },
+  {
+    "md": "::colwidths[10,20]\n\nno table follows\n",
+    "json": "[{\"attrs\":{},\"name\":\"colwidths\",\"start\":0,\"end\":18,\"level\":2}]"
+  },
+  {
+    "md": "::decisions\n\n- use jj for vcs\n- ship **v2**\n",
+    "json": "[{\"attrs\":{},\"name\":\"decisions\",\"start\":0,\"end\":11,\"level\":2}]"
+  },
+  {
+    "md": "- [~] decision one\n- plain bullet\n",
+    "json": "null"
+  },
+  {
+    "md": "- [~]no space stays literal\n",
+    "json": "null"
+  },
+  {
+    "md": "![shot](https://example.com/i.png)\n",
+    "json": "null"
+  },
+  {
+    "md": "![rel](./assets/a.png)\n",
+    "json": "null"
+  },
+  {
+    "md": "text (![x](https://example.com/i.png)) more\n",
+    "json": "null"
+  },
+  {
+    "md": "![shot.png](assets/shot.png)\n",
+    "json": "null"
+  },
+  {
+    "md": "![unknown asset](assets/diagram.png)\n",
+    "json": "null"
+  },
+  {
+    "md": "* + *\n",
+    "json": "null"
+  },
+  {
+    "md": "* ___\n",
+    "json": "null"
+  },
+  {
+    "md": "* 0)  \n  0\n",
+    "json": "null"
+  },
+  {
+    "md": ":::info\ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":19,\"level\":3}]"
+  },
+  {
+    "md": ":::note[Label]\ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"note\",\"start\":0,\"end\":26,\"level\":3}]"
+  },
+  {
+    "md": ":::info[Important Note]\nContent here\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":40,\"level\":3}]"
+  },
+  {
+    "md": ":::info[label with **bold** and `code`]\ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":51,\"level\":3}]"
+  },
+  {
+    "md": ":::warning{#w .cls key=val}\ntext\n:::",
+    "json": "[{\"attrs\":{\"class\":\"cls\",\"id\":\"w\",\"key\":\"val\"},\"name\":\"warning\",\"start\":0,\"end\":36,\"level\":3}]"
+  },
+  {
+    "md": ":::info{key=\"quoted value\"}\ntext\n:::",
+    "json": "[{\"attrs\":{\"key\":\"quoted value\"},\"name\":\"info\",\"start\":0,\"end\":36,\"level\":3}]"
+  },
+  {
+    "md": "::::spoiler\n:::note\ninner\n:::\n::::",
+    "json": "[{\"attrs\":{},\"name\":\"spoiler\",\"start\":0,\"end\":34,\"level\":3},{\"attrs\":{},\"name\":\"note\",\"start\":12,\"end\":29,\"level\":3}]"
+  },
+  {
+    "md": ":::info\n- a\n- b\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":19,\"level\":3}]"
+  },
+  {
+    "md": ":::info\npara one\n\npara two\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":30,\"level\":3}]"
+  },
+  {
+    "md": ":::info\n## heading\n\ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":31,\"level\":3}]"
+  },
+  {
+    "md": ":::custom\nUnknown directive\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"custom\",\"start\":0,\"end\":31,\"level\":3}]"
+  },
+  {
+    "md": ":::info\nunclosed",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":16,\"level\":3}]"
+  },
+  {
+    "md": ":::info\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":11,\"level\":3}]"
+  },
+  {
+    "md": ":::note[Be careful]\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"note\",\"start\":0,\"end\":23,\"level\":3}]"
+  },
+  {
+    "md": ":::info  \ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":21,\"level\":3}]"
+  },
+  {
+    "md": ":::info\ncontent\n:::   ",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":22,\"level\":3}]"
+  },
+  {
+    "md": ":::info\ncontent\n  :::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":21,\"level\":3}]"
+  },
+  {
+    "md": "::: info\ncontent\n:::",
+    "json": "null"
+  },
+  {
+    "md": ":::123\ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"123\",\"start\":0,\"end\":18,\"level\":3}]"
+  },
+  {
+    "md": ":::my-name\ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"my-name\",\"start\":0,\"end\":22,\"level\":3}]"
+  },
+  {
+    "md": ":::info junk\ncontent\n:::",
+    "json": "null"
+  },
+  {
+    "md": ":::info[label] junk\ncontent\n:::",
+    "json": "null"
+  },
+  {
+    "md": "para before\n:::info\ncontent\n:::\npara after",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":12,\"end\":31,\"level\":3}]"
+  },
+  {
+    "md": ":::info\ncontent\n::::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":20,\"level\":3}]"
+  },
+  {
+    "md": "::::info\ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":20,\"level\":3}]"
+  },
+  {
+    "md": ":::info\n```go\nx := 1\n```\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":28,\"level\":3}]"
+  },
+  {
+    "md": ":::info\n\u003e quote\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":19,\"level\":3}]"
+  },
+  {
+    "md": ":::info\n  indented content\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":30,\"level\":3}]"
+  },
+  {
+    "md": ":::info\n:::note\ndouble nest same colons\n:::\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":43,\"level\":3},{\"attrs\":{},\"name\":\"note\",\"start\":8,\"end\":43,\"level\":3}]"
+  },
+  {
+    "md": "::card[https://example.com]",
+    "json": "[{\"attrs\":{},\"name\":\"card\",\"start\":0,\"end\":27,\"level\":2}]"
+  },
+  {
+    "md": "::card[PROJ-42]",
+    "json": "[{\"attrs\":{},\"name\":\"card\",\"start\":0,\"end\":15,\"level\":2}]"
+  },
+  {
+    "md": "::name",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":0,\"end\":6,\"level\":2}]"
+  },
+  {
+    "md": "::name{key=val}",
+    "json": "[{\"attrs\":{\"key\":\"val\"},\"name\":\"name\",\"start\":0,\"end\":15,\"level\":2}]"
+  },
+  {
+    "md": "::name[label]{key=val}",
+    "json": "[{\"attrs\":{\"key\":\"val\"},\"name\":\"name\",\"start\":0,\"end\":22,\"level\":2}]"
+  },
+  {
+    "md": "::br",
+    "json": "[{\"attrs\":{},\"name\":\"br\",\"start\":0,\"end\":4,\"level\":2}]"
+  },
+  {
+    "md": "before\n\n::card[x]\n\nafter",
+    "json": "[{\"attrs\":{},\"name\":\"card\",\"start\":8,\"end\":17,\"level\":2}]"
+  },
+  {
+    "md": "before\n::card[x]\nafter",
+    "json": "[{\"attrs\":{},\"name\":\"card\",\"start\":7,\"end\":16,\"level\":2}]"
+  },
+  {
+    "md": ":: name",
+    "json": "null"
+  },
+  {
+    "md": "::name junk",
+    "json": "null"
+  },
+  {
+    "md": "::name[label] junk",
+    "json": "null"
+  },
+  {
+    "md": "::",
+    "json": "null"
+  },
+  {
+    "md": "::name[l1][l2]",
+    "json": "null"
+  },
+  {
+    "md": "pre :name post",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":4,\"end\":9,\"level\":1}]"
+  },
+  {
+    "md": "pre :name[label] post",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":4,\"end\":16,\"level\":1}]"
+  },
+  {
+    "md": "pre :name[label]{key=val} post",
+    "json": "[{\"attrs\":{\"key\":\"val\"},\"name\":\"name\",\"start\":4,\"end\":25,\"level\":1}]"
+  },
+  {
+    "md": ":name at start",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":0,\"end\":5,\"level\":1}]"
+  },
+  {
+    "md": "end :name",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":4,\"end\":9,\"level\":1}]"
+  },
+  {
+    "md": "word:name",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":4,\"end\":9,\"level\":1}]"
+  },
+  {
+    "md": "`code:name`",
+    "json": "null"
+  },
+  {
+    "md": "\\`bisearch:partner-sync-opt-out\\`",
+    "json": "[{\"attrs\":{},\"name\":\"partner-sync-opt-out\",\"start\":10,\"end\":31,\"level\":1}]"
+  },
+  {
+    "md": "a ::inline in text",
+    "json": "null"
+  },
+  {
+    "md": ": lone colon",
+    "json": "null"
+  },
+  {
+    "md": "time 12:30 pm",
+    "json": "[{\"attrs\":{},\"name\":\"30\",\"start\":7,\"end\":10,\"level\":1}]"
+  },
+  {
+    "md": "link:https://example.com/x",
+    "json": "null"
+  },
+  {
+    "md": ":name{#id .class}",
+    "json": "[{\"attrs\":{\"class\":\"class\",\"id\":\"id\"},\"name\":\"name\",\"start\":0,\"end\":17,\"level\":1}]"
+  },
+  {
+    "md": ":name[]",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":0,\"end\":7,\"level\":1}]"
+  },
+  {
+    "md": "text ::: text",
+    "json": "null"
+  },
+  {
+    "md": ":smile:",
+    "json": "null"
+  },
+  {
+    "md": "see :smile: for details",
+    "json": "null"
+  },
+  {
+    "md": ":Name",
+    "json": "[{\"attrs\":{},\"name\":\"Name\",\"start\":0,\"end\":5,\"level\":1}]"
+  },
+  {
+    "md": ":name-x_y",
+    "json": "[{\"attrs\":{},\"name\":\"name-x_y\",\"start\":0,\"end\":9,\"level\":1}]"
+  },
+  {
+    "md": ":name:other",
+    "json": "[{\"attrs\":{},\"name\":\"other\",\"start\":5,\"end\":11,\"level\":1}]"
+  },
+  {
+    "md": ":name[label with _em_] rest",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":0,\"end\":22,\"level\":1}]"
+  },
+  {
+    "md": "Use `storymd config:list` and jira:search here.",
+    "json": "[{\"attrs\":{},\"name\":\"search\",\"start\":34,\"end\":41,\"level\":1}]"
+  },
+  {
+    "md": ":name- rest",
+    "json": "null"
+  },
+  {
+    "md": ":a- b",
+    "json": "null"
+  },
+  {
+    "md": ":name_ b",
+    "json": "null"
+  },
+  {
+    "md": ":30name x",
+    "json": "[{\"attrs\":{},\"name\":\"30name\",\"start\":0,\"end\":7,\"level\":1}]"
+  },
+  {
+    "md": "12:30:45 chain",
+    "json": "[{\"attrs\":{},\"name\":\"45\",\"start\":5,\"end\":8,\"level\":1}]"
+  },
+  {
+    "md": "(:name) paren",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":1,\"end\":6,\"level\":1}]"
+  },
+  {
+    "md": "*:name* emph",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":1,\"end\":6,\"level\":1}]"
+  },
+  {
+    "md": "\\:name escaped",
+    "json": "null"
+  },
+  {
+    "md": "a \\:name escaped mid",
+    "json": "null"
+  },
+  {
+    "md": ":::info {key=val}\ncontent\n:::",
+    "json": "null"
+  },
+  {
+    "md": ":::info{}\ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":21,\"level\":3}]"
+  },
+  {
+    "md": "::card [x]",
+    "json": "null"
+  },
+  {
+    "md": ":name [label] detached",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":0,\"end\":5,\"level\":1}]"
+  },
+  {
+    "md": ":::\ncontent\n:::",
+    "json": "null"
+  },
+  {
+    "md": "::name  ",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":0,\"end\":8,\"level\":2}]"
+  },
+  {
+    "md": ":::info[a]{#i}\ncontent\n:::",
+    "json": "[{\"attrs\":{\"id\":\"i\"},\"name\":\"info\",\"start\":0,\"end\":26,\"level\":3}]"
+  },
+  {
+    "md": ":name{key=val}x tail",
+    "json": "[{\"attrs\":{\"key\":\"val\"},\"name\":\"name\",\"start\":0,\"end\":14,\"level\":1}]"
+  },
+  {
+    "md": ":name[lab]x tail",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":0,\"end\":10,\"level\":1}]"
+  },
+  {
+    "md": "x :name[l1] y :other[l2] z",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":2,\"end\":11,\"level\":1},{\"attrs\":{},\"name\":\"other\",\"start\":14,\"end\":24,\"level\":1}]"
+  },
+  {
+    "md": ":::custom\na\n\nb\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"custom\",\"start\":0,\"end\":18,\"level\":3}]"
+  },
+  {
+    "md": ":name[unclosed rest",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":0,\"end\":5,\"level\":1}]"
+  },
+  {
+    "md": ":name{unclosed rest",
+    "json": "[{\"attrs\":{},\"name\":\"name\",\"start\":0,\"end\":5,\"level\":1}]"
+  },
+  {
+    "md": "::name[unclosed",
+    "json": "null"
+  },
+  {
+    "md": "::linkCard[PROJ-42]",
+    "json": "[{\"attrs\":{},\"name\":\"linkCard\",\"start\":0,\"end\":19,\"level\":2}]"
+  },
+  {
+    "md": "::linkCard[https://docs.google.com/spreadsheets/d/xyz]",
+    "json": "[{\"attrs\":{},\"name\":\"linkCard\",\"start\":0,\"end\":54,\"level\":2}]"
+  },
+  {
+    "md": "::linkCard[https://ixolit.atlassian.net/browse/PBP-5]",
+    "json": "[{\"attrs\":{},\"name\":\"linkCard\",\"start\":0,\"end\":53,\"level\":2}]"
+  },
+  {
+    "md": "::linkEmbed[https://example.com/embed]",
+    "json": "[{\"attrs\":{},\"name\":\"linkEmbed\",\"start\":0,\"end\":38,\"level\":2}]"
+  },
+  {
+    "md": "::linkEmbed[https://example.com/embed]{layout=\"wide\" width=\"66.6\"}",
+    "json": "[{\"attrs\":{\"layout\":\"wide\",\"width\":\"66.6\"},\"name\":\"linkEmbed\",\"start\":0,\"end\":66,\"level\":2}]"
+  },
+  {
+    "md": "::linkCard[]",
+    "json": "[{\"attrs\":{},\"name\":\"linkCard\",\"start\":0,\"end\":12,\"level\":2}]"
+  },
+  {
+    "md": "::linkCard[PROJ-42]{junk=1}",
+    "json": "[{\"attrs\":{\"junk\":\"1\"},\"name\":\"linkCard\",\"start\":0,\"end\":27,\"level\":2}]"
+  },
+  {
+    "md": "before\n\n::linkCard[PROJ-42]\n\nafter",
+    "json": "[{\"attrs\":{},\"name\":\"linkCard\",\"start\":8,\"end\":27,\"level\":2}]"
+  },
+  {
+    "md": ":::expand[More details]\ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"expand\",\"start\":0,\"end\":35,\"level\":3}]"
+  },
+  {
+    "md": ":::expand\nuntitled\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"expand\",\"start\":0,\"end\":22,\"level\":3}]"
+  },
+  {
+    "md": ":::expand[Title]\npara one\n\npara two\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"expand\",\"start\":0,\"end\":39,\"level\":3}]"
+  },
+  {
+    "md": "::::expand[Outer]\n:::info\ninner\n:::\n::::",
+    "json": "[{\"attrs\":{},\"name\":\"expand\",\"start\":0,\"end\":40,\"level\":3},{\"attrs\":{},\"name\":\"info\",\"start\":18,\"end\":35,\"level\":3}]"
+  },
+  {
+    "md": ":::expand[label with **bold**]\ncontent\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"expand\",\"start\":0,\"end\":42,\"level\":3}]"
+  },
+  {
+    "md": ":::expand[Title]\n- a\n- b\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"expand\",\"start\":0,\"end\":28,\"level\":3}]"
+  },
+  {
+    "md": ":::expand[Title]\n:::",
+    "json": "[{\"attrs\":{},\"name\":\"expand\",\"start\":0,\"end\":20,\"level\":3}]"
+  },
+  {
+    "md": "~~0~",
+    "json": "null"
+  },
+  {
+    "md": "~0~~",
+    "json": "null"
+  },
+  {
+    "md": "~x~",
+    "json": "null"
+  },
+  {
+    "md": "~~x~~",
+    "json": "null"
+  },
+  {
+    "md": "x~~y~~z",
+    "json": "null"
+  },
+  {
+    "md": "~~a~ b~~",
+    "json": "null"
+  },
+  {
+    "md": "a ~~b~~ c",
+    "json": "null"
+  },
+  {
+    "md": "~~*em*~~",
+    "json": "null"
+  },
+  {
+    "md": "~a~ ~~b~~",
+    "json": "null"
+  },
+  {
+    "md": "~~a~~b~~",
+    "json": "null"
+  },
+  {
+    "md": "w~x~y",
+    "json": "null"
+  },
+  {
+    "md": "\u0026#x61;_\u0026#x62;_",
+    "json": "null"
+  },
+  {
+    "md": "\u0026#x61;_\u0026#x62;c\u0026#x64;_\u0026#x65;",
+    "json": "null"
+  },
+  {
+    "md": "_\u0026#x61;_\u0026#x62;",
+    "json": "null"
+  },
+  {
+    "md": "\u0026#x61;**_b_**\u0026#x63;",
+    "json": "null"
+  },
+  {
+    "md": "a\u0026#x20;b",
+    "json": "null"
+  },
+  {
+    "md": "a\u0026amp;b",
+    "json": "null"
+  },
+  {
+    "md": "a\u0026nbsp;b",
+    "json": "null"
+  },
+  {
+    "md": "\u0026#x0;bad",
+    "json": "null"
+  },
+  {
+    "md": "\u0026notanentity;x",
+    "json": "null"
+  },
+  {
+    "md": "AT\u0026T",
+    "json": "null"
+  },
+  {
+    "md": "- [x] done\n- [ ] todo",
+    "json": "null"
+  },
+  {
+    "md": "- [X] upper",
+    "json": "null"
+  },
+  {
+    "md": "- [x]a",
+    "json": "null"
+  },
+  {
+    "md": "- [x]",
+    "json": "null"
+  },
+  {
+    "md": "- [x] ",
+    "json": "null"
+  },
+  {
+    "md": "* [X][X]",
+    "json": "null"
+  },
+  {
+    "md": "- [x] **b** and `c`",
+    "json": "null"
+  },
+  {
+    "md": "- [x] a\n- plain",
+    "json": "null"
+  },
+  {
+    "md": "- [x] a\n\n- [ ] loose",
+    "json": "null"
+  },
+  {
+    "md": "1. [x] ordered task",
+    "json": "null"
+  },
+  {
+    "md": "- [X] 0\n-",
+    "json": "null"
+  },
+  {
+    "md": "- [X] 0\n+ [X] 0",
+    "json": "null"
+  },
+  {
+    "md": "````0\n```\n````",
+    "json": "null"
+  },
+  {
+    "md": "cc :mention[Patrick Marschik]{#557058:7d0b} please",
+    "json": "[{\"attrs\":{\"id\":\"557058:7d0b\"},\"name\":\"mention\",\"start\":3,\"end\":43,\"level\":1}]"
+  },
+  {
+    "md": ":status[In Progress]{color=\"blue\"}",
+    "json": "[{\"attrs\":{\"color\":\"blue\"},\"name\":\"status\",\"start\":0,\"end\":34,\"level\":1}]"
+  },
+  {
+    "md": "warn: :color[red text]{color=\"#bf2600\"}",
+    "json": "[{\"attrs\":{\"color\":\"#bf2600\"},\"name\":\"color\",\"start\":6,\"end\":39,\"level\":1}]"
+  },
+  {
+    "md": "**:color[x]{color=\"#bf2600\"}**",
+    "json": "[{\"attrs\":{\"color\":\"#bf2600\"},\"name\":\"color\",\"start\":2,\"end\":28,\"level\":1}]"
+  },
+  {
+    "md": ":u[underlined]",
+    "json": "[{\"attrs\":{},\"name\":\"u\",\"start\":0,\"end\":14,\"level\":1}]"
+  },
+  {
+    "md": "E=mc:sup[2] and H:sub[2]O",
+    "json": "[{\"attrs\":{},\"name\":\"sup\",\"start\":4,\"end\":11,\"level\":1},{\"attrs\":{},\"name\":\"sub\",\"start\":17,\"end\":24,\"level\":1}]"
+  },
+  {
+    "md": ":bg[highlight]{color=\"#fffae6\"}",
+    "json": "[{\"attrs\":{\"color\":\"#fffae6\"},\"name\":\"bg\",\"start\":0,\"end\":31,\"level\":1}]"
+  },
+  {
+    "md": ":color[has **bold** inside]{color=\"#0747a6\"}",
+    "json": "[{\"attrs\":{\"color\":\"#0747a6\"},\"name\":\"color\",\"start\":0,\"end\":44,\"level\":1}]"
+  },
+  {
+    "md": ":mention[x]",
+    "json": "[{\"attrs\":{},\"name\":\"mention\",\"start\":0,\"end\":11,\"level\":1}]"
+  },
+  {
+    "md": ":status[no color]",
+    "json": "[{\"attrs\":{},\"name\":\"status\",\"start\":0,\"end\":17,\"level\":1}]"
+  },
+  {
+    "md": "::include{path=a.md}\n",
+    "json": "[{\"attrs\":{\"path\":\"a.md\"},\"name\":\"include\",\"start\":0,\"end\":20,\"level\":2}]"
+  },
+  {
+    "md": "::include{path=\"a b.md\"}\n",
+    "json": "[{\"attrs\":{\"path\":\"a b.md\"},\"name\":\"include\",\"start\":0,\"end\":24,\"level\":2}]"
+  },
+  {
+    "md": "::include{path='a.md' #x .c .d flag}\n",
+    "json": "[{\"attrs\":{\"class\":\"c d\",\"flag\":\"\",\"id\":\"x\",\"path\":\"a.md\"},\"name\":\"include\",\"start\":0,\"end\":36,\"level\":2}]"
+  },
+  {
+    "md": ":::info\nbody\n:::\n",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":16,\"level\":3}]"
+  },
+  {
+    "md": ":::info[Label]{#id}\nbody\n:::\n",
+    "json": "[{\"attrs\":{\"id\":\"id\"},\"name\":\"info\",\"start\":0,\"end\":28,\"level\":3}]"
+  },
+  {
+    "md": ":::info\nunclosed\n",
+    "json": "[{\"attrs\":{},\"name\":\"info\",\"start\":0,\"end\":17,\"level\":3}]"
+  },
+  {
+    "md": "text :status[Done]{color=green} tail\n",
+    "json": "[{\"attrs\":{\"color\":\"green\"},\"name\":\"status\",\"start\":5,\"end\":31,\"level\":1}]"
+  },
+  {
+    "md": "\u003e ::include{path=a.md}\n",
+    "json": "[{\"attrs\":{\"path\":\"a.md\"},\"name\":\"include\",\"start\":2,\"end\":22,\"level\":2}]"
+  },
+  {
+    "md": "- ::include{path=a.md}\n",
+    "json": "[{\"attrs\":{\"path\":\"a.md\"},\"name\":\"include\",\"start\":2,\"end\":22,\"level\":2}]"
+  },
+  {
+    "md": "  ::include{path=a.md}  \n",
+    "json": "[{\"attrs\":{\"path\":\"a.md\"},\"name\":\"include\",\"start\":0,\"end\":24,\"level\":2}]"
+  },
+  {
+    "md": ":::a\n:::b\nx\n:::\n:::\n",
+    "json": "[{\"attrs\":{},\"name\":\"a\",\"start\":0,\"end\":15,\"level\":3},{\"attrs\":{},\"name\":\"b\",\"start\":5,\"end\":15,\"level\":3}]"
+  },
+  {
+    "md": "```\n::include{path=a.md}\n```\n",
+    "json": "null"
+  },
+  {
+    "md": ":status[:status[inner]]{a=b}\n",
+    "json": "[{\"attrs\":{},\"name\":\"status\",\"start\":0,\"end\":22,\"level\":1}]"
+  },
+  {
+    "md": "::include{}\n",
+    "json": "[{\"attrs\":{},\"name\":\"include\",\"start\":0,\"end\":11,\"level\":2}]"
+  },
+  {
+    "md": "::include\n",
+    "json": "[{\"attrs\":{},\"name\":\"include\",\"start\":0,\"end\":9,\"level\":2}]"
+  },
+  {
+    "md": "🎉 :status[x]{a=b}\n",
+    "json": "[{\"attrs\":{\"a\":\"b\"},\"name\":\"status\",\"start\":3,\"end\":18,\"level\":1}]"
+  },
+  {
+    "md": "Héllo :status[Ready]{color=\"green\"} 🐝 :date[2026-04-12] end\n",
+    "json": "[{\"attrs\":{\"color\":\"green\"},\"name\":\"status\",\"start\":6,\"end\":35,\"level\":1},{\"attrs\":{},\"name\":\"date\",\"start\":39,\"end\":56,\"level\":1}]"
+  },
+  {
+    "md": "",
+    "json": "null"
+  },
+  {
+    "md": "::::x\n:::y\nz\n:::\n::::\n",
+    "json": "[{\"attrs\":{},\"name\":\"x\",\"start\":0,\"end\":21,\"level\":3},{\"attrs\":{},\"name\":\"y\",\"start\":6,\"end\":16,\"level\":3}]"
+  },
+  {
+    "md": ":::note\n:::info\ndeep\n:::\n:::\n",
+    "json": "[{\"attrs\":{},\"name\":\"note\",\"start\":0,\"end\":24,\"level\":3},{\"attrs\":{},\"name\":\"info\",\"start\":8,\"end\":24,\"level\":3}]"
+  }
+]

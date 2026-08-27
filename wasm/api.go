@@ -56,10 +56,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	directive "github.com/pmarschik/goldmark-directive"
-	gast "github.com/yuin/goldmark/ast"
-	"github.com/yuin/goldmark/text"
-
 	adfast "github.com/pmarschik/adfast"
 	"github.com/pmarschik/adfast/adf"
 	"github.com/pmarschik/adfast/confluence"
@@ -466,67 +462,37 @@ func (o Options) expandMode() (jira.ExpandMode, error) {
 // Offsets in the returned spans are UTF-16 code units, not bytes — see
 // Span for why the conversion happens here.
 //
+// It is markdown.Directives with the offsets converted, and there is no
+// walk of its own here: the extent rule (whole marker line for a leaf,
+// opening fence through closing fence for a container, and the fallback an
+// unclosed container takes) is documented on markdown.Directive, and a
+// directive nested inside a TEXT directive's label is left out there for
+// the reason given there.
+//
 // The parse is the same goldmark assembly the conversion path uses, so
 // what ScanSpans reports as a directive is exactly what ToADF will treat
-// as one. Directives nested inside a TEXT directive's label are not
-// reported: goldmark parses a label against its own detached source, so
-// their offsets do not refer to md.
+// as one.
+//
+// The per-attribute spans markdown.Directive also carries are deliberately
+// NOT part of this payload: the JSON shape here is a shipped surface, and
+// widening it is a separate decision from lifting the walk.
+//
+// The parse behind it is the GUARDED one every markdown.Source view uses,
+// so a source that makes goldmark panic yields spans over a normalized copy
+// instead of taking the export down. That is the same footing codeSpans,
+// headings, and images already stand on.
 func ScanSpans(md string) []Span {
-	src := []byte(md)
-	tree := markdown.NewParser().Parse(text.NewReader(src))
-	spans := collectSpans(tree, len(src))
+	// nil rather than a preallocated slice: a document with no directives
+	// has always encoded as `null`, and that is a shipped shape.
+	var spans []Span
+	for _, d := range markdown.Directives([]byte(md)) {
+		spans = append(spans, Span{
+			Start: d.Span.Start, End: d.Span.Stop,
+			Level: int(d.Level), Name: d.Name, Attrs: attrsOf(d.Attrs),
+		})
+	}
 	toUTF16(md, spans, func(s *Span) []*int { return []*int{&s.Start, &s.End} })
 	return spans
-}
-
-// containerEnd resolves a container directive's full extent.
-// ContainerDirective.Span covers the OPENING FENCE LINE ONLY — the block's
-// end is not known when it opens — so the extent ends at the matching
-// CloseFence, which the parser emits as the container's next sibling. An
-// unclosed container emits no CloseFence at all (a real input while the
-// user is still typing the block), and falls back to the enclosing extent.
-func containerEnd(cd *directive.ContainerDirective, fallback int) int {
-	if fence, ok := cd.NextSibling().(*directive.CloseFence); ok {
-		return fence.Span.Stop
-	}
-	return fallback
-}
-
-// collectSpans walks the goldmark tree in document order and emits one
-// span per directive node, with BYTE offsets. enclosingEnd is the extent
-// a container nested here falls back to when it is unclosed — the source
-// length at the top level.
-//
-// The traversal is written out rather than delegated to gast.Walk because
-// it threads that fallback down the tree, and because a text directive's
-// label is parsed against its own detached source: goldmark keeps those
-// inlines off the node's child list, so they are never reached here and
-// their offsets (which do not refer to this source) can never leak out.
-func collectSpans(n gast.Node, enclosingEnd int) []Span {
-	var out []Span
-	for c := n.FirstChild(); c != nil; c = c.NextSibling() {
-		childEnd := enclosingEnd
-		switch v := c.(type) {
-		case *directive.ContainerDirective:
-			childEnd = containerEnd(v, enclosingEnd)
-			out = append(out, Span{
-				Start: v.Span.Start, End: childEnd,
-				Level: LevelContainer, Name: v.Name, Attrs: attrsOf(v.Attrs),
-			})
-		case *directive.LeafDirective:
-			out = append(out, Span{
-				Start: v.Span.Start, End: v.Span.Stop,
-				Level: LevelLeaf, Name: v.Name, Attrs: attrsOf(v.Attrs),
-			})
-		case *directive.TextDirective:
-			out = append(out, Span{
-				Start: v.Span.Start, End: v.Span.Stop,
-				Level: LevelText, Name: v.Name, Attrs: attrsOf(v.Attrs),
-			})
-		}
-		out = append(out, collectSpans(c, childEnd)...)
-	}
-	return out
 }
 
 // attrsOf normalizes a directive's attribute map so the JSON always
