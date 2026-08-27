@@ -401,8 +401,27 @@ func (r *mdRenderer) escapeAngle(s string, i int, nextLead byte) bool {
 // directive node), so it also covers digit-led names — goldmark-directive
 // parses those — and the label's first character, which has no previous
 // character but does follow the '[' the renderer just wrote.
+//
+// The rule holds in prettier mode too, a deliberate divergence from
+// prettier itself (which has no directive grammar and so never writes
+// this escape). Without it the prettier render is LOSSY on the ADF path,
+// where text carries no source provenance to fall back on: the ADF text
+// "the value:status is set" was emitted bare, re-parsed into an empty
+// :status the dialect then dropped, and came back as "the value" +
+// " is set". A name the dialect does NOT register loses no characters
+// but still splits the one text node into three, and ":media" invents a
+// mediaInline node. Measured on all three; see
+// TestPrettierRenderKeepsDirectiveShapedTextIntact.
 func (r *mdRenderer) escapesColon(s string, i int, nextLead byte, st *inlineContext) bool {
-	if !st.colons || r.cfg.prettierText {
+	if !st.colons {
+		return false
+	}
+	// A literal backslash the prettier path has just written BARE is a
+	// preserved source escape (see PreservedEscapes) and already escapes
+	// this colon; a second one would render the author's "\:" as a
+	// literal backslash. In remark mode that backslash goes out doubled,
+	// so the colon after it still needs its own escape.
+	if r.cfg.prettierText && i > 0 && s[i-1] == '\\' && !r.escapeBackslash(s, i-1, nextLead) {
 		return false
 	}
 	next := nextLead

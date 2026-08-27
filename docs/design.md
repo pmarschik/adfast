@@ -591,6 +591,21 @@ idempotence. Both run over the fixture corpus and as the
 `FuzzFormatSemanticsPreserved` target, which has its own documented skip
 classes.
 
+One escape rule deliberately does **not** follow prettier: the directive
+colon. Prettier has no directive grammar, so it leaves `value:status`
+bare, and prettier mode used to do the same. The md → md path never
+noticed, because the source escapes ride through on `Raw`. The ADF → md
+path carries no such provenance, and there the bare colon is lossy —
+`:status`, `:u`, `:emoji` and `:date` re-parse into an empty typed node
+that the dialect then drops, taking the surrounding characters with it;
+`:media` invents a `mediaInline`; and a name nothing registers still
+splits one text node into three. `markdown.escapesColon` therefore
+applies the remark rule in both modes, skipping only a colon that a
+preserved source escape already covers. See
+`TestPrettierRenderKeepsDirectiveShapedTextIntact` and the two pins that
+move with it in `TestFormatMarkdown_PrettierParity` and
+`TestDirectiveBeforeUnescapedSyntaxIsTerminated`.
+
 ### A single normalized AST
 
 Canonicalization of the pivot AST lives in one place: `convert.Normalize`,
