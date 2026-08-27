@@ -23,6 +23,14 @@ Use Conventional Commits. No other form is permitted:
 Types: feat, fix, refactor, build, ci, chore, docs, style, perf, test.
 Scopes: `cog.toml` defines them.
 
+Never cite an issue tracker ID in a commit message or a source comment.
+This repository is public; the trackers that drive the work on it are
+not, so an ID like `storysmith-md-oncj` is an opaque token to every
+reader outside one machine. Write the reason instead — the measurement,
+the failing input, the name of the test that pins it. Referring to
+storysmith-md as a consumer by name is fine; citing its issue IDs is
+not.
+
 ### API Stability
 
 This is a public Go library. storysmith-md and future Confluence tooling
