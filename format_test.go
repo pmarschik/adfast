@@ -30,6 +30,12 @@ func TestFormatMarkdown_PrettierParity(t *testing.T) {
 		{"boundary underscore escaped", "trail_ word\n", "trail\\_ word\n"},
 		{"tilde escape preserved", "requires \\~51 pages\n", "requires \\~51 pages\n"},
 		{"bare tilde stays bare", "requires ~51 pages\n", "requires ~51 pages\n"},
+		// The strike run ends right at a code span, and
+		// unmarked text follows immediately. The re-inferred strike mark
+		// used to leak past the code span onto that trailing "!" (measured
+		// against remark-parse 11 + remark-stringify 11 + remark-gfm 4,
+		// which closes the strike right after the code span).
+		{"strike at code boundary does not leak onto trailing text", "~0`0`~!\n", "~~0`0`~~!\n"},
 		{"colon escape preserved", "1\\:yes and https\\://x\n", "1\\:yes and https\\://x\n"},
 		{"bare colon-word stays", "update:scream: here\n", "update:scream: here\n"},
 		{"dash escape preserved", "a \\- b\n", "a \\- b\n"},

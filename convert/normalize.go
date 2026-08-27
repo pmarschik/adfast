@@ -158,9 +158,12 @@ var fmtAtomSpanOps = spanOps[fmtAtom]{
 }
 
 // regroupAtoms re-infers marks across code spans and regroups a flat atom
-// run into canonical strong/em/delete nesting.
+// run into canonical strong/em/delete nesting. The parsed tree's marks are
+// exact (this is not a lossy ADF decode), so the forward inference stops
+// at the code span itself rather than reaching into a genuinely unmarked
+// sibling — see inferAfterCode's lax parameter.
 func regroupAtoms(atoms []fmtAtom) []ast.Node {
-	inferAcrossCode(atoms, fmtAtomSpanOps)
+	inferAcrossCode(atoms, fmtAtomSpanOps, false)
 	return groupSpans(joinTextAtoms(atoms), fmtAtomSpanOps, openMarks{})
 }
 
