@@ -24,6 +24,11 @@ func main() {
 				return bridgeCodeSpans(stringArg(args, 0))
 			})
 		}),
+		"headings": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			return bridgeGuard(func() (string, error) {
+				return bridgeHeadings(stringArg(args, 0))
+			})
+		}),
 		"catalog": js.FuncOf(func(_ js.Value, _ []js.Value) any {
 			return bridgeGuard(bridgeCatalog)
 		}),

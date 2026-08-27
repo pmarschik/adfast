@@ -33,6 +33,7 @@ Ship `adfast.wasm` together with `wasm_exec.js`.
 globalThis.adfast = {
   scanSpans(md),          // JSON [{start, end, level, name, attrs}]
   codeSpans(md),          // JSON [{start, end}]
+  headings(md),           // JSON [{start, end, textStart, textEnd, level}]
   catalog(),              // JSON [{name, level, kind, decodedByCore}]
   toADF(md, opts),        // ADF JSON
   toMarkdown(adf, opts),  // markdown text
@@ -76,7 +77,7 @@ to the JS API.
 ### Span offsets are UTF-16 code units, not bytes
 
 Every export that reports a span returns each offset in **UTF-16 code
-units** — `scanSpans` and `codeSpans` alike. That is the
+units** — `scanSpans`, `codeSpans`, and `headings` alike. That is the
 unit CodeMirror 6, the DOM, and the `String` type of JavaScript index
 by. The offsets are directly usable as CodeMirror positions, and
 `md.slice(span.start, span.end)` gives the source text of the directive.
@@ -124,6 +125,28 @@ directions — a closing fence carrying an info string does _not_ close its
 block, and four-space content inside a blockquoted list item _is_ code —
 and an editor integration that guesses wrong offers completions inside a
 documented example.
+
+### `headings()` is the parser's verdict on what is a heading
+
+`headings(md)` returns every heading — ATX (`## Title`) and setext
+(`Title` over `-----`) alike — in document order:
+
+```js
+{ start: 0, end: 12, textStart: 3, textEnd: 11, level: 2 }
+```
+
+`start`/`end` cover **whole lines**, the same rule `codeSpans` follows:
+from the first byte of the line the heading opens on, through the
+newline of the line it ends on — for a setext heading, its underline
+line. `textStart`/`textEnd` are **tight**: the `#` markers, the padding,
+an ATX heading's optional closing `###` run, and the setext underline
+are all outside them, so `md.slice(textStart, textEnd)` is the heading's
+raw written text with its inline markup intact and nothing transformed.
+A heading with no text at all (`#`) reports `textStart === textEnd`.
+
+A `#` line inside a code block is not a heading and is not reported, and
+neither is `#no-space`, which CommonMark reads as a paragraph. A setext
+heading is one, which an ATX-only regexp never sees.
 
 ### `catalog()` is the semantic half of `scanSpans`
 

@@ -58,7 +58,7 @@ go.run(instance); // never resolves: main() parks on `select {}`
 const booted = performance.now();
 
 check("globalThis.adfast is installed", typeof globalThis.adfast === "object");
-for (const name of ["scanSpans", "codeSpans", "catalog", "toADF", "toMarkdown", "diagnostics"]) {
+for (const name of ["scanSpans", "codeSpans", "headings", "catalog", "toADF", "toMarkdown", "diagnostics"]) {
   check(`adfast.${name} is a function`, typeof globalThis.adfast?.[name] === "function");
 }
 if (failures > 0) {
@@ -66,7 +66,7 @@ if (failures > 0) {
   process.exit(1);
 }
 
-const { scanSpans, codeSpans, catalog, toADF, toMarkdown, diagnostics } = globalThis.adfast;
+const { scanSpans, codeSpans, headings, catalog, toADF, toMarkdown, diagnostics } = globalThis.adfast;
 
 // --- scanSpans ------------------------------------------------------------
 // The accented letter and the emoji are the point: the offsets must index
@@ -121,6 +121,27 @@ const { scanSpans, codeSpans, catalog, toADF, toMarkdown, diagnostics } = global
 {
   const spans = JSON.parse(value("codeSpans on prose", codeSpans("just `inline` prose\n")) ?? "null");
   check("codeSpans returns an array when there is no code", Array.isArray(spans) && spans.length === 0, JSON.stringify(spans));
+}
+
+// --- headings -------------------------------------------------------------
+// Whole-line block extents, tight text extents, and the UTF-16 contract.
+{
+  const md = "Héllo 🐝\n\n## Séction ##\n\n```\n# not a heading\n```\n";
+  const hs = JSON.parse(value("headings returns JSON", headings(md)) ?? "[]");
+  check("headings found the one real heading", hs.length === 1, JSON.stringify(hs));
+  check("heading block extent covers the whole line", md.slice(hs[0]?.start, hs[0]?.end) === "## Séction ##\n", md.slice(hs[0]?.start, hs[0]?.end));
+  check("heading text extent is tight", md.slice(hs[0]?.textStart, hs[0]?.textEnd) === "Séction", md.slice(hs[0]?.textStart, hs[0]?.textEnd));
+  check("headings report the level", hs[0]?.level === 2, hs[0]?.level);
+}
+{
+  const md = "Title\n=====\n";
+  const hs = JSON.parse(value("headings on a setext heading", headings(md)) ?? "[]");
+  check("a setext heading covers its underline", md.slice(hs[0]?.start, hs[0]?.end) === md, JSON.stringify(hs));
+  check("a setext heading text is the first line", md.slice(hs[0]?.textStart, hs[0]?.textEnd) === "Title", JSON.stringify(hs));
+}
+{
+  const hs = JSON.parse(value("headings on prose", headings("just prose\n")) ?? "null");
+  check("headings returns an array when there are none", Array.isArray(hs) && hs.length === 0, JSON.stringify(hs));
 }
 
 // --- catalog --------------------------------------------------------------

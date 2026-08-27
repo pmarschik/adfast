@@ -80,7 +80,9 @@ func (ss Spans) Overlaps(s Span) bool {
 // documents it as source-independent, and a tree built from ADF has no
 // source at all. Positions live at the goldmark layer, which is this one.
 //
-// A Source is read-only after NewSource and safe for concurrent use.
+// A Source is immutable as a document but NOT safe for concurrent use:
+// every view memoizes on its first call. Parse once per goroutine, or
+// call the views before sharing.
 // The field order is the one govet's fieldalignment wants, not the reading
 // order.
 type Source struct {
@@ -92,10 +94,14 @@ type Source struct {
 	src []byte
 	// code memoizes CodeSpans.
 	code Spans
+	// headings memoizes Headings.
+	headings []Heading
 	// same backs Verbatim.
 	same bool
 	// codeDone guards code, which is legitimately empty for most documents.
 	codeDone bool
+	// headingsDone guards headings, for the same reason.
+	headingsDone bool
 }
 
 // NewSource parses src and retains its byte positions. src is expected to
