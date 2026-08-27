@@ -1,10 +1,12 @@
 package confluence
 
 import (
+	"maps"
 	"slices"
 	"testing"
 
 	"github.com/pmarschik/adfast"
+	"github.com/pmarschik/adfast/adf"
 	"github.com/pmarschik/adfast/convert"
 )
 
@@ -77,5 +79,46 @@ func TestCodeLanguages_KeepsLegacyMacroSpellings(t *testing.T) {
 	diags := encodeDiagnostics(t, "```vb\nDim x\n```\n")
 	if len(diags) != 0 {
 		t.Errorf("legacy macro spelling %q must not report: %+v", "vb", diags)
+	}
+}
+
+// TestCodeLanguageAliases_MatchesAtlaskitMap locks the canonicalization
+// map to the shared atlaskit one — the code snippet element uses that
+// picker — and pins the deliberate exclusion of the two legacy macro
+// spellings, which have no picker entry to canonicalize to.
+func TestCodeLanguageAliases_MatchesAtlaskitMap(t *testing.T) {
+	if !maps.Equal(CodeLanguageAliases, adfast.AtlaskitCodeLanguageAliases) {
+		t.Fatal("confluence.CodeLanguageAliases diverges from adfast.AtlaskitCodeLanguageAliases")
+	}
+	for _, lang := range legacyMacroOnlyLanguages {
+		if got, ok := CodeLanguageAliases[lang]; ok {
+			t.Errorf("legacy macro spelling %q must have no canonical entry, got %q", lang, got)
+		}
+	}
+}
+
+// TestCodeLanguageAliases_EncodesCanonicalLanguage is the acceptance case
+// through the Confluence bundle, plus the pass-through it must not
+// break: a ```bash fence encodes as "shell" once the caller opts in,
+// while a legacy macro spelling keeps its own text.
+func TestCodeLanguageAliases_EncodesCanonicalLanguage(t *testing.T) {
+	opts := append(MarkdownOptions(""), adfast.WithCanonicalCodeLanguages(CodeLanguageAliases))
+	for _, tc := range []struct{ fence, want string }{
+		{"bash", "shell"},
+		{"vb", "vb"},
+		{"html/xml", "html/xml"},
+	} {
+		doc := adfast.ToADF(adfast.FromMarkdown("```"+tc.fence+"\nx\n```\n", opts...), opts...)
+		got := ""
+		for _, top := range doc.Content {
+			for n := range adf.Walk(top) {
+				if cb, ok := n.(*adf.CodeBlock); ok {
+					got = cb.Language
+				}
+			}
+		}
+		if got != tc.want {
+			t.Errorf("fence %q encoded language %q, want %q", tc.fence, got, tc.want)
+		}
 	}
 }

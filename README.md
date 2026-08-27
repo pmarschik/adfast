@@ -257,7 +257,10 @@ whatever an existing field holds. `jira.CodeLanguages` is the code-block
 language set of the Jira Cloud editor, for the `WithCodeLanguages` check.
 It is exactly `adfast.AtlaskitCodeLanguages`, the root module's shared
 `@atlaskit` editor language list, which both product submodules derive
-from.
+from. `jira.CodeLanguageAliases` (and `confluence.CodeLanguageAliases`)
+is the companion alias → canonical map for
+`WithCanonicalCodeLanguages`; see
+[Canonical code-block languages](#canonical-code-block-languages).
 
 The [`confluence/`](confluence/) submodule bundles the Confluence
 conventions the same way. `confluence.MarkdownOptions(baseURL)` and
@@ -398,6 +401,51 @@ such as a single batched asset upload, therefore happens before anything
 encodes. `pipe.ADFBytesToMarkdown(v)` decodes raw ADF JSON, or any
 decoded value, first. The free primitives stay as sugar for a one-off
 call.
+
+### Canonical code-block languages
+
+Atlassian's language picker accepts several spellings per language and
+writes back exactly one of them: `bash`, `sh`, `ksh` and `zsh` are all
+accepted, and the editor stores `shell`. So a fence written as
+`` ```bash `` pushes an alias, not the identifier the picker itself
+would produce, and a document the editor has touched comes back spelled
+differently from the one that was sent.
+
+`WithCanonicalCodeLanguages` closes that. It takes an alias → canonical
+map — `adfast.AtlaskitCodeLanguageAliases`, or its `jira` /
+`confluence` clones — and applies it in the **markdown → ADF direction
+only**:
+
+````go
+opts := append(jira.MarkdownOptions(baseURL, jira.ExpandAuto),
+    adfast.WithCanonicalCodeLanguages(jira.CodeLanguageAliases))
+
+doc := adfast.ToADF(adfast.FromMarkdown("```bash\necho hi\n```\n", opts...), opts...)
+// codeBlock language: "shell"
+````
+
+A tag with no entry in the map encodes verbatim, matching is
+case-insensitive, and canonicalization runs **before** the
+`WithCodeLanguages` check, so a normalized alias never reports
+`unsupported-code-language` while an unknown tag still does. The map is
+built from the same pinned upstream source as
+`adfast.AtlaskitCodeLanguages` (see the doc comment in
+`codelanguages.go`), so the two can never disagree about which spellings
+exist.
+
+The direction matters, and the trade is worth stating plainly. The
+render side is untouched: `ToMarkdown` never rewrites a fence, so
+formatting a working copy leaves `` ```bash `` exactly as the author
+typed it. What is **not** recoverable is the alias once it has been
+through ADF — the document holds `shell` and nothing else, so a raw pull
+that overwrites the file writes `` ```shell ``. What the option buys
+is that this stops being reported as a _change_: a diff that
+canonicalizes its local side the same way (md → ADF → md) sees `shell`
+on both sides. Do not pair it with a canonical → alias reverse map;
+that would rewrite an author's genuine `` ```shell ``.
+
+The option is opt-in and `MarkdownOptions` does **not** wire it, because
+it changes the pushed payload.
 
 ## When not to use adfast
 

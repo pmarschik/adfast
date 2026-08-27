@@ -36,6 +36,7 @@ type options struct {
 	unsupportedKind     string
 	unsupportedKinds    []string
 	codeLanguages       []string
+	codeLanguageAliases map[string]string
 	docTransforms       []func(adf.Doc) adf.Doc
 	adfTransforms       []func(adf.Doc) adf.Doc
 	astTransforms       []func(ast.Node)
@@ -93,6 +94,9 @@ func (o *options) appendLinkOptions(out []convert.Option) []convert.Option {
 func (o *options) appendPolicyOptions(out []convert.Option) []convert.Option {
 	if len(o.codeLanguages) > 0 {
 		out = append(out, convert.WithCodeLanguages(o.codeLanguages))
+	}
+	if len(o.codeLanguageAliases) > 0 {
+		out = append(out, convert.WithCanonicalCodeLanguages(o.codeLanguageAliases))
 	}
 	if len(o.unsupportedKinds) > 0 {
 		out = append(out, convert.WithUnsupportedKinds(o.unsupportedKind, o.unsupportedKinds))
@@ -179,6 +183,26 @@ func WithFileCards(f convert.FileCards) Option {
 // prettier-format mode of ToMarkdown.
 func WithCodeLanguages(langs []string) Option {
 	return func(o *options) { o.codeLanguages = append(o.codeLanguages, langs...) }
+}
+
+// WithCanonicalCodeLanguages normalizes a fenced code block's language
+// tag to the host editor's canonical spelling on the way into ADF (see
+// convert.WithCanonicalCodeLanguages): with
+// AtlaskitCodeLanguageAliases, a ```bash fence encodes as codeBlock
+// language "shell" — the identifier Atlassian's own picker writes back —
+// and an unknown tag encodes verbatim. Read by ToADF ONLY: the render
+// direction has nothing to normalize, and ToMarkdown therefore leaves
+// every fence exactly as written, which is what keeps a local file's
+// ```bash intact.
+//
+// The trade this makes is stated in full on convert.WithCanonicalCodeLanguages:
+// the alias does not survive a round trip through a product that stored
+// the canonical spelling, but a diff that canonicalizes both sides stops
+// reporting the difference as a change.
+//
+// A later call replaces an earlier one. Read by ToADF.
+func WithCanonicalCodeLanguages(aliases map[string]string) Option {
+	return func(o *options) { o.codeLanguageAliases = aliases }
 }
 
 // WithUnsupportedKinds declares the ADF node/mark kinds the target

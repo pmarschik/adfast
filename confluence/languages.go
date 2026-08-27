@@ -1,6 +1,7 @@
 package confluence
 
 import (
+	"maps"
 	"slices"
 
 	"github.com/pmarschik/adfast"
@@ -48,3 +49,23 @@ var CodeLanguages = append(
 	slices.Clone(adfast.AtlaskitCodeLanguages),
 	legacyMacroOnlyLanguages...,
 )
+
+// CodeLanguageAliases maps each atlaskit identifier to the spelling
+// Confluence Cloud's ADF code block stores for it, for use with
+// adfast.WithCanonicalCodeLanguages: with it, a ```bash fence encodes
+// language "shell". It is exactly adfast.AtlaskitCodeLanguageAliases —
+// the code snippet element uses the same picker — cloned so a caller
+// that mutates this map cannot reach the shared one.
+//
+// legacyMacroOnlyLanguages is deliberately ABSENT: "html/xml" and "vb"
+// are macro parameter values with no entry in the picker, so there is no
+// canonical identifier to normalize them to and inventing one (vb →
+// visualbasic, say) would put a spelling in the payload that no
+// measurement supports. They stay verbatim, which CodeLanguages already
+// accepts without a diagnostic.
+//
+// MarkdownOptions does NOT wire it: canonicalizing changes the encoded
+// payload, so it stays an explicit choice a caller adds to the bundle.
+// See adfast.WithCanonicalCodeLanguages for what that choice costs on a
+// pull.
+var CodeLanguageAliases = maps.Clone(adfast.AtlaskitCodeLanguageAliases)

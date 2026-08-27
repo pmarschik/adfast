@@ -36,6 +36,7 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 		resolveAssetID:      cfg.resolveAssetID,
 		diagnostics:         cfg.diagnostics,
 		codeLanguages:       cfg.codeLanguages,
+		codeLanguageAliases: cfg.codeLanguageAliases,
 		unsupportedKind:     cfg.unsupportedProduct,
 		unsupportedKinds:    cfg.unsupportedKinds,
 	}
@@ -65,6 +66,7 @@ type astConverter struct {
 	resolveAssetID      AssetIDResolver
 	diagnostics         func(Diagnostic)
 	codeLanguages       map[string]bool
+	codeLanguageAliases map[string]string
 	unsupportedKinds    map[string]bool
 	unsupportedKind     string
 	footnotes           footnoteIndex
@@ -466,16 +468,33 @@ func (v *astBlockVisitor) VisitBlockquote(n *ast.Blockquote) []adf.Node {
 	return singleBlock(&adf.Blockquote{Content: v.c.convertBlocks(n.Children)})
 }
 
-// VisitCode implements ast.Visitor. With WithCodeLanguages configured,
-// a language tag outside the set reports a diagnostic (the language
-// still encodes verbatim).
+// VisitCode implements ast.Visitor. With WithCanonicalCodeLanguages
+// configured, a language tag that is a known alias encodes as its
+// canonical spelling. With WithCodeLanguages configured, a tag outside
+// the set (after that canonicalization) reports a diagnostic — the
+// language still encodes, verbatim.
 func (v *astBlockVisitor) VisitCode(n *ast.Code) []adf.Node {
-	v.c.checkCodeLanguage(n.Lang)
+	lang := v.c.canonicalCodeLanguage(n.Lang)
+	v.c.checkCodeLanguage(lang)
 	var content []adf.Node
 	if n.Value != "" {
 		content = []adf.Node{&adf.Text{Text: n.Value}}
 	}
-	return singleBlock(&adf.CodeBlock{Language: n.Lang, Content: content})
+	return singleBlock(&adf.CodeBlock{Language: lang, Content: content})
+}
+
+// canonicalCodeLanguage resolves a fence's language tag through the
+// configured WithCanonicalCodeLanguages map (keyed lowercase). An
+// unknown tag — and every tag when no map is configured — comes back
+// unchanged, including its original case.
+func (c *astConverter) canonicalCodeLanguage(lang string) string {
+	if lang == "" || c.codeLanguageAliases == nil {
+		return lang
+	}
+	if canonical, ok := c.codeLanguageAliases[strings.ToLower(lang)]; ok {
+		return canonical
+	}
+	return lang
 }
 
 // checkCodeLanguage emits the unsupported-code-language diagnostic for a
