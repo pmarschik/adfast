@@ -75,7 +75,7 @@ func uploadPaths(ctx context.Context, store Store, up Uploader, paths []string) 
 		if loadErr != nil {
 			return nil, loadErr
 		}
-		hash := contentHash(content)
+		hash := hashContent(content)
 		if seen[hash] {
 			continue
 		}

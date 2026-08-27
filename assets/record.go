@@ -52,7 +52,7 @@ type mediaRef struct {
 }
 
 // storeHashRe is the shape of a content hash in the index — the
-// 16-hex-digit sha256 prefix contentHash produces.
+// 16-hex-digit sha256 prefix hashContent produces.
 var storeHashRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 // validRecord vets a record loaded from disk: the key must have the

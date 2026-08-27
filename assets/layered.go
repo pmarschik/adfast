@@ -174,8 +174,8 @@ type layeredMeta struct {
 	layeredStore
 }
 
-// meta yields each layer's metadata face, in order.
-func (l *layeredMeta) meta(yield func(Metadata) bool) {
+// metaLayers yields each layer's metadata face, in order.
+func (l *layeredMeta) metaLayers(yield func(Metadata) bool) {
 	for _, s := range l.layeredStore {
 		m, ok := MetaOf(s)
 		if ok && !yield(m) {
@@ -187,7 +187,7 @@ func (l *layeredMeta) meta(yield func(Metadata) bool) {
 // Put implements Metadata: generated content lands in the first layer
 // that can hold it, like a download.
 func (l *layeredMeta) Put(suggestedName string, content []byte) (convert.MediaAsset, error) {
-	for m := range l.meta {
+	for m := range l.metaLayers {
 		return m.Put(suggestedName, content)
 	}
 	return convert.MediaAsset{}, errors.New("layered store has no metadata layer")
@@ -195,7 +195,7 @@ func (l *layeredMeta) Put(suggestedName string, content []byte) (convert.MediaAs
 
 // Meta implements Metadata: first layer that has the namespace.
 func (l *layeredMeta) Meta(hash, ns string) (json.RawMessage, bool) {
-	for m := range l.meta {
+	for m := range l.metaLayers {
 		if raw, ok := m.Meta(hash, ns); ok {
 			return raw, true
 		}
@@ -207,7 +207,7 @@ func (l *layeredMeta) Meta(hash, ns string) (json.RawMessage, bool) {
 // the write.
 func (l *layeredMeta) SetMeta(hash, ns string, value json.RawMessage) error {
 	var firstErr error
-	for m := range l.meta {
+	for m := range l.metaLayers {
 		err := m.SetMeta(hash, ns, value)
 		if err == nil {
 			return nil
@@ -225,7 +225,7 @@ func (l *layeredMeta) SetMeta(hash, ns string, value json.RawMessage) error {
 // MetaHashes implements Metadata: the sorted union across the layers.
 func (l *layeredMeta) MetaHashes(ns string) []string {
 	var out []string
-	for m := range l.meta {
+	for m := range l.metaLayers {
 		out = append(out, m.MetaHashes(ns)...)
 	}
 	slices.Sort(out)
@@ -234,7 +234,7 @@ func (l *layeredMeta) MetaHashes(ns string) []string {
 
 // HashOf implements Metadata: first layer that can read the path.
 func (l *layeredMeta) HashOf(path string) (string, bool) {
-	for m := range l.meta {
+	for m := range l.metaLayers {
 		if hash, ok := m.HashOf(path); ok {
 			return hash, true
 		}
@@ -244,7 +244,7 @@ func (l *layeredMeta) HashOf(path string) (string, bool) {
 
 // NameOf implements Metadata: first layer that knows the content.
 func (l *layeredMeta) NameOf(hash string) (string, bool) {
-	for m := range l.meta {
+	for m := range l.metaLayers {
 		if name, ok := m.NameOf(hash); ok {
 			return name, true
 		}

@@ -67,7 +67,7 @@ func MetaOf(s Store) (Metadata, bool) {
 // 16-hex-digit sha256 prefix that also names the blob. Exported so a
 // caller can name a record for Meta/SetMeta from the bytes it already
 // holds, without a round trip through the filesystem.
-func ContentHash(content []byte) string { return contentHash(content) }
+func ContentHash(content []byte) string { return hashContent(content) }
 
 // ErrUnknownContent reports metadata addressed to content the store does
 // not hold. Store the content first — a record with metadata and no blob
@@ -162,7 +162,7 @@ func (s *FSStore) HashOf(path string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	return contentHash(content), true
+	return hashContent(content), true
 }
 
 // NameOf implements Metadata.
