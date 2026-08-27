@@ -58,7 +58,7 @@ go.run(instance); // never resolves: main() parks on `select {}`
 const booted = performance.now();
 
 check("globalThis.adfast is installed", typeof globalThis.adfast === "object");
-for (const name of ["scanSpans", "catalog", "toADF", "toMarkdown", "diagnostics"]) {
+for (const name of ["scanSpans", "codeSpans", "catalog", "toADF", "toMarkdown", "diagnostics"]) {
   check(`adfast.${name} is a function`, typeof globalThis.adfast?.[name] === "function");
 }
 if (failures > 0) {
@@ -66,7 +66,7 @@ if (failures > 0) {
   process.exit(1);
 }
 
-const { scanSpans, catalog, toADF, toMarkdown, diagnostics } = globalThis.adfast;
+const { scanSpans, codeSpans, catalog, toADF, toMarkdown, diagnostics } = globalThis.adfast;
 
 // --- scanSpans ------------------------------------------------------------
 // The accented letter and the emoji are the point: the offsets must index
@@ -98,6 +98,29 @@ const { scanSpans, catalog, toADF, toMarkdown, diagnostics } = globalThis.adfast
   // what the buffer looks like mid-keystroke.
   const spans = JSON.parse(value("scanSpans on an unclosed container", scanSpans(":::info\nstill typing\n")) ?? "[]");
   check("unclosed container runs to the end", spans[0]?.end === 21, JSON.stringify(spans));
+}
+
+// --- codeSpans -----------------------------------------------------------
+// The same UTF-16 contract as scanSpans, on the code-block view, plus the
+// two shapes a line scanner gets wrong.
+{
+  const md = "Héllo 🐝\n\n```go\nx := 1\n```\n\nafter\n";
+  const spans = JSON.parse(value("codeSpans returns JSON", codeSpans(md)) ?? "[]");
+  check("codeSpans found the fenced block", spans.length === 1, JSON.stringify(spans));
+  check(
+    "codeSpans offsets are UTF-16 code units",
+    md.slice(spans[0]?.start, spans[0]?.end) === "```go\nx := 1\n```\n",
+    md.slice(spans[0]?.start, spans[0]?.end),
+  );
+}
+{
+  const md = "```js\ncode\n``` js\nmore\n";
+  const spans = JSON.parse(value("codeSpans on a closer with an info string", codeSpans(md)) ?? "[]");
+  check("a closer carrying an info string does not close", md.slice(spans[0]?.start, spans[0]?.end) === md, JSON.stringify(spans));
+}
+{
+  const spans = JSON.parse(value("codeSpans on prose", codeSpans("just `inline` prose\n")) ?? "null");
+  check("codeSpans returns an array when there is no code", Array.isArray(spans) && spans.length === 0, JSON.stringify(spans));
 }
 
 // --- catalog --------------------------------------------------------------
