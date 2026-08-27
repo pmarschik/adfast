@@ -759,6 +759,105 @@ func TestHeadings_EmptyIsAnArray(t *testing.T) {
 	}
 }
 
+func TestImages(t *testing.T) {
+	cases := []struct {
+		name  string
+		md    string
+		want  []string
+		alts  []string
+		dests []string
+	}{{
+		name:  "a plain image",
+		md:    "![alt](x.png)\n",
+		want:  []string{"![alt](x.png)"},
+		alts:  []string{"alt"},
+		dests: []string{"x.png"},
+	}, {
+		name:  "the span stays off the prose around it",
+		md:    "Before ![a](x.png) after.\n",
+		want:  []string{"![a](x.png)"},
+		alts:  []string{"a"},
+		dests: []string{"x.png"},
+	}, {
+		name:  "angle brackets stay outside the destination",
+		md:    "![a](<b c.png>)\n",
+		want:  []string{"![a](<b c.png>)"},
+		alts:  []string{"a"},
+		dests: []string{"b c.png"},
+	}, {
+		name:  "a reference image reports no destination",
+		md:    "![a][id]\n\n[id]: x.png\n",
+		want:  []string{"![a][id]"},
+		alts:  []string{"a"},
+		dests: []string{""},
+	}, {
+		name: "an image inside a fence is not an image",
+		md:   "```\n![no](x.png)\n```\n",
+	}, {
+		name: "no images at all",
+		md:   "prose\n",
+	}}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := Images(c.md)
+			if len(got) != len(c.want) {
+				t.Fatalf("Images(%q) = %v, want %d images", c.md, got, len(c.want))
+			}
+			for i, im := range got {
+				wantImage(t, c.md, i, im, c.want[i], c.alts[i], c.dests[i])
+			}
+		})
+	}
+}
+
+// wantImage checks one reported image against the text it must select. An
+// empty wantDest means the reference sentinel rather than an empty range.
+func wantImage(t *testing.T, md string, i int, im ImageSpan, want, wantAlt, wantDest string) {
+	t.Helper()
+	if text := sliceUTF16(t, md, im.Start, im.End); text != want {
+		t.Errorf("image %d selects %q, want %q", i, text, want)
+	}
+	if text := sliceUTF16(t, md, im.AltStart, im.AltEnd); text != wantAlt {
+		t.Errorf("image %d alt selects %q, want %q", i, text, wantAlt)
+	}
+	if wantDest == "" {
+		if im.DestStart != 0 || im.DestEnd != 0 {
+			t.Errorf("image %d dest = [%d,%d), want the zero sentinel", i, im.DestStart, im.DestEnd)
+		}
+		return
+	}
+	if text := sliceUTF16(t, md, im.DestStart, im.DestEnd); text != wantDest {
+		t.Errorf("image %d dest selects %q, want %q", i, text, wantDest)
+	}
+}
+
+// TestImages_OffsetsAreUTF16CodeUnits proves the new export is wired into
+// the one conversion rather than handing out byte offsets.
+func TestImages_OffsetsAreUTF16CodeUnits(t *testing.T) {
+	// "🎉" is one rune, four UTF-8 bytes, two UTF-16 code units.
+	md := "🎉 é ok\n\n![álé](x.png)\n"
+	imgs := Images(md)
+	if len(imgs) != 1 {
+		t.Fatalf("Images = %v, want one image", imgs)
+	}
+	if text := sliceUTF16(t, md, imgs[0].AltStart, imgs[0].AltEnd); text != "álé" {
+		t.Errorf("alt selects %q, want %q", text, "álé")
+	}
+	if text := sliceUTF16(t, md, imgs[0].DestStart, imgs[0].DestEnd); text != "x.png" {
+		t.Errorf("dest selects %q, want %q", text, "x.png")
+	}
+	if byteStart := strings.Index(md, "!["); imgs[0].Start == byteStart {
+		t.Errorf("image start %d is the BYTE offset; want UTF-16 code units", imgs[0].Start)
+	}
+}
+
+// TestImages_EmptyIsAnArray keeps the JS side free of a null check.
+func TestImages_EmptyIsAnArray(t *testing.T) {
+	if got, err := bridgeImages("prose\n"); err != nil || got != "[]" {
+		t.Errorf("bridgeImages on a document with no images = %q, %v; want %q", got, err, "[]")
+	}
+}
+
 func TestBridgeExports(t *testing.T) {
 	code, err := bridgeCodeSpans("```\nx\n```\n")
 	if err != nil {
@@ -774,6 +873,14 @@ func TestBridgeExports(t *testing.T) {
 	}
 	if heads != `[{"start":0,"end":4,"textStart":2,"textEnd":3,"level":1}]` {
 		t.Errorf("bridgeHeadings = %s", heads)
+	}
+
+	imgs, err := bridgeImages("![a](x.png)\n")
+	if err != nil {
+		t.Fatalf("bridgeImages: %v", err)
+	}
+	if imgs != `[{"start":0,"end":11,"altStart":2,"altEnd":3,"destStart":5,"destEnd":10}]` {
+		t.Errorf("bridgeImages = %s", imgs)
 	}
 
 	spans, err := bridgeScanSpans("::media[a.png]\n")

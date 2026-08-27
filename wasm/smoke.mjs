@@ -58,7 +58,7 @@ go.run(instance); // never resolves: main() parks on `select {}`
 const booted = performance.now();
 
 check("globalThis.adfast is installed", typeof globalThis.adfast === "object");
-for (const name of ["scanSpans", "codeSpans", "headings", "catalog", "toADF", "toMarkdown", "diagnostics"]) {
+for (const name of ["scanSpans", "codeSpans", "headings", "images", "catalog", "toADF", "toMarkdown", "diagnostics"]) {
   check(`adfast.${name} is a function`, typeof globalThis.adfast?.[name] === "function");
 }
 if (failures > 0) {
@@ -66,7 +66,7 @@ if (failures > 0) {
   process.exit(1);
 }
 
-const { scanSpans, codeSpans, headings, catalog, toADF, toMarkdown, diagnostics } = globalThis.adfast;
+const { scanSpans, codeSpans, headings, images, catalog, toADF, toMarkdown, diagnostics } = globalThis.adfast;
 
 // --- scanSpans ------------------------------------------------------------
 // The accented letter and the emoji are the point: the offsets must index
@@ -142,6 +142,35 @@ const { scanSpans, codeSpans, headings, catalog, toADF, toMarkdown, diagnostics 
 {
   const hs = JSON.parse(value("headings on prose", headings("just prose\n")) ?? "null");
   check("headings returns an array when there are none", Array.isArray(hs) && hs.length === 0, JSON.stringify(hs));
+}
+
+// --- images ---------------------------------------------------------------
+// Tight extents, the angle-bracket rule, the reference sentinel, and the
+// UTF-16 contract.
+{
+  const md = "Héllo 🐝 ![ált](x.png) after\n";
+  const imgs = JSON.parse(value("images returns JSON", images(md)) ?? "[]");
+  check("images found the image", imgs.length === 1, JSON.stringify(imgs));
+  check("image extent is tight", md.slice(imgs[0]?.start, imgs[0]?.end) === "![ált](x.png)", md.slice(imgs[0]?.start, imgs[0]?.end));
+  check("image alt extent is tight", md.slice(imgs[0]?.altStart, imgs[0]?.altEnd) === "ált", md.slice(imgs[0]?.altStart, imgs[0]?.altEnd));
+  check("image dest extent is tight", md.slice(imgs[0]?.destStart, imgs[0]?.destEnd) === "x.png", md.slice(imgs[0]?.destStart, imgs[0]?.destEnd));
+  const rewritten = md.slice(0, imgs[0]?.destStart) + "y.png" + md.slice(imgs[0]?.destEnd);
+  check("splicing the destination leaves the prose alone", rewritten === "Héllo 🐝 ![ált](y.png) after\n", rewritten);
+}
+{
+  const md = "![a](<b c.png>)\n";
+  const imgs = JSON.parse(value("images on an angle bracketed destination", images(md)) ?? "[]");
+  check("angle brackets stay outside the destination", md.slice(imgs[0]?.destStart, imgs[0]?.destEnd) === "b c.png", JSON.stringify(imgs));
+}
+{
+  const md = "![a][id]\n\n[id]: x.png\n";
+  const imgs = JSON.parse(value("images on a reference image", images(md)) ?? "[]");
+  check("a reference image reports the zero destination", imgs[0]?.destStart === 0 && imgs[0]?.destEnd === 0, JSON.stringify(imgs));
+  check("a reference image still reports its extent", md.slice(imgs[0]?.start, imgs[0]?.end) === "![a][id]", JSON.stringify(imgs));
+}
+{
+  const imgs = JSON.parse(value("images inside a fence", images("```\n![no](x.png)\n```\n")) ?? "null");
+  check("an image inside a fence is not an image", Array.isArray(imgs) && imgs.length === 0, JSON.stringify(imgs));
 }
 
 // --- catalog --------------------------------------------------------------

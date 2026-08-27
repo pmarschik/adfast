@@ -23,6 +23,7 @@
 //	  scanSpans(md)                 -> Result   // JSON [{start,end,level,name,attrs}]
 //	  codeSpans(md)                 -> Result   // JSON [{start,end}]
 //	  headings(md)                  -> Result   // JSON [{start,end,textStart,textEnd,level}]
+//	  images(md)                    -> Result   // JSON [{start,end,altStart,altEnd,destStart,destEnd}]
 //	  catalog()                     -> Result   // JSON [{name,level,kind,decodedByCore}]
 //	  toADF(md, opts)               -> Result   // ADF JSON
 //	  toMarkdown(adf, opts)         -> Result   // markdown text
@@ -212,6 +213,57 @@ func Headings(md string) []HeadingSpan {
 	}
 	toUTF16(md, out, func(h *HeadingSpan) []*int {
 		return []*int{&h.Start, &h.End, &h.TextStart, &h.TextEnd}
+	})
+	return out
+}
+
+// ImageSpan locates one image in a Markdown source, in the same UTF-16
+// code units Span uses (see Span for why the conversion happens on this
+// side). It is the JS shape of markdown.Image.
+type ImageSpan struct {
+	// Start is the UTF-16 offset of the image's `!`.
+	Start int `json:"start"`
+	// End is the UTF-16 offset one past the image's closing `)` or `]`.
+	// Unlike a heading's, an image's extent is TIGHT — an image is an
+	// inline, so its span never reaches the prose around it.
+	End int `json:"end"`
+	// AltStart is the UTF-16 offset of the alt text as written, just after
+	// the `![`.
+	AltStart int `json:"altStart"`
+	// AltEnd is the UTF-16 offset one past that text; it equals AltStart
+	// for `![](x.png)`.
+	AltEnd int `json:"altEnd"`
+	// DestStart is the UTF-16 offset of the destination as written, with
+	// any wrapping angle brackets outside it.
+	DestStart int `json:"destStart"`
+	// DestEnd is the UTF-16 offset one past that destination.
+	//
+	// DestStart and DestEnd are both 0 for a REFERENCE image, whose
+	// destination is written at the link definition rather than at the
+	// image — there is nothing here to rewrite, and no inline image can
+	// report 0 because at least `![](` precedes its destination.
+	DestEnd int `json:"destEnd"`
+}
+
+// Images locates every image in md, in document order.
+//
+// It is markdown.Images with the offsets converted; the tightness rule and
+// the reference-image case are documented there, and there is no second
+// walk here. An `![…](…)` inside inline code, inside a code block, or
+// inside an HTML comment is not an image and does not appear, which is
+// exactly what a TypeScript regexp over the source gets wrong.
+func Images(md string) []ImageSpan {
+	imgs := markdown.Images([]byte(md))
+	out := make([]ImageSpan, 0, len(imgs))
+	for _, im := range imgs {
+		out = append(out, ImageSpan{
+			Start: im.Span.Start, End: im.Span.Stop,
+			AltStart: im.Alt.Start, AltEnd: im.Alt.Stop,
+			DestStart: im.Dest.Start, DestEnd: im.Dest.Stop,
+		})
+	}
+	toUTF16(md, out, func(im *ImageSpan) []*int {
+		return []*int{&im.Start, &im.End, &im.AltStart, &im.AltEnd, &im.DestStart, &im.DestEnd}
 	})
 	return out
 }
@@ -675,6 +727,11 @@ func bridgeCodeSpans(md string) (string, error) {
 // bridgeHeadings backs globalThis.adfast.headings.
 func bridgeHeadings(md string) (string, error) {
 	return marshalJSON(Headings(md))
+}
+
+// bridgeImages backs globalThis.adfast.images.
+func bridgeImages(md string) (string, error) {
+	return marshalJSON(Images(md))
 }
 
 // bridgeCatalog backs globalThis.adfast.catalog.

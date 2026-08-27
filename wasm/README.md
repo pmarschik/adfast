@@ -34,6 +34,7 @@ globalThis.adfast = {
   scanSpans(md),          // JSON [{start, end, level, name, attrs}]
   codeSpans(md),          // JSON [{start, end}]
   headings(md),           // JSON [{start, end, textStart, textEnd, level}]
+  images(md),             // JSON [{start, end, altStart, altEnd, destStart, destEnd}]
   catalog(),              // JSON [{name, level, kind, decodedByCore}]
   toADF(md, opts),        // ADF JSON
   toMarkdown(adf, opts),  // markdown text
@@ -77,7 +78,8 @@ to the JS API.
 ### Span offsets are UTF-16 code units, not bytes
 
 Every export that reports a span returns each offset in **UTF-16 code
-units** — `scanSpans`, `codeSpans`, and `headings` alike. That is the
+units** — `scanSpans`, `codeSpans`, `headings`, and `images` alike. That
+is the
 unit CodeMirror 6, the DOM, and the `String` type of JavaScript index
 by. The offsets are directly usable as CodeMirror positions, and
 `md.slice(span.start, span.end)` gives the source text of the directive.
@@ -147,6 +149,37 @@ A heading with no text at all (`#`) reports `textStart === textEnd`.
 A `#` line inside a code block is not a heading and is not reported, and
 neither is `#no-space`, which CommonMark reads as a paragraph. A setext
 heading is one, which an ATX-only regexp never sees.
+
+### `images()` reports tight spans, because a caller rewrites in place
+
+`images(md)` returns every image in document order:
+
+```js
+{ start: 7, end: 18, altStart: 9, altEnd: 10, destStart: 12, destEnd: 17 }
+```
+
+Every offset here is **tight**, which is the opposite of the whole-line
+rule `codeSpans` and `headings` follow. Those two name blocks; an image
+is an inline, and the only thing a caller does with one is replace a
+piece of it in place. `start`/`end` therefore run from the `!` through
+one past the closing `)` or `]` and never reach the prose around it —
+`md.slice(0, start) + replacement + md.slice(end)` leaves the sentence
+intact.
+
+`destStart`/`destEnd` cover the destination **as written**, with any
+wrapping `<…>` outside them, so splicing a new path in keeps the
+brackets a path with spaces needs. A REFERENCE image (`![alt][id]`,
+`![alt][]`, `![alt]`) reports `destStart === destEnd === 0`: its
+destination lives at the link definition, so there is nothing here to
+rewrite. The sentinel is unambiguous, because at least `![](` precedes
+an inline image's destination. An inline image with an empty
+destination (`![alt]()`) instead reports an empty range at the offset
+where a destination would go, so an insertion there works.
+
+An `![…](…)` written inside inline code, inside a code block, or inside
+an HTML comment is not an image and is not reported, and neither is a
+reference image whose definition is missing — all four of which a regexp
+over the source finds.
 
 ### `catalog()` is the semantic half of `scanSpans`
 

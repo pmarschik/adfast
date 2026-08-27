@@ -96,12 +96,16 @@ type Source struct {
 	code Spans
 	// headings memoizes Headings.
 	headings []Heading
+	// images memoizes Images.
+	images []Image
 	// same backs Verbatim.
 	same bool
 	// codeDone guards code, which is legitimately empty for most documents.
 	codeDone bool
 	// headingsDone guards headings, for the same reason.
 	headingsDone bool
+	// imagesDone guards images, for the same reason.
+	imagesDone bool
 }
 
 // NewSource parses src and retains its byte positions. src is expected to

@@ -29,6 +29,11 @@ func main() {
 				return bridgeHeadings(stringArg(args, 0))
 			})
 		}),
+		"images": js.FuncOf(func(_ js.Value, args []js.Value) any {
+			return bridgeGuard(func() (string, error) {
+				return bridgeImages(stringArg(args, 0))
+			})
+		}),
 		"catalog": js.FuncOf(func(_ js.Value, _ []js.Value) any {
 			return bridgeGuard(bridgeCatalog)
 		}),
