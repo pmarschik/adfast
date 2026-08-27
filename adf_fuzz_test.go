@@ -65,6 +65,9 @@ var fuzzSeeds = []string{
 	"1. first\n\n2. second\n\n3. third",
 	// mixed marks
 	"**bold with `code` inside**",
+	// strike ends at a code span, and unmarked text follows immediately:
+	// the mark must not leak onto that trailing text.
+	"~0`0`~!",
 	// extended dialect: date/placeholder/emoji/annotation/fontSize
 	"due :date[2026-07-15]{timestamp=\"1784073600000\"} soon",
 	":placeholder[Type something]",

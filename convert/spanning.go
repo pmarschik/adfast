@@ -105,9 +105,24 @@ func bareCode[T any](items []T, ops spanOps[T], i int) bool {
 	return ops.isCode(item) && !marked(ops, item)
 }
 
+// codeRunEnd returns the exclusive end of the run of bare code spans
+// starting at start — how far a re-inferred mark may reach forward when
+// the source marks are exact (see inferAfterCode's lax parameter). This
+// mirrors codeRunStart: only a further bare code span extends the run,
+// not an unmarked non-code item, because a genuinely unmarked item after
+// the code span was never inside the construct that is being inferred.
+func codeRunEnd[T any](items []T, ops spanOps[T], start int) int {
+	end := start
+	for bareCode(items, ops, end) {
+		end++
+	}
+	return end
+}
+
 // unmarkedRunEnd returns the exclusive end of the run starting at start
 // whose items carry no nesting mark of their own — how far a re-inferred
-// mark may reach forward.
+// mark may reach forward when the source marks are only a best-effort
+// reconstruction (see inferAfterCode's lax parameter).
 func unmarkedRunEnd[T any](items []T, ops spanOps[T], start int) int {
 	end := start
 	for end < len(items) && !marked(ops, &items[end]) {
@@ -135,20 +150,42 @@ func codeRunStart[T any](items []T, ops spanOps[T], i int) int {
 // it. Left alone the decode closes the emphasis at the code span and
 // opens it again after. Reading the mark back off the neighboring run is
 // what keeps the round trip on the form the author wrote.
-func inferAcrossCode[T any](items []T, ops spanOps[T]) {
+//
+// lax selects how far the forward pass (inferAfterCode) may reach past
+// the code span; see there.
+func inferAcrossCode[T any](items []T, ops spanOps[T], lax bool) {
 	inferBeforeCode(items, ops)
-	inferAfterCode(items, ops)
+	inferAfterCode(items, ops, lax)
 }
 
 // inferAfterCode carries the marks of an item forward over the bare code
-// span that follows it, and over the unmarked run after that.
-func inferAfterCode[T any](items []T, ops spanOps[T]) {
+// span that follows it.
+//
+// lax controls how far past the code span the mark may reach:
+//
+//   - false (the prettier formatter's Normalize pass, over an exact parsed
+//     markdown tree): only a further bare code span extends the run: a
+//     genuinely unmarked item right after the code was never inside the
+//     construct being re-inferred — its marks are exact, not lossy — and
+//     swallowing it would change the document's meaning (the fuzz
+//     repro "~0`0`~!" formatted the trailing "!" into the strike run).
+//   - true (the ADF decode, over marks Confluence/Jira's editor may have
+//     dropped around a code span): the run also swallows the unmarked text
+//     after the code span, recovering the form an author more likely wrote
+//     (TestAdfToMarkdown_CodeMarkInference: "AC3: `GET /healthz` Endpoint"
+//     decodes with "Endpoint" still inside the strong run).
+func inferAfterCode[T any](items []T, ops spanOps[T], lax bool) {
 	for i := range items {
 		item := &items[i]
 		if ops.isCode(item) || !marked(ops, item) || !bareCode(items, ops, i+1) {
 			continue
 		}
-		end := unmarkedRunEnd(items, ops, i+1)
+		var end int
+		if lax {
+			end = unmarkedRunEnd(items, ops, i+1)
+		} else {
+			end = codeRunEnd(items, ops, i+1)
+		}
 		for _, mark := range spanMarks {
 			if !ops.has(item, mark) {
 				continue

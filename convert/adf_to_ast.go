@@ -923,7 +923,10 @@ func convertAdfInlines(nodes []adf.Node, rc renderCtx) []ast.Node {
 	items := collectInlines(nodes, rc)
 	trimBreakEdges(items)
 	ops := flatInlineSpanOps(rc)
-	inferAcrossCode(items, ops)
+	// lax=true: ADF's marks may already be lossy (an editor can drop a
+	// mark around a code span), so the forward inference also recovers an
+	// unmarked run right after the code span — see inferAfterCode.
+	inferAcrossCode(items, ops, true)
 	return groupSpans(items, ops, openMarks{})
 }
 
