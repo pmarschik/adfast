@@ -105,11 +105,18 @@ func TestBackslashBeforeDirectiveKeepsIt(t *testing.T) {
 		want string
 	}{
 		{
-			// The fuzz repro, minimized: an unregistered ":00" degrades to
-			// text ending in a backslash, right before a real ":u".
-			name: "degraded directive leaves a trailing backslash",
+			// The fuzz repro, minimized: an unregistered ":00" carries a
+			// label with an escaped bracket, right before a real ":u".
+			//
+			// The old expectation, ":000\\\\:u[0]\n", was a divergence this
+			// pin froze: the label scanner ended the label at the escaped
+			// "]", so "0\" became text and the repair added the backslash.
+			// remark stringifies this input as ":00\\[0]:u[0]\n" — measured
+			// against remark-parse 11 + remark-directive 3.0.1 — which is
+			// what the fixed scanner now produces.
+			name: "degraded directive keeps its label escaped",
 			md:   ":00[0\\]:u[0]",
-			want: ":000\\\\:u[0]\n",
+			want: ":00\\[0]:u[0]\n",
 		},
 		{
 			name: "label content ending in a backslash",
