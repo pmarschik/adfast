@@ -22,6 +22,7 @@
 //	globalThis.adfast = {
 //	  scanSpans(md)                 -> Result   // JSON [{start,end,level,name,attrs}]
 //	  codeSpans(md)                 -> Result   // JSON [{start,end}]
+//	  headings(md)                  -> Result   // JSON [{start,end,textStart,textEnd,level}]
 //	  catalog()                     -> Result   // JSON [{name,level,kind,decodedByCore}]
 //	  toADF(md, opts)               -> Result   // ADF JSON
 //	  toMarkdown(adf, opts)         -> Result   // markdown text
@@ -164,7 +165,54 @@ func CodeSpans(md string) []SourceSpan {
 	for _, s := range spans {
 		out = append(out, SourceSpan{Start: s.Start, End: s.Stop})
 	}
-	toUTF16(md, out, func(s *SourceSpan) (*int, *int) { return &s.Start, &s.End })
+	toUTF16(md, out, func(s *SourceSpan) []*int { return []*int{&s.Start, &s.End} })
+	return out
+}
+
+// HeadingSpan locates one heading in a Markdown source, in the same UTF-16
+// code units Span uses (see Span for why the conversion happens on this
+// side). It is the JS shape of markdown.Heading.
+//
+// The field order is the one govet's fieldalignment wants, not the JSON key
+// order.
+type HeadingSpan struct {
+	// Start is the UTF-16 offset of the first character of the line the
+	// heading opens on.
+	Start int `json:"start"`
+	// End is the UTF-16 offset one past the newline of the line the
+	// heading ends on — for a setext heading, its underline line.
+	End int `json:"end"`
+	// TextStart is the UTF-16 offset of the heading's text as written,
+	// with the markers, the padding, and an ATX closing run outside it.
+	TextStart int `json:"textStart"`
+	// TextEnd is the UTF-16 offset one past that text. It equals TextStart
+	// for a heading with no text at all ("#").
+	TextEnd int `json:"textEnd"`
+	// Level is 1 through 6.
+	Level int `json:"level"`
+}
+
+// Headings locates every heading in md, ATX and setext alike, in document
+// order.
+//
+// It is markdown.Headings with the offsets converted; the widening rule
+// (the block extent covers whole lines, the text extent is tight) is
+// documented there, and there is no second walk here. A heading-looking
+// line inside a code block is not a heading, which is exactly what a
+// TypeScript regexp over the source gets wrong.
+func Headings(md string) []HeadingSpan {
+	hs := markdown.Headings([]byte(md))
+	out := make([]HeadingSpan, 0, len(hs))
+	for _, h := range hs {
+		out = append(out, HeadingSpan{
+			Start: h.Span.Start, End: h.Span.Stop,
+			TextStart: h.Text.Start, TextEnd: h.Text.Stop,
+			Level: h.Level,
+		})
+	}
+	toUTF16(md, out, func(h *HeadingSpan) []*int {
+		return []*int{&h.Start, &h.End, &h.TextStart, &h.TextEnd}
+	})
 	return out
 }
 
@@ -375,7 +423,7 @@ func ScanSpans(md string) []Span {
 	src := []byte(md)
 	tree := markdown.NewParser().Parse(text.NewReader(src))
 	spans := collectSpans(tree, len(src))
-	toUTF16(md, spans, func(s *Span) (*int, *int) { return &s.Start, &s.End })
+	toUTF16(md, spans, func(s *Span) []*int { return []*int{&s.Start, &s.End} })
 	return spans
 }
 
@@ -441,26 +489,30 @@ func attrsOf(a map[string]string) map[string]string {
 // toUTF16 rewrites the byte offsets in spans to UTF-16 code unit offsets.
 // An all-ASCII source needs no work: the two units coincide.
 //
-// ends adapts the span type: it returns pointers to the pair of offsets to
-// rewrite. Every exported span shape goes through this one implementation
-// — a second copy of the conversion is a second place for the JS offsets
-// to be subtly wrong, and only one of the two would get the next fix.
-func toUTF16[T any](src string, spans []T, ends func(*T) (*int, *int)) {
+// offsets adapts the span type: it returns a pointer to every offset the
+// span carries, however many that is — a heading reports its block and its
+// text, an image its extent, its alt and its destination. Every exported
+// span shape goes through this one implementation: a second copy of the
+// conversion is a second place for the JS offsets to be subtly wrong, and
+// only one of the two would get the next fix.
+func toUTF16[T any](src string, spans []T, offsets func(*T) []*int) {
 	if len(spans) == 0 || isASCII(src) {
 		return
 	}
-	wanted := make([]int, 0, len(spans)*2)
+	var wanted []int
 	for i := range spans {
-		start, end := ends(&spans[i])
-		wanted = append(wanted, *start, *end)
+		for _, p := range offsets(&spans[i]) {
+			wanted = append(wanted, *p)
+		}
 	}
 	slices.Sort(wanted)
 	wanted = slices.Compact(wanted)
 
 	idx := utf16Offsets(src, wanted)
 	for i := range spans {
-		start, end := ends(&spans[i])
-		*start, *end = idx[*start], idx[*end]
+		for _, p := range offsets(&spans[i]) {
+			*p = idx[*p]
+		}
 	}
 }
 
@@ -618,6 +670,11 @@ func bridgeScanSpans(md string) (string, error) {
 // bridgeCodeSpans backs globalThis.adfast.codeSpans.
 func bridgeCodeSpans(md string) (string, error) {
 	return marshalJSON(CodeSpans(md))
+}
+
+// bridgeHeadings backs globalThis.adfast.headings.
+func bridgeHeadings(md string) (string, error) {
+	return marshalJSON(Headings(md))
 }
 
 // bridgeCatalog backs globalThis.adfast.catalog.

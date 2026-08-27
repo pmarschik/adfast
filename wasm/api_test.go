@@ -676,6 +676,89 @@ func TestCodeSpans_EmptyIsAnArray(t *testing.T) {
 	}
 }
 
+// TestHeadings pins the heading view: the block extent covers whole lines
+// (a setext underline included), the text extent is tight, and a
+// heading-looking line inside a fence is not reported at all.
+func TestHeadings(t *testing.T) {
+	cases := []struct {
+		name  string
+		md    string
+		want  []string
+		texts []string
+		level []int
+	}{{
+		name:  "an ATX heading",
+		md:    "# Title\n",
+		want:  []string{"# Title\n"},
+		texts: []string{"Title"},
+		level: []int{1},
+	}, {
+		name:  "a setext heading covers its underline",
+		md:    "Title\n=====\n",
+		want:  []string{"Title\n=====\n"},
+		texts: []string{"Title"},
+		level: []int{1},
+	}, {
+		name:  "a closing run is outside the text",
+		md:    "## Two ##\n",
+		want:  []string{"## Two ##\n"},
+		texts: []string{"Two"},
+		level: []int{2},
+	}, {
+		name:  "a heading inside a fence is not a heading",
+		md:    "```\n# fake\n```\n\n## real\n",
+		want:  []string{"## real\n"},
+		texts: []string{"real"},
+		level: []int{2},
+	}, {
+		name: "no headings at all",
+		md:   "prose\n",
+	}}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := Headings(c.md)
+			if len(got) != len(c.want) {
+				t.Fatalf("Headings(%q) = %v, want %d headings", c.md, got, len(c.want))
+			}
+			for i, h := range got {
+				if text := sliceUTF16(t, c.md, h.Start, h.End); text != c.want[i] {
+					t.Errorf("heading %d block selects %q, want %q", i, text, c.want[i])
+				}
+				if text := sliceUTF16(t, c.md, h.TextStart, h.TextEnd); text != c.texts[i] {
+					t.Errorf("heading %d text selects %q, want %q", i, text, c.texts[i])
+				}
+				if h.Level != c.level[i] {
+					t.Errorf("heading %d level = %d, want %d", i, h.Level, c.level[i])
+				}
+			}
+		})
+	}
+}
+
+// TestHeadings_OffsetsAreUTF16CodeUnits proves the new export is wired
+// into the one conversion rather than handing out byte offsets.
+func TestHeadings_OffsetsAreUTF16CodeUnits(t *testing.T) {
+	// "🎉" is one rune, four UTF-8 bytes, two UTF-16 code units.
+	md := "🎉 é ok\n\n## Héading\n"
+	hs := Headings(md)
+	if len(hs) != 1 {
+		t.Fatalf("Headings = %v, want one heading", hs)
+	}
+	if text := sliceUTF16(t, md, hs[0].TextStart, hs[0].TextEnd); text != "Héading" {
+		t.Errorf("text selects %q, want %q", text, "Héading")
+	}
+	if byteStart := strings.Index(md, "##"); hs[0].Start == byteStart {
+		t.Errorf("heading start %d is the BYTE offset; want UTF-16 code units", hs[0].Start)
+	}
+}
+
+// TestHeadings_EmptyIsAnArray keeps the JS side free of a null check.
+func TestHeadings_EmptyIsAnArray(t *testing.T) {
+	if got, err := bridgeHeadings("prose\n"); err != nil || got != "[]" {
+		t.Errorf("bridgeHeadings on a document with no headings = %q, %v; want %q", got, err, "[]")
+	}
+}
+
 func TestBridgeExports(t *testing.T) {
 	code, err := bridgeCodeSpans("```\nx\n```\n")
 	if err != nil {
@@ -683,6 +766,14 @@ func TestBridgeExports(t *testing.T) {
 	}
 	if code != `[{"start":0,"end":10}]` {
 		t.Errorf("bridgeCodeSpans = %s", code)
+	}
+
+	heads, err := bridgeHeadings("# t\n")
+	if err != nil {
+		t.Fatalf("bridgeHeadings: %v", err)
+	}
+	if heads != `[{"start":0,"end":4,"textStart":2,"textEnd":3,"level":1}]` {
+		t.Errorf("bridgeHeadings = %s", heads)
 	}
 
 	spans, err := bridgeScanSpans("::media[a.png]\n")
