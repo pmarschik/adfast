@@ -602,7 +602,89 @@ func TestBridgeGuard_RecoversPanics(t *testing.T) {
 	}
 }
 
+// TestCodeSpans pins the code-block view: the extents are whole lines, and
+// they select the same source in JavaScript's units that the Go core
+// selects in bytes.
+func TestCodeSpans(t *testing.T) {
+	cases := []struct {
+		name string
+		md   string
+		want []string
+	}{{
+		name: "a fenced block, delimiters included",
+		md:   "intro\n\n```go\nx := 1\n```\n\nafter\n",
+		want: []string{"```go\nx := 1\n```\n"},
+	}, {
+		name: "an indented block keeps its indent",
+		md:   "intro\n\n    x := 1\n\nafter\n",
+		want: []string{"    x := 1\n"},
+	}, {
+		name: "a fence inside a blockquote, prefix included",
+		md:   "> ```\n> x\n> ```\n",
+		want: []string{"> ```\n> x\n> ```\n"},
+	}, {
+		name: "two blocks in document order",
+		md:   "```\na\n```\n\n```\nb\n```\n",
+		want: []string{"```\na\n```\n", "```\nb\n```\n"},
+	}, {
+		name: "inline code is not a block",
+		md:   "text `x` more\n",
+		want: nil,
+	}, {
+		name: "no code at all",
+		md:   "# t\n\nprose\n",
+		want: nil,
+	}}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := CodeSpans(c.md)
+			if len(got) != len(c.want) {
+				t.Fatalf("CodeSpans(%q) = %v, want %d spans", c.md, got, len(c.want))
+			}
+			for i, s := range got {
+				if text := sliceUTF16(t, c.md, s.Start, s.End); text != c.want[i] {
+					t.Errorf("span %d selects %q, want %q", i, text, c.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestCodeSpans_OffsetsAreUTF16CodeUnits is the same contract ScanSpans
+// carries, on the new export: a multi-byte rune before a block must not
+// shift it. Both exports go through one conversion, and this is what
+// proves the new caller is wired into it.
+func TestCodeSpans_OffsetsAreUTF16CodeUnits(t *testing.T) {
+	// "🎉" is one rune, four UTF-8 bytes, two UTF-16 code units.
+	md := "🎉 é ok\n\n```\nx\n```\n"
+	spans := CodeSpans(md)
+	if len(spans) != 1 {
+		t.Fatalf("CodeSpans = %v, want one span", spans)
+	}
+	if text := sliceUTF16(t, md, spans[0].Start, spans[0].End); text != "```\nx\n```\n" {
+		t.Errorf("span selects %q, want the fenced block", text)
+	}
+	if byteStart := strings.Index(md, "```"); spans[0].Start == byteStart {
+		t.Errorf("span start %d is the BYTE offset; want UTF-16 code units", spans[0].Start)
+	}
+}
+
+// TestCodeSpans_EmptyIsAnArray keeps the JS side free of a null check.
+func TestCodeSpans_EmptyIsAnArray(t *testing.T) {
+	if got, err := bridgeCodeSpans("prose\n"); err != nil || got != "[]" {
+		t.Errorf("bridgeCodeSpans on a document with no code = %q, %v; want %q", got, err, "[]")
+	}
+}
+
 func TestBridgeExports(t *testing.T) {
+	code, err := bridgeCodeSpans("```\nx\n```\n")
+	if err != nil {
+		t.Fatalf("bridgeCodeSpans: %v", err)
+	}
+	if code != `[{"start":0,"end":10}]` {
+		t.Errorf("bridgeCodeSpans = %s", code)
+	}
+
 	spans, err := bridgeScanSpans("::media[a.png]\n")
 	if err != nil {
 		t.Fatalf("bridgeScanSpans: %v", err)

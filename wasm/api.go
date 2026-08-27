@@ -21,6 +21,7 @@
 //
 //	globalThis.adfast = {
 //	  scanSpans(md)                 -> Result   // JSON [{start,end,level,name,attrs}]
+//	  codeSpans(md)                 -> Result   // JSON [{start,end}]
 //	  catalog()                     -> Result   // JSON [{name,level,kind,decodedByCore}]
 //	  toADF(md, opts)               -> Result   // ADF JSON
 //	  toMarkdown(adf, opts)         -> Result   // markdown text
@@ -128,6 +129,43 @@ type Span struct {
 	End int `json:"end"`
 	// Level is LevelContainer (3), LevelLeaf (2), or LevelText (1).
 	Level int `json:"level"`
+}
+
+// SourceSpan is a plain byte range of a Markdown source, in the same
+// UTF-16 code units Span uses (see Span for why the conversion happens on
+// this side). It is the JS shape of markdown.Span — the core's
+// source-anchored surface — for the views that carry no extra data beyond
+// their extent.
+//
+// It exists so the JS side reads a view from the SAME walk the Go side
+// does. A core view the module does not export is a view an editor
+// integration has to re-implement in TypeScript, which is how the two
+// drift apart.
+type SourceSpan struct {
+	// Start is the UTF-16 code unit offset of the span's first character.
+	Start int `json:"start"`
+	// End is the UTF-16 code unit offset one past the span's last
+	// character.
+	End int `json:"end"`
+}
+
+// CodeSpans locates every code block in md — fenced and indented alike.
+//
+// It is markdown.CodeSpans with the offsets converted; the widening rule
+// (whole lines, fence delimiters and container prefixes included) and the
+// naming caveat (these are code BLOCKS, not CommonMark inline code spans)
+// are documented there, and there is no second walk here.
+//
+// A syntax-highlighting or "don't autocomplete in here" integration wants
+// exactly this, and gets the parser's verdict rather than a regexp's.
+func CodeSpans(md string) []SourceSpan {
+	spans := markdown.CodeSpans([]byte(md))
+	out := make([]SourceSpan, 0, len(spans))
+	for _, s := range spans {
+		out = append(out, SourceSpan{Start: s.Start, End: s.Stop})
+	}
+	toUTF16(md, out, func(s *SourceSpan) (*int, *int) { return &s.Start, &s.End })
+	return out
 }
 
 // CatalogEntry names one directive the dialect registers, at one level.
@@ -337,7 +375,7 @@ func ScanSpans(md string) []Span {
 	src := []byte(md)
 	tree := markdown.NewParser().Parse(text.NewReader(src))
 	spans := collectSpans(tree, len(src))
-	toUTF16(md, spans)
+	toUTF16(md, spans, func(s *Span) (*int, *int) { return &s.Start, &s.End })
 	return spans
 }
 
@@ -402,21 +440,27 @@ func attrsOf(a map[string]string) map[string]string {
 
 // toUTF16 rewrites the byte offsets in spans to UTF-16 code unit offsets.
 // An all-ASCII source needs no work: the two units coincide.
-func toUTF16(src string, spans []Span) {
+//
+// ends adapts the span type: it returns pointers to the pair of offsets to
+// rewrite. Every exported span shape goes through this one implementation
+// — a second copy of the conversion is a second place for the JS offsets
+// to be subtly wrong, and only one of the two would get the next fix.
+func toUTF16[T any](src string, spans []T, ends func(*T) (*int, *int)) {
 	if len(spans) == 0 || isASCII(src) {
 		return
 	}
 	wanted := make([]int, 0, len(spans)*2)
-	for _, s := range spans {
-		wanted = append(wanted, s.Start, s.End)
+	for i := range spans {
+		start, end := ends(&spans[i])
+		wanted = append(wanted, *start, *end)
 	}
 	slices.Sort(wanted)
 	wanted = slices.Compact(wanted)
 
 	idx := utf16Offsets(src, wanted)
 	for i := range spans {
-		spans[i].Start = idx[spans[i].Start]
-		spans[i].End = idx[spans[i].End]
+		start, end := ends(&spans[i])
+		*start, *end = idx[*start], idx[*end]
 	}
 }
 
@@ -569,6 +613,11 @@ func bridgeOptions(optsJSON string) (Options, error) {
 // bridgeScanSpans backs globalThis.adfast.scanSpans.
 func bridgeScanSpans(md string) (string, error) {
 	return marshalJSON(ScanSpans(md))
+}
+
+// bridgeCodeSpans backs globalThis.adfast.codeSpans.
+func bridgeCodeSpans(md string) (string, error) {
+	return marshalJSON(CodeSpans(md))
 }
 
 // bridgeCatalog backs globalThis.adfast.catalog.

@@ -32,6 +32,7 @@ Ship `adfast.wasm` together with `wasm_exec.js`.
 ```js
 globalThis.adfast = {
   scanSpans(md),          // JSON [{start, end, level, name, attrs}]
+  codeSpans(md),          // JSON [{start, end}]
   catalog(),              // JSON [{name, level, kind, decodedByCore}]
   toADF(md, opts),        // ADF JSON
   toMarkdown(adf, opts),  // markdown text
@@ -74,7 +75,8 @@ to the JS API.
 
 ### Span offsets are UTF-16 code units, not bytes
 
-`scanSpans` returns each offset in **UTF-16 code units**. That is the
+Every export that reports a span returns each offset in **UTF-16 code
+units** — `scanSpans` and `codeSpans` alike. That is the
 unit CodeMirror 6, the DOM, and the `String` type of JavaScript index
 by. The offsets are directly usable as CodeMirror positions, and
 `md.slice(span.start, span.end)` gives the source text of the directive.
@@ -97,6 +99,31 @@ container, the opening fence through the end of the matching closing
 fence. An unclosed container is what the buffer looks like mid-keystroke
 and has no closing fence at all. Its `end` is the end of the enclosing
 container, or the end of the source.
+
+### `codeSpans()` is the parser's verdict on what is code
+
+`codeSpans(md)` returns the extent of every code block — fenced and
+indented alike — in document order, no two overlapping:
+
+```js
+{ start: 12, end: 47 }
+```
+
+The name follows the Go API (`markdown.CodeSpans`). Note that in
+CommonMark a "code span" is _inline_ code; these are code **blocks**, and
+inline code is not reported.
+
+A span covers **whole lines**: from the first byte of the line the block
+opens on, through the newline of the line it closes on. It therefore
+includes the fence delimiter lines, an indented block's indent, and the
+container prefix of a blockquote or list item on those lines.
+
+The point of the export is that it is the same walk the conversion path
+uses, not a regexp. A line scanner disagrees with CommonMark in both
+directions — a closing fence carrying an info string does _not_ close its
+block, and four-space content inside a blockquoted list item _is_ code —
+and an editor integration that guesses wrong offers completions inside a
+documented example.
 
 ### `catalog()` is the semantic half of `scanSpans`
 
