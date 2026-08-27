@@ -188,11 +188,54 @@ var imageCases = []imageCase{{
 	src:  "- ![a](x.png\n  \"t\")\n",
 	want: []string{"![a](x.png\n  \"t\")|a|x.png"},
 }, {
-	// The documented drop: a blockquote's '>' prefix sits between the two
-	// halves of the tail, so the written form is not contiguous and the
-	// image is left out rather than given a wrong span.
-	name: "a title on the next line of a blockquote is dropped",
+	// A blockquote's '>' prefix sits between the two halves of the tail.
+	// The span is the written form, prefix and all, exactly as the list
+	// item above keeps its continuation indent.
+	name: "a title on the next line of a blockquote",
 	src:  "> ![a](x.png\n> \"t\")\n",
+	want: []string{"![a](x.png\n> \"t\")|a|x.png"},
+}, {
+	name: "a destination on the next line of a blockquote",
+	src:  "> ![a](\n> x.png)\n",
+	want: []string{"![a](\n> x.png)|a|x.png"},
+}, {
+	name: "a destination on the next line of a nested blockquote",
+	src:  ">> ![a](\n>> x.png)\n",
+	want: []string{"![a](\n>> x.png)|a|x.png"},
+}, {
+	// The prefix is skipped, not the padding a wrapped destination needs:
+	// the angle brackets still bound Dest.
+	name: "an angle bracketed destination on the next line of a blockquote",
+	src:  "> ![a](\n> <b c.png> \"t\")\n",
+	want: []string{"![a](\n> <b c.png> \"t\")|a|b c.png"},
+}, {
+	// A title that itself spans a quoted line: the closer search crosses
+	// the prefix and the paren after it still closes the tail.
+	name: "a title spanning two blockquote lines",
+	src:  "> ![a](x.png \"t\n> u\")\n",
+	want: []string{"![a](x.png \"t\n> u\")|a|x.png"},
+}, {
+	// The image ends before the prose that follows it on the quoted line.
+	name: "a split tail in a blockquote with trailing prose",
+	src:  "> ![a](x.png\n> \"t\") tail\n",
+	want: []string{"![a](x.png\n> \"t\")|a|x.png"},
+}, {
+	// A '>' on a continuation line is a prefix only where the parser made
+	// one. Here it opens a blockquote instead, so the paragraph ends and
+	// there is no image to report.
+	name: "a greater than sign on the line after an unclosed tail",
+	src:  "![a](\n>x.png)\n",
+	want: nil,
+}, {
+	// The remaining documented drop, and it is not about the container:
+	// the parser matched a normalized label, so the written bytes of a
+	// reference label that crosses a line never compare equal.
+	name: "a reference label crossing a line is dropped in a blockquote",
+	src:  "> ![a][i\n> d]\n\n[i d]: x.png\n",
+	want: nil,
+}, {
+	name: "a reference label crossing a line is dropped in a list item too",
+	src:  "- ![a][i\n  d]\n\n[i d]: x.png\n",
 	want: nil,
 }, {
 	name: "an image with no trailing newline",

@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	gast "github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
 
@@ -75,12 +76,21 @@ func Images(src []byte) []Image { return NewSource(src).Images() }
 // place. Under-reporting is the safe direction for a rewriter; a wrong
 // offset is not.
 //
-// The one shape known to be dropped is an image whose destination or title
-// continues on the next line INSIDE A BLOCKQUOTE, where the `>` prefix that
-// goldmark strips sits between the two halves and the written form is
-// therefore not contiguous. Inside a list item the same shape resolves
-// normally, because a list's continuation prefix is whitespace, which a
-// destination and a title both skip anyway.
+// An image whose destination or title continues on the NEXT LINE is
+// reported like any other, inside a blockquote or a list item as well as at
+// the top level. Its Span then covers the written form as written, which
+// includes the container prefix that sits between the two halves: the span
+// of the image in `> ![a](x.png\n> "t")` selects `![a](x.png\n> "t")`, the
+// `> ` included, exactly as a list item's span keeps its continuation
+// indent. Replacing that span is still correct: a replacement drops the
+// prefix together with the line break that precedes it, and the line the
+// image began on keeps the prefix it already had.
+//
+// The shape still known to be dropped is a REFERENCE image whose label
+// crosses a line (`![a][i\nd]` against `[i d]: …`), because the parser
+// matched it on a normalized label and the written bytes therefore do not
+// compare equal. That drop does not depend on the container: it is the same
+// in a blockquote, in a list item, and at the top level.
 func (s *Source) Images() []Image {
 	if s.imagesDone {
 		return s.images
@@ -136,12 +146,12 @@ func imageSpan(img *gast.Image, src []byte) (Image, bool) {
 	if pos < 0 || pos+1 >= len(src) || src[pos] != '!' || src[pos+1] != '[' {
 		return Image{}, false
 	}
-	altStart := pos + 2
+	altStart, lines := pos+2, enclosingLines(img)
 	for k := labelFloor(img, altStart); k < len(src); k++ {
 		if src[k] != ']' {
 			continue
 		}
-		dest, end, ok := imageTail(img, src, altStart, k)
+		dest, end, ok := imageTail(img, src, altStart, k, lines)
 		if !ok {
 			continue
 		}
@@ -191,9 +201,9 @@ func labelFloor(img *gast.Image, altStart int) int {
 // records it on the node. An inline image has no Reference; a reference
 // image has one, and its Value is the raw label bytes the parser matched,
 // which is what makes a reference form checkable at all.
-func imageTail(img *gast.Image, src []byte, altStart, k int) (Span, int, bool) {
+func imageTail(img *gast.Image, src []byte, altStart, k int, lines *text.Segments) (Span, int, bool) {
 	if img.Reference == nil {
-		return inlineTail(img, src, k)
+		return inlineTail(img, src, k, lines)
 	}
 	// A shortcut (`![alt]`) and a collapsed (`![alt][]`) reference both key
 	// off the label itself, so the label is what proves the candidate.
@@ -222,11 +232,11 @@ func imageTail(img *gast.Image, src []byte, altStart, k int) (Span, int, bool) {
 // inlineTail reads a `(destination "title")` tail after a candidate closing
 // `]` at k. It mirrors goldmark's parseLink step for step, so that what it
 // accepts is what the parser accepted.
-func inlineTail(img *gast.Image, src []byte, k int) (Span, int, bool) {
+func inlineTail(img *gast.Image, src []byte, k int, lines *text.Segments) (Span, int, bool) {
 	if k+1 >= len(src) || src[k+1] != '(' {
 		return Span{}, 0, false
 	}
-	i := skipMarkdownSpaces(src, k+2)
+	i := skipMarkdownSpaces(src, k+2, lines)
 	if i < len(src) && src[i] == ')' {
 		// `![alt]()`, which the parser reads as an empty destination.
 		if len(img.Destination) != 0 {
@@ -238,14 +248,14 @@ func inlineTail(img *gast.Image, src []byte, k int) (Span, int, bool) {
 	if !ok || !bytes.Equal(src[dest.Start:dest.Stop], img.Destination) {
 		return Span{}, 0, false
 	}
-	i = skipMarkdownSpaces(src, next)
+	i = skipMarkdownSpaces(src, next, lines)
 	if i < len(src) && src[i] == ')' {
 		return dest, i + 1, true
 	}
 	if i, ok = scanLinkTitle(src, i); !ok {
 		return Span{}, 0, false
 	}
-	i = skipMarkdownSpaces(src, i)
+	i = skipMarkdownSpaces(src, i, lines)
 	if i >= len(src) || src[i] != ')' {
 		return Span{}, 0, false
 	}
@@ -346,11 +356,57 @@ func scanClosure(src []byte, i int, opener, closer byte) (int, bool) {
 }
 
 // skipMarkdownSpaces returns the first offset at or after i that is not
-// whitespace. Like goldmark's SkipSpaces it crosses line boundaries, which
-// is what lets a destination sit on the line after its `(`.
-func skipMarkdownSpaces(src []byte, i int) int {
+// whitespace and is not container prefix. Like goldmark's SkipSpaces it
+// crosses line boundaries, which is what lets a destination sit on the line
+// after its `(`; unlike it, it crosses them over the SOURCE rather than over
+// the block's stripped content, so a line's prefix has to be stepped over
+// too. lines is what says where that prefix ends — see resumeAfterNewline.
+func skipMarkdownSpaces(src []byte, i int, lines *text.Segments) int {
 	for i < len(src) && util.IsSpace(src[i]) {
+		if src[i] == '\n' {
+			if next, ok := resumeAfterNewline(lines, i); ok {
+				i = next
+				continue
+			}
+		}
 		i++
 	}
 	return i
+}
+
+// enclosingLines returns the content segments of the block that holds n:
+// one segment per line, each beginning where the block parser stopped
+// stripping the container prefix off that line. Nil when the nearest block
+// records none, in which case a scan over the source is the same scan
+// goldmark's inline parser ran, because there was no prefix to strip.
+func enclosingLines(n gast.Node) *text.Segments {
+	for p := n.Parent(); p != nil; p = p.Parent() {
+		if p.Type() == gast.TypeBlock {
+			return p.Lines()
+		}
+	}
+	return nil
+}
+
+// resumeAfterNewline returns the offset at which the block's content
+// resumes on the line after the newline at nl: past a blockquote's `>` and
+// past a list item's indent.
+//
+// This is the whole reason an image whose destination or title continues on
+// the next line resolves inside a blockquote. The inline parser never saw
+// the `>`, so the written form it recorded — the destination this view
+// checks itself against — is the text on the far side of it. Taking the
+// resume offset from the parser's own segments rather than re-deriving the
+// prefix keeps a `>` that is destination rather than prefix intact: no
+// segment starts there, so nothing is skipped.
+func resumeAfterNewline(lines *text.Segments, nl int) (int, bool) {
+	if lines == nil {
+		return 0, false
+	}
+	for i := range lines.Len() {
+		if s := lines.At(i); s.Start > nl {
+			return s.Start, true
+		}
+	}
+	return 0, false
 }
