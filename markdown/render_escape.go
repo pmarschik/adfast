@@ -96,6 +96,13 @@ func (r *mdRenderer) writeEscapedByte(sb *strings.Builder, s string, i int, next
 	if st.label && !r.cfg.prettierText && labelEscapes(s, i, nextLead, st) {
 		sb.WriteByte('\\')
 	}
+	// A ']' inside a directive [label] closes the label, so mdast-util-
+	// directive's unsafe set escapes it there — the leaf and container
+	// forms already do (see escapeDirectiveLabel); this covers the text
+	// form, whose label is written through the inline path.
+	if ch == ']' && st.directiveLabel {
+		sb.WriteByte('\\')
+	}
 	if st.escape && r.needsEscape(s, i, nextLead, st, nodeAtLineStart) {
 		sb.WriteByte('\\')
 	}
