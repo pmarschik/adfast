@@ -66,8 +66,8 @@ func (ss Spans) Overlaps(s Span) bool {
 // Source is a Markdown source parsed once, with its byte positions kept.
 //
 // It is the one source-anchored surface in adfast: every view over a
-// document's byte layout — CodeSpans, Headings, Images, and Directives — is
-// a method here, computed from a SINGLE parse of a SINGLE
+// document's byte layout — CodeSpans, InlineCodeSpans, Headings, Images, and
+// Directives — is a method here, computed from a SINGLE parse of a SINGLE
 // buffer. Views therefore cannot disagree with each other, and Apply — the
 // only sanctioned way to turn spans back into bytes — splices into the very
 // buffer the spans were measured in.
@@ -94,6 +94,8 @@ type Source struct {
 	src []byte
 	// code memoizes CodeSpans.
 	code Spans
+	// inlineCode memoizes InlineCodeSpans.
+	inlineCode Spans
 	// headings memoizes Headings.
 	headings []Heading
 	// images memoizes Images.
@@ -104,6 +106,8 @@ type Source struct {
 	same bool
 	// codeDone guards code, which is legitimately empty for most documents.
 	codeDone bool
+	// inlineCodeDone guards inlineCode, for the same reason.
+	inlineCodeDone bool
 	// headingsDone guards headings, for the same reason.
 	headingsDone bool
 	// imagesDone guards images, for the same reason.
@@ -226,6 +230,8 @@ func (s *Source) Apply(edits ...Edit) ([]byte, error) {
 // This is the one-shot form, for a caller that only needs to read. A caller
 // that also edits takes a Source, so the spans and the splice share one
 // parse and one buffer.
+//
+// Inline code is a separate view: see InlineCodeSpans.
 func CodeSpans(src []byte) Spans { return NewSource(src).CodeSpans() }
 
 // CodeSpans returns the byte span of every code block — fenced and indented
@@ -233,8 +239,8 @@ func CodeSpans(src []byte) Spans { return NewSource(src).CodeSpans() }
 //
 // NAME: in CommonMark, "code span" is INLINE code. These are code BLOCK
 // extents; the name is the one the consuming call sites were filed against.
-// Inline code is not reported, matching the line-scanning helper this
-// replaces.
+// Inline code is not reported here — Source.InlineCodeSpans is that view,
+// and a caller guarding a rewriter against every literal byte wants both.
 //
 // A span covers WHOLE LINES: it starts at the first byte of the line the
 // block opens on and ends just past the newline of the line it closes on.
