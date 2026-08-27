@@ -40,10 +40,11 @@ import (
 const PreservedEscapes = "~:-+"
 
 type parseConfig struct {
-	recoverNotice func()
-	depthNotice   func()
-	spanNotice    func(marker string, row, col int)
-	extensions    []extension.Registration
+	recoverNotice     func()
+	depthNotice       func()
+	spanNotice        func(marker string, row, col int)
+	extensions        []extension.Registration
+	genericDirectives bool
 }
 
 // ParseOption configures Parse.
@@ -88,6 +89,27 @@ func WithExtensions(regs ...extension.Registration) ParseOption {
 	return func(c *parseConfig) { c.extensions = append(c.extensions, regs...) }
 }
 
+// WithGenericDirectives skips the typed-node promotion step entirely, so
+// EVERY directive — a dialect name, a name a WithExtensions registration
+// owns, and an unknown name alike — stays an
+// ast.ContainerDirective/LeafDirective/TextDirective carrying its own Name.
+//
+// It exists because promotion is NOT invertible: several directive names
+// share one typed kind (:::info, :::note, :::warning, :::success and
+// :::error all promote to dialect.Panel; :::center and :::end both to
+// dialect.Align), so a walk over a promoted tree cannot recover the name
+// the author wrote. A consumer that needs the literal directive name —
+// syntax tooling, or a plain-text projection that must not silently drop
+// an accidental intraword colon like "deploy:status" — parses with this
+// option and reads Name off the generic node.
+//
+// The typed kinds are what the ADF conversions consume, so a tree parsed
+// this way is for INSPECTION only: do not feed it to ToADF or to the
+// prettier formatter, which both expect the promoted form.
+func WithGenericDirectives() ParseOption {
+	return func(c *parseConfig) { c.genericDirectives = true }
+}
+
 // Parse converts Markdown source to the pivot AST. The conversion is
 // text→AST: goldmark parses the source (guarded against known goldmark
 // panics), goldmarkToAst lifts the parse tree into the
@@ -109,6 +131,11 @@ func Parse(source []byte, opts ...ParseOption) ast.Node {
 		cfg.recoverNotice()
 	}
 	root := goldmarkToAst(tree, src, cfg.depthNotice, cfg.spanNotice)
+	if cfg.genericDirectives {
+		// The caller reads directive names off the generic nodes; skipping
+		// promotion keeps every name readable (see WithGenericDirectives).
+		return root
+	}
 	// Dialect first, user registrations after: promotion is last-wins per
 	// name, so user registrations override the dialect (the decode-side
 	// dispatch achieves the same by trying user hooks first).

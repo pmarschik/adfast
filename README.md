@@ -175,6 +175,21 @@ a parse of the original. The second is idempotence. Both run over the
 fixture corpus, and both are fuzzed continuously
 (`FuzzFormatSemanticsPreserved`).
 
+One function sits beside the four primitives without being one of them.
+`adfast.PlainTextOf(md, ...Option)` projects a Markdown source down to the
+text a reader sees: markup drops, text stays, a code block contributes its
+code, and every directive contributes the literal `:name` the author typed
+followed by its label. It is a one-way projection, not a conversion, and
+it is not composable from the primitives. `FromMarkdown` promotes a known
+directive name into its typed dialect kind, and that promotion is not
+invertible, because `:::info`, `:::note`, `:::warning`, `:::success`, and
+`:::error` all land on `dialect.Panel`. A walk over the promoted tree
+therefore cannot tell which name was written, and an accidental intraword
+colon such as `deploy:status` would vanish from the middle of a sentence.
+`PlainTextOf` parses with `markdown.WithGenericDirectives`, which skips
+the promotion step whole, and reads the name off the generic node. For an
+inline slice that is already parsed, `ast.PlainText` is the direct form.
+
 Canonical `ToADF(FromMarkdown(md))` output is wire-safe unless
 `WithPreserveListTightness` is enabled, or the source carries a `{#id}`
 heading anchor, or a table whose delimiter row carries alignment colons.

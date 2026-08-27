@@ -21,6 +21,12 @@
 // ONE shared option type, adfast.Option. The Pipeline bundles the
 // cross-cutting options once for both directions.
 //
+// PlainTextOf sits beside the four as a one-way projection rather than a
+// conversion: Markdown in, the text a reader sees out, with directive
+// names kept literal. It is not composable from the primitives, because
+// the parse behind it deliberately skips the typed-directive promotion
+// the primitives depend on (see PlainTextOf).
+//
 // The Markdown dialect is CommonMark + GFM plus remark-directive-style
 // generic directives (via github.com/pmarschik/goldmark-directive) for ADF
 // features without native Markdown syntax — panels, expands, media, smart
