@@ -22,7 +22,8 @@ import (
 // WithPrintWidth(w)).
 //
 // Options read: WithPrintWidth, WithNoWrap, WithBlockSeparator,
-// WithPrettierFormat, and (in the format mode only) the convert.Normalize
+// WithPrettierFormat, WithoutSignificantSpaceEscapes, and (in the format
+// mode only) the convert.Normalize
 // options WithSmartLinks, WithMediaAssets or WithMediaAssetResolver,
 // WithCodeLanguages, WithExtensions
 // and WithDiagnostics.
@@ -55,6 +56,9 @@ func (o *options) renderOptions() []markdown.RenderOption {
 	}
 	if o.prettier {
 		out = append(out, markdown.WithPrettierText())
+	}
+	if o.noSpaceEscapes {
+		out = append(out, markdown.WithoutSignificantSpaceEscapes())
 	}
 	return out
 }

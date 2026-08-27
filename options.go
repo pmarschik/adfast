@@ -47,6 +47,7 @@ type options struct {
 	incrementLists      bool
 	noWrap              bool
 	prettier            bool
+	noSpaceEscapes      bool
 }
 
 func newOptions(opts []Option) options {
@@ -335,6 +336,31 @@ func WithPrintWidth(width int) Option {
 // default of preserving long lines. Read by ToMarkdown.
 func WithNoWrap() Option {
 	return func(o *options) { o.noWrap = true }
+}
+
+// WithoutSignificantSpaceEscapes writes a significant boundary space as
+// the space itself instead of the "&#x20;" character reference. Read by
+// ToMarkdown.
+//
+// THE OUTPUT IS DELIBERATELY NOT ROUND-TRIP FAITHFUL. The escape exists
+// because Markdown strips whitespace at an inline boundary, so re-parsing
+// this output loses exactly the space the escape would have carried, and
+// re-rendering it gives a different document. Never use it for text that
+// is written to a file or submitted to a remote — such text is read back,
+// and what it loses is gone. It is for a comparison that renders both
+// sides and throws the rendering away: a caller that must line a rendered
+// document up against a working copy, which cannot spell a trailing space
+// at all, gets the two sides into one spelling without a text
+// substitution over the finished output (which would also hit the
+// author's own "&#x20;" inside a code span, inside a fence, or behind a
+// backslash, where the six characters are content and no escape at all).
+//
+// Only whitespace escapes are suppressed. The character references that
+// keep an emphasis marker flankable — the alphanumeric neighbors of a
+// marker that would otherwise read as intraword — stay, because dropping
+// those changes what the text means rather than how a space survives.
+func WithoutSignificantSpaceEscapes() Option {
+	return func(o *options) { o.noSpaceEscapes = true }
 }
 
 // WithBlockSeparator sets the string written between consecutive

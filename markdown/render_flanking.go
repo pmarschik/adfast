@@ -122,7 +122,7 @@ func (r *mdRenderer) needsPunctTrail(nodes []ast.Node, i int, st *inlineContext)
 func (r *mdRenderer) markerNeedsPunctBefore(marker byte, next ast.Node, st *inlineContext) bool {
 	lead := r.renderedChildLead(next, st)
 	leads := []rune{lead}
-	if isEncodableRune(lead) {
+	if isEncodableRune(lead, r.cfg.noSpaceEscapes) {
 		leads = append(leads, '&') // what encodeLead would leave in its place
 	}
 	worksSomewhere := false
@@ -259,7 +259,10 @@ func linkLeadRune(node *ast.Link) rune {
 // isEncodableRune reports whether remark-stringify would hex-encode this
 // rune next to a non-flankable emphasis marker: alphanumerics make the
 // marker intraword, whitespace makes it non-flanking outright.
-func isEncodableRune(r rune) bool {
+// noSpaceEscapes excludes the whitespace half, which is what
+// WithoutSignificantSpaceEscapes gives up — the word-class half is not
+// negotiable, since without it the marker beside it stops being a marker.
+func isEncodableRune(r rune, noSpaceEscapes bool) bool {
 	// Word-class neighbors break emphasis flanking and get hex-encoded.
 	// The class mirrors the flanking checks exactly (anything neither
 	// whitespace nor punctuation — alphanumerics, combining marks, format
@@ -268,7 +271,10 @@ func isEncodableRune(r rune) bool {
 	if r == 0 || r == '\n' {
 		return false
 	}
-	return unicode.IsSpace(r) || !flankPunct(r)
+	if unicode.IsSpace(r) {
+		return !noSpaceEscapes
+	}
+	return !flankPunct(r)
 }
 
 // hexRef renders a character reference the way remark-stringify does

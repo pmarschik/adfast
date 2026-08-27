@@ -76,12 +76,16 @@ func (r *mdRenderer) renderInlineStringFrom(nodes []ast.Node, prev byte) string 
 	out := b.String()
 	// Boundary whitespace would be stripped (or blank the line) on
 	// re-parse; remark hex-encodes it ("0 " renders "0&#x20;", a
-	// non-breaking-space paragraph renders "&#xA0;").
-	if r := lastRuneOf(out); r != 0 && r != '\n' && unicode.IsSpace(r) {
-		out = out[:len(out)-len(string(r))] + hexRef(r)
-	}
-	if r := firstRuneOf(out); r != 0 && r != '\n' && unicode.IsSpace(r) {
-		out = hexRef(r) + out[len(string(r)):]
+	// non-breaking-space paragraph renders "&#xA0;"). A caller that renders
+	// only to compare, and never reads the result back, asks for the space
+	// itself instead (WithoutSignificantSpaceEscapes).
+	if !r.cfg.noSpaceEscapes {
+		if r := lastRuneOf(out); r != 0 && r != '\n' && unicode.IsSpace(r) {
+			out = out[:len(out)-len(string(r))] + hexRef(r)
+		}
+		if r := firstRuneOf(out); r != 0 && r != '\n' && unicode.IsSpace(r) {
+			out = hexRef(r) + out[len(string(r)):]
+		}
 	}
 	return out
 }
