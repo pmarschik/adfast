@@ -18,6 +18,10 @@ type renderConfig struct {
 	// prettierText switches text escaping from remark's rules to
 	// prettier's (intraword '_' stays bare). Used by the prettier-format render mode.
 	prettierText bool
+	// noSpaceEscapes writes a significant boundary space literally instead of
+	// as a character reference, giving up round-trip fidelity on purpose (see
+	// WithoutSignificantSpaceEscapes).
+	noSpaceEscapes bool
 }
 
 // RenderOption configures Render.
@@ -47,6 +51,17 @@ func WithPrintWidth(width int) RenderOption {
 // PreservedEscapes).
 func WithPrettierText() RenderOption {
 	return func(c *renderConfig) { c.prettierText = true }
+}
+
+// WithoutSignificantSpaceEscapes writes a significant boundary space as the
+// space itself rather than as the "&#x20;" character reference that survives a
+// re-parse. The output is deliberately NOT round-trip faithful: re-parsing it
+// strips the space. It exists for a render whose result is compared and then
+// discarded, never for text written to a file or submitted to a remote. Only
+// whitespace references are suppressed; the ones that keep an emphasis marker
+// flankable stay.
+func WithoutSignificantSpaceEscapes() RenderOption {
+	return func(c *renderConfig) { c.noSpaceEscapes = true }
 }
 
 // Render serializes an AST tree to Markdown text: the render half of

@@ -27,7 +27,7 @@ func (r *mdRenderer) escapeText(s string, st *inlineContext, nextLead byte, enco
 	// marker (remark-stringify behavior); only alphanumerics are encoded —
 	// punctuation neighbors already satisfy the flanking rules.
 	start := r.writeEncodedLead(&sb, s, st, encodeLead)
-	end, trailRef := encodedTrail(s, start, encodeTrail)
+	end, trailRef := encodedTrail(s, start, encodeTrail, r.cfg.noSpaceEscapes)
 	s = s[start:end]
 	// Line-start state at the node's first content byte — the per-char
 	// st.prev advances through the loop, but a digit RUN's start position
@@ -49,8 +49,9 @@ func (r *mdRenderer) escapeText(s string, st *inlineContext, nextLead byte, enco
 func (r *mdRenderer) writeEncodedLead(sb *strings.Builder, s string, st *inlineContext, encodeLead bool) int {
 	start := 0
 	// A space at a line start after a hard break would be stripped on
-	// re-parse; remark hex-encodes it ("\\\n&#x20;0").
-	if !r.cfg.prettierText && st.hasPrev && st.prev == '\n' {
+	// re-parse; remark hex-encodes it ("\\\n&#x20;0"). A render that is only
+	// compared, never read back, asks for the space itself instead.
+	if !r.cfg.prettierText && !r.cfg.noSpaceEscapes && st.hasPrev && st.prev == '\n' {
 		if r0 := firstRuneOf(s); r0 != 0 && r0 != '\n' && unicode.IsSpace(r0) {
 			sb.WriteString(hexRef(r0))
 			start = len(string(r0))
@@ -58,7 +59,7 @@ func (r *mdRenderer) writeEncodedLead(sb *strings.Builder, s string, st *inlineC
 		}
 	}
 	if encodeLead {
-		if r0 := firstRuneOf(s); r0 != 0 && isEncodableRune(r0) {
+		if r0 := firstRuneOf(s); r0 != 0 && isEncodableRune(r0, r.cfg.noSpaceEscapes) {
 			sb.WriteString(hexRef(r0))
 			start = len(string(r0))
 			st.prev, st.hasPrev = ';', true
@@ -69,11 +70,14 @@ func (r *mdRenderer) writeEncodedLead(sb *strings.Builder, s string, st *inlineC
 
 // encodedTrail returns where the escaped content ends and the hex
 // reference that replaces the trailing rune (empty when none does).
-func encodedTrail(s string, start int, encodeTrail bool) (end int, ref string) {
+// noSpaceEscapes leaves a whitespace trailer alone (see
+// WithoutSignificantSpaceEscapes); the word-class trailers still encode,
+// because those keep the following marker flankable.
+func encodedTrail(s string, start int, encodeTrail, noSpaceEscapes bool) (end int, ref string) {
 	if !encodeTrail {
 		return len(s), ""
 	}
-	if r1 := lastRuneOf(s[start:]); r1 != 0 && isEncodableRune(r1) {
+	if r1 := lastRuneOf(s[start:]); r1 != 0 && isEncodableRune(r1, noSpaceEscapes) {
 		return len(s) - len(string(r1)), hexRef(r1)
 	}
 	return len(s), ""
