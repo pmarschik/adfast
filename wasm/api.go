@@ -473,9 +473,24 @@ func (o Options) expandMode() (jira.ExpandMode, error) {
 // what ScanSpans reports as a directive is exactly what ToADF will treat
 // as one.
 //
-// The per-attribute spans markdown.Directive also carries are deliberately
-// NOT part of this payload: the JSON shape here is a shipped surface, and
-// widening it is a separate decision from lifting the walk.
+// The per-attribute spans markdown.Directive also carries — AttrSpans for
+// each written occurrence, AttrsSpan for the whole `{…}` block — are
+// deliberately NOT part of this payload, and stay out of it until an
+// editor integration asks for them.
+//
+// Three reasons. These rows are a shipped JSON surface, pinned
+// byte-for-byte by TestScanSpans_GoldenIsUnchanged; widening Span itself
+// rewrites a row for every directive that carries a `{…}` block and
+// charges every reader for data most of them never read. The spans are
+// only useful for a SURGICAL edit of one attribute, and this module
+// exports no editing at all — the whole JS surface is read-only views
+// plus whole-document conversion. And handing raw offsets to JavaScript
+// puts the UTF-16 splice arithmetic on the side that does not hold both
+// representations, which is the thing toUTF16 exists to avoid.
+//
+// When a consumer does need it, reach for a separate export first — an
+// attrSpans(md) view, or a bridge that performs the edit in Go and
+// returns the new source — not a wider Span.
 //
 // The parse behind it is the GUARDED one every markdown.Source view uses,
 // so a source that makes goldmark panic yields spans over a normalized copy

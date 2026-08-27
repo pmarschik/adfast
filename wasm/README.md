@@ -103,6 +103,20 @@ fence. An unclosed container is what the buffer looks like mid-keystroke
 and has no closing fence at all. Its `end` is the end of the enclosing
 container, or the end of the source.
 
+`attrs` carries the parsed attributes, but **no offsets**: there is no
+`attrsSpan`, and no per-attribute span. The Go core records both, and
+the export leaves them out on purpose. A row here is a shipped shape,
+and every directive with a `{…}` block would grow — for data that only
+a surgical edit of one attribute uses. This module exports no editing:
+read-only views, plus whole-document conversion. Splicing from JS also
+puts the UTF-16 offset arithmetic on the side that holds only one
+encoding, which is what the conversion above exists to prevent.
+
+To replace one attribute today, take the directive's `start`/`end`,
+rewrite that slice, and hand the whole document back to `toADF`. If that
+proves too coarse, the fix is a new export — `attrSpans(md)`, or an edit
+bridge that returns the new source — not a wider `scanSpans` row.
+
 ### `codeSpans()` is the parser's verdict on what is code
 
 `codeSpans(md)` returns the extent of every code block — fenced and
