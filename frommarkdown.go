@@ -36,8 +36,15 @@ import (
 // (parse-recovered, malformed-frontmatter, depth-exceeded and
 // span-marker-invalid notices).
 func FromMarkdown(md string, opts ...Option) ast.Node {
-	o := newOptions(opts)
+	return parseMarkdownSource(md, newOptions(opts))
+}
 
+// parseMarkdownSource is FromMarkdown's body with the options already
+// resolved and extra parse options appended, so a second facade entry
+// (PlainTextOf, which parses with markdown.WithGenericDirectives) reuses the
+// identical line-ending, frontmatter and diagnostics handling instead of
+// restating it.
+func parseMarkdownSource(md string, o options, extra ...markdown.ParseOption) ast.Node {
 	// CommonMark line-ending normalization: remark treats a lone CR as a
 	// line ending; goldmark does not, which would leave raw \r bytes inside
 	// text nodes.
@@ -74,6 +81,7 @@ func FromMarkdown(md string, opts ...Option) ast.Node {
 			parseOpts = append(parseOpts, markdown.WithExtensions(o.extensions...))
 		}
 		parseOpts = append(parseOpts, parseNoticeOptions(o.diagnostics)...)
+		parseOpts = append(parseOpts, extra...)
 		var ok bool
 		root, ok = markdown.Parse([]byte(source), parseOpts...).(*ast.Root)
 		if !ok {
