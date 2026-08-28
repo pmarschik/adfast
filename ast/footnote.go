@@ -1,7 +1,5 @@
 package ast
 
-import "strings"
-
 // GFM footnotes: the reference/definition pair mdast calls
 // footnoteReference and footnoteDefinition. The two nodes carry the
 // SOURCE label, and pair up on the normalized identifier
@@ -49,22 +47,8 @@ func (*FootnoteRef) Kind() string { return "footnoteReference" }
 // on: whitespace runs collapse to one space, the ends are trimmed, and
 // the result case-folds. It is micromark's normalizeIdentifier, the same
 // rule link reference definitions use, so "[^A]" matches "[^ a ]".
-func NormalizeFootnoteLabel(label string) string {
-	var b strings.Builder
-	b.Grow(len(label))
-	space := false
-	for _, r := range label {
-		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
-			space = true
-			continue
-		}
-		if space && b.Len() > 0 {
-			b.WriteRune(' ')
-		}
-		space = false
-		b.WriteRune(r)
-	}
-	// The double fold is micromark's: .toLowerCase().toUpperCase() folds
-	// the characters whose lower case is not a round trip (ẛ, İ).
-	return strings.ToUpper(strings.ToLower(b.String()))
-}
+//
+// That shared rule now has a name of its own — NormalizeLabel, in
+// linkref.go, where the link reference kinds call it — and this function
+// is the footnote-facing name for it.
+func NormalizeFootnoteLabel(label string) string { return NormalizeLabel(label) }

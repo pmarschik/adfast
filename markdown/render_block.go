@@ -32,8 +32,12 @@ type blockRenderVisitor struct {
 }
 
 // The optional visitor interfaces are asserted, not inferred: without
-// this the footnote kinds would silently fall through to VisitExtension.
-var _ ast.FootnoteVisitor[struct{}] = (*blockRenderVisitor)(nil)
+// this the footnote and link reference kinds would silently fall through
+// to VisitExtension.
+var (
+	_ ast.FootnoteVisitor[struct{}]  = (*blockRenderVisitor)(nil)
+	_ ast.ReferenceVisitor[struct{}] = (*blockRenderVisitor)(nil)
+)
 
 // VisitParagraph implements ast.Visitor.
 func (v *blockRenderVisitor) VisitParagraph(n *ast.Paragraph) struct{} {
@@ -105,6 +109,23 @@ func (v *blockRenderVisitor) VisitFootnoteDef(n *ast.FootnoteDef) struct{} {
 // VisitFootnoteRef implements ast.FootnoteVisitor: a reference is inline
 // content, so in block position it degrades like the other inline kinds.
 func (v *blockRenderVisitor) VisitFootnoteRef(n *ast.FootnoteRef) struct{} {
+	return v.blockFallback(n)
+}
+
+// VisitDefinition implements ast.ReferenceVisitor.
+func (v *blockRenderVisitor) VisitDefinition(n *ast.Definition) struct{} {
+	v.r.renderDefinition(v.b, n)
+	return struct{}{}
+}
+
+// VisitLinkRef implements ast.ReferenceVisitor: a reference is inline
+// content, so in block position it degrades like the other inline kinds.
+func (v *blockRenderVisitor) VisitLinkRef(n *ast.LinkRef) struct{} {
+	return v.blockFallback(n)
+}
+
+// VisitImageRef implements ast.ReferenceVisitor (see VisitLinkRef).
+func (v *blockRenderVisitor) VisitImageRef(n *ast.ImageRef) struct{} {
 	return v.blockFallback(n)
 }
 

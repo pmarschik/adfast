@@ -13,6 +13,7 @@ func TestEveryContainerIsParent(t *testing.T) {
 		&List{}, &ListItem{}, &Table{}, &TableRow{}, &TableCell{},
 		&ContainerDirective{}, &LeafDirective{}, &Emphasis{}, &Strong{},
 		&Delete{}, &Link{}, &Image{}, &TextDirective{},
+		&LinkRef{}, &ImageRef{},
 	}
 	kid := &Text{Value: "x"}
 	for _, n := range containers {
@@ -33,7 +34,7 @@ func TestEveryContainerIsParent(t *testing.T) {
 func TestLeafKindsHaveNoChildren(t *testing.T) {
 	leaves := []Node{
 		&Text{}, &InlineCode{}, &Break{}, &ThematicBreak{}, &Code{},
-		&HTML{}, &Frontmatter{}, &FootnoteRef{}, &foreignNode{},
+		&HTML{}, &Frontmatter{}, &FootnoteRef{}, &Definition{}, &foreignNode{},
 	}
 	for _, n := range leaves {
 		SetChildren(n, []Node{&Text{Value: "x"}})

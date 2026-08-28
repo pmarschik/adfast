@@ -44,8 +44,15 @@ func ToADF(root ast.Node, opts ...Option) adf.Doc {
 	// flattens to the number of its definition, which may sit anywhere in
 	// the tree (see footnote.go).
 	c.footnotes = collectFootnotes(root)
+	// The definition index likewise: a reference resolves against a
+	// definition that may sit anywhere in the tree, before or after it
+	// (see linkref.go).
+	c.definitions = collectDefinitions(root)
 	content := c.convertBlocks(ast.Children(root))
 	content = append(content, c.footnoteTail()...)
+	// After the body: which definitions went unused is only known once
+	// every reference has resolved.
+	c.definitionLosses()
 	if len(content) == 0 {
 		content = []adf.Node{&adf.Paragraph{Content: []adf.Node{}}}
 	}
@@ -70,6 +77,7 @@ type astConverter struct {
 	unsupportedKinds    map[string]bool
 	unsupportedKind     string
 	footnotes           footnoteIndex
+	definitions         definitionIndex
 	preserveTight       bool
 	preserveLocalImages bool
 }
@@ -623,6 +631,10 @@ func (v *astBlockVisitor) VisitTextDirective(n *ast.TextDirective) []adf.Node {
 // ADF has no inline image. The style-preserving formatter keeps images as
 // extension nodes.
 func (c *astConverter) convertParagraph(node *ast.Paragraph) adf.Node {
+	// A lone reference-style image is a lone image: resolve it first, so
+	// the promotions below see what "![alt](url)" would have given them
+	// (see linkref.go).
+	node = c.paragraphResolvingLoneImageRef(node)
 	if img, id, ok := c.singleAttachmentImage(node); ok {
 		return withImageCaption(c.attachmentImageToMedia(img, id), img.Title)
 	}

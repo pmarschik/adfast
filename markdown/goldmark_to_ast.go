@@ -498,7 +498,8 @@ func convertVerbatimBlock(node gast.Node, src []byte) (ast.Node, bool) {
 }
 
 // convertStructuredBlock handles the blocks with a shape of their own:
-// lists, tables, directives, footnote definitions.
+// lists, tables, directives, footnote definitions, link reference
+// definitions.
 func convertStructuredBlock(node gast.Node, src []byte, lc *liftCtx, depth int) (ast.Node, bool) {
 	switch n := node.(type) {
 	case *gast.List:
@@ -527,6 +528,25 @@ func convertStructuredBlock(node gast.Node, src []byte, lc *liftCtx, depth int) 
 		return &ast.FootnoteDef{
 			Label:    n.Label,
 			Children: convertGoldmarkBlocks(n, src, lc, depth+1),
+		}, true
+
+	case *gast.LinkReferenceDefinition:
+		// goldmark's paragraph transformer both registers the definition
+		// in the parse context's reference map AND leaves this node in
+		// the tree, in the source position it was written. Lifting it is
+		// what makes a definition survive the round trip; without this
+		// case it fell to the unknown-block branch, which found no
+		// children and returned nil — so every definition was deleted and
+		// every use of one was rewritten as an inline link.
+		//
+		// The label is kept verbatim, escapes included (it is the
+		// identifier the uses pair on); the destination and title carry
+		// CommonMark escapes the same way an inline link's do, so they
+		// decode here like convertLinkInline's.
+		return &ast.Definition{
+			Label: string(n.Label),
+			URL:   decodeMarkdownEscapes(string(n.Destination), ""),
+			Title: decodeMarkdownEscapes(string(n.Title), ""),
 		}, true
 	}
 	return nil, false
@@ -1128,6 +1148,17 @@ func convertStyledInline(node gast.Node, src []byte, lc *liftCtx, depth int) ([]
 func convertLinkInline(node gast.Node, src []byte, lc *liftCtx, depth int) ([]ast.Node, bool) {
 	switch n := node.(type) {
 	case *gast.Link:
+		// A reference-style link ("[spec]", "[spec][]", "[the spec][spec]")
+		// keeps that written form: goldmark resolved it against a
+		// definition and copied the destination onto the node, but the
+		// destination is written at the definition and belongs there.
+		if n.Reference != nil {
+			return []ast.Node{&ast.LinkRef{
+				Label:         string(n.Reference.Value),
+				ReferenceType: liftReferenceType(n.Reference.Type),
+				Children:      convertGoldmarkInlines(n, src, lc, depth+1),
+			}}, true
+		}
 		// An explicit [label](url) resource link keeps that form even when
 		// the label equals the URL (prettier does not shorten it); only
 		// autolinks collapse to <url>. Goldmark stores titles raw, escapes
@@ -1140,6 +1171,13 @@ func convertLinkInline(node gast.Node, src []byte, lc *liftCtx, depth int) ([]as
 		}}, true
 
 	case *gast.Image:
+		if n.Reference != nil {
+			return []ast.Node{&ast.ImageRef{
+				Label:         string(n.Reference.Value),
+				ReferenceType: liftReferenceType(n.Reference.Type),
+				Children:      convertGoldmarkInlines(n, src, lc, depth+1),
+			}}, true
+		}
 		return []ast.Node{&ast.Image{
 			URL:      decodeMarkdownEscapes(string(n.Destination), ""),
 			Title:    decodeMarkdownEscapes(string(n.Title), ""),
@@ -1150,6 +1188,22 @@ func convertLinkInline(node gast.Node, src []byte, lc *liftCtx, depth int) ([]as
 		return convertGoldmarkAutoLink(n, src), true
 	}
 	return nil, false
+}
+
+// liftReferenceType maps goldmark's reference-link form onto the AST's.
+// goldmark has exactly the three CommonMark shapes and no others, so the
+// default is unreachable today; it answers shortcut because that is the
+// form whose render is the label alone, the least destructive guess.
+func liftReferenceType(t gast.ReferenceLinkType) ast.ReferenceType {
+	switch t {
+	case gast.ReferenceLinkFull:
+		return ast.ReferenceFull
+	case gast.ReferenceLinkCollapsed:
+		return ast.ReferenceCollapsed
+	case gast.ReferenceLinkShortcut:
+		return ast.ReferenceShortcut
+	}
+	return ast.ReferenceShortcut
 }
 
 // convertGoldmarkAutoLink converts a bare or angle-bracketed autolink,

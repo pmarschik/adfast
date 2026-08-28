@@ -443,7 +443,10 @@ func SetChildren(n Node, kids []Node) {
 // block-level constructs the parser only ever builds while walking block
 // children (markdown/goldmark_to_ast.go's convertStructuredBlock); neither
 // is reachable from convertGoldmarkInline, so neither can occupy a slot in
-// an inline Children slice that PlainText walks.
+// an inline Children slice that PlainText walks. Definition is block-level
+// for the same reason and holds no children besides, so it too needs no
+// case; LinkRef and ImageRef take the default branch on purpose, because
+// their children ARE the text a reader sees (see linkref.go).
 func PlainText(nodes []Node) string {
 	var b strings.Builder
 	for _, n := range nodes {

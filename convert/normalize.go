@@ -409,6 +409,26 @@ func (fn *normalizer) flattenLeafInline(n ast.Node, ctx fmtMarks) ([]fmtAtom, bo
 		// is the identifier the definition pairs on, so nothing in it may
 		// be rewritten (see footnote.go).
 		return []fmtAtom{{node: &ast.FootnoteRef{Label: v.Label}, m: ctx}}, true
+	case *ast.LinkRef:
+		// A reference-style link rides as an opaque atom under its marks,
+		// for the footnote reference's reason: the label is the identifier
+		// its definition pairs on (see linkref.go). Only the full form's
+		// children are link text rather than the label itself, and they
+		// normalize like any inline content.
+		return []fmtAtom{{node: &ast.LinkRef{
+			Label:         v.Label,
+			ReferenceType: v.ReferenceType,
+			Children:      fn.normalizeInlines(v.Children),
+		}, m: ctx}}, true
+	case *ast.ImageRef:
+		// A reference-style image rides opaquely like an inline image, and
+		// loses its inherited marks for the same reason (ADF gives a
+		// mediaInline no mark slot).
+		return []fmtAtom{{node: &ast.ImageRef{
+			Label:         v.Label,
+			ReferenceType: v.ReferenceType,
+			Children:      fn.normalizeInlines(v.Children),
+		}}}, true
 	case *ast.Break:
 		return []fmtAtom{{isBreak: true, spacesBreak: v.Value == "  "}}, true
 	case *ast.HTML:
@@ -593,6 +613,11 @@ func atomLeaf(item fmtAtom) ast.Node {
 	}
 	if item.node != nil {
 		switch item.node.(type) {
+		case *ast.LinkRef:
+			// A reference-style link keeps its inherited marks for the
+			// footnote reference's reason below: they are the source's own,
+			// and ToADF puts them on the text the resolved link becomes.
+			return wrapAtomMarks(item.node, item.m)
 		case *ast.FootnoteRef:
 			// A footnote reference keeps its inherited marks, unlike the
 			// other opaque atoms (an image carries none in ADF): the
@@ -995,6 +1020,13 @@ func (fn *normalizer) encodeCoreBlock(node ast.Node) ([]encItem, bool) {
 		// because the definition passes through unchanged. Keeping it is
 		// what makes the md → md formatter footnote-preserving.
 		return normalItem(&ast.FootnoteDef{Label: v.Label, Children: fn.normalizeBlocks(v.Children)}), true
+	case *ast.Definition:
+		// A link reference definition survives Normalize for the footnote
+		// definition's reason: only the ADF leg drops it (see linkref.go),
+		// and passing it through unchanged is what makes the md → md
+		// formatter reference-preserving. Nothing here rewrites the label
+		// — it is the identifier the uses pair on.
+		return normalItem(&ast.Definition{Label: v.Label, URL: v.URL, Title: v.Title}), true
 	case *ast.Code:
 		fn.checkCodeLanguage(v.Lang)
 		return normalItem(&ast.Code{Lang: v.Lang, Value: strings.TrimRight(v.Value, "\n")}), true

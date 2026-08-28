@@ -62,6 +62,23 @@ type FootnoteVisitor[T any] interface {
 	VisitFootnoteRef(*FootnoteRef) T
 }
 
+// ReferenceVisitor is the optional companion of Visitor for the three
+// link reference kinds (see linkref.go). They joined the AST after
+// Visitor was published, so they follow the same rule FootnoteVisitor
+// documents: Visit dispatches one of them to this interface when the
+// visitor implements it, and to VisitExtension when it does not, which
+// keeps a consumer's existing Visitor implementation compiling and gives
+// the new kinds the treatment it already gives an unknown one.
+//
+// In-module visitors implement it, and assert it
+// ("var _ ast.ReferenceVisitor[T] = …") next to their Visitor assertion
+// so the compiler still catches a missing case.
+type ReferenceVisitor[T any] interface {
+	VisitDefinition(*Definition) T
+	VisitLinkRef(*LinkRef) T
+	VisitImageRef(*ImageRef) T
+}
+
 // Visit dispatches n to the matching Visitor method. The kind list is
 // split by category across the visit*Kind helpers below; each answers
 // ok=false for a kind outside its category, and the fallthrough is the
@@ -77,6 +94,9 @@ func Visit[T any](n Node, v Visitor[T]) T {
 		return r
 	}
 	if r, ok := visitFootnoteKind(n, v); ok {
+		return r
+	}
+	if r, ok := visitReferenceKind(n, v); ok {
 		return r
 	}
 	return v.VisitExtension(n)
@@ -169,6 +189,32 @@ func visitFootnoteKind[T any](n Node, v Visitor[T]) (T, bool) {
 	case *FootnoteRef:
 		if hasFootnotes {
 			return fv.VisitFootnoteRef(n), true
+		}
+		return v.VisitExtension(n), true
+	}
+	var zero T
+	return zero, false
+}
+
+// visitReferenceKind dispatches the three link reference kinds through
+// the optional ReferenceVisitor, falling back to VisitExtension for a
+// visitor that does not implement it.
+func visitReferenceKind[T any](n Node, v Visitor[T]) (T, bool) {
+	rv, hasRefs := v.(ReferenceVisitor[T])
+	switch n := n.(type) {
+	case *Definition:
+		if hasRefs {
+			return rv.VisitDefinition(n), true
+		}
+		return v.VisitExtension(n), true
+	case *LinkRef:
+		if hasRefs {
+			return rv.VisitLinkRef(n), true
+		}
+		return v.VisitExtension(n), true
+	case *ImageRef:
+		if hasRefs {
+			return rv.VisitImageRef(n), true
 		}
 		return v.VisitExtension(n), true
 	}

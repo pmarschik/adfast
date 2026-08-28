@@ -75,12 +75,32 @@ func syncReferenced(ctx context.Context, store Store, up Uploader, docs []ast.No
 // collectLocalImages walks a parsed document for image destinations that
 // are local paths (not URLs) — the references an upload could resolve.
 // The destinations are normalized, because the worklist they meet is.
-func collectLocalImages(n ast.Node, out map[string]bool) {
-	if img, ok := n.(*ast.Image); ok && img.URL != "" && !isRemoteURL(img.URL) {
-		out[normalizeRef(img.URL)] = true
+//
+// A reference-style image keeps its destination on the definition, so the
+// definitions its labels resolve to are collected too (see linkref.go);
+// without that pass "![logo]" would never upload its file.
+func collectLocalImages(root ast.Node, out map[string]bool) {
+	collectImageNodes(root, out)
+	for _, def := range imageRefDefinitions(root) {
+		collectLocalDest(def.URL, out)
+	}
+}
+
+// collectImageNodes is collectLocalImages' recursion over the inline
+// image nodes.
+func collectImageNodes(n ast.Node, out map[string]bool) {
+	if img, ok := n.(*ast.Image); ok {
+		collectLocalDest(img.URL, out)
 	}
 	for _, c := range ast.Children(n) {
-		collectLocalImages(c, out)
+		collectImageNodes(c, out)
+	}
+}
+
+// collectLocalDest records one destination when it is a local path.
+func collectLocalDest(url string, out map[string]bool) {
+	if url != "" && !isRemoteURL(url) {
+		out[normalizeRef(url)] = true
 	}
 }
 

@@ -57,7 +57,14 @@ cell ABOVE (rowspan). Literal `>` / `^` cell content is escaped as
   reference to a superscript number and collects the definitions in an
   ordered list behind a rule at the end of the document
   (`footnote-flattened`). Use one only when that reading is acceptable —
-  it is the one construct that does not come back.
+  it does not come back.
+- **Link references** (`[spec]` with `[spec]: ./spec.md`) parse and
+  survive md → md untouched — label, written form and position included,
+  and a definition nothing references is kept. ADF has no definition
+  construct, so the ADF route resolves each reference to the inline link
+  it describes and drops the definition; only an unreferenced one loses
+  anything (`unused-definition-dropped`). Like a footnote, the pair does
+  not come back.
 - **Brackets inside directive labels** cannot nest; keep labels flat.
 - A `:` directly before a letter reads as a directive start; adfast
   escapes it as `\:` when rendering — do the same when writing by hand

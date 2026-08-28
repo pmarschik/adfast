@@ -77,6 +77,17 @@ const (
 	// the footnote. One diagnostic fires per definition, naming its
 	// label and its number. Emitted by ToADF.
 	CodeFootnoteFlattened = "footnote-flattened"
+	// CodeUnusedDefinitionDropped reports a link reference definition
+	// ("[label]: url") that nothing in the document references, dropped
+	// because ADF has no definition construct to hold it. A definition
+	// something DOES reference is not reported: its destination travels
+	// to every use as an ordinary link href, so the page is unchanged and
+	// only the write-it-once source form is lost. An unreferenced one has
+	// nowhere for its destination to go, so the URL leaves the document —
+	// the one lossy half, and the reason this code exists. One diagnostic
+	// fires per unused definition, naming its label and destination.
+	// Emitted by ToADF.
+	CodeUnusedDefinitionDropped = "unused-definition-dropped"
 	// CodeListItemContent reports a block inside a list item that ADF's
 	// listItem content model does not allow. The pinned schema oracle
 	// (docs/adf-coverage.md:122) gives the model as

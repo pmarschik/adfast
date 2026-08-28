@@ -31,15 +31,35 @@ func RewriteReferences(from, to Store) adfast.Option {
 	})
 }
 
-func rewriteNodes(n ast.Node, from, to Store) {
-	if img, ok := n.(*ast.Image); ok && img.URL != "" && !isRemoteURL(img.URL) {
-		if p, ok := currentPath(img.URL, from, to); ok && p != img.URL {
-			img.URL = p
-		}
+// rewriteNodes re-paths every local image destination in the tree: the
+// image nodes, and the definitions a reference-style image resolves to —
+// those hold the destination in their stead (see linkref.go).
+func rewriteNodes(root ast.Node, from, to Store) {
+	rewriteImageNodes(root, from, to)
+	for _, def := range imageRefDefinitions(root) {
+		def.URL = rewrittenDest(def.URL, from, to)
+	}
+}
+
+func rewriteImageNodes(n ast.Node, from, to Store) {
+	if img, ok := n.(*ast.Image); ok {
+		img.URL = rewrittenDest(img.URL, from, to)
 	}
 	for _, c := range ast.Children(n) {
-		rewriteNodes(c, from, to)
+		rewriteImageNodes(c, from, to)
 	}
+}
+
+// rewrittenDest answers the store's current path for one local
+// destination, or the destination unchanged when it maps nowhere.
+func rewrittenDest(url string, from, to Store) string {
+	if url == "" || isRemoteURL(url) {
+		return url
+	}
+	if p, ok := currentPath(url, from, to); ok {
+		return p
+	}
+	return url
 }
 
 // currentPath maps an image destination to the new store's reference
