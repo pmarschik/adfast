@@ -335,9 +335,11 @@ so a plain table of contents is just `::toc`. Macros without this sugar
 
 ## Degradation of unknown directives
 
-Unknown directive names keep the generic directive kinds and degrade
-exactly like remark: containers dissolve into their content, unknown
-leaves drop, unknown text directives flatten to plain text. Unknown ADF
+Unknown directive names keep the generic directive kinds. On the way to
+ADF they degrade exactly like remark: containers dissolve into their
+content, unknown leaves drop, unknown text directives flatten to plain
+text. The md → md formatter degrades none of them — it is total, and an
+unknown directive comes back out as you wrote it. Unknown ADF
 content survives ADF-level round trips losslessly (RawNode/RawMark) and
 is reduced only by the markdown projection, with a `raw-node`
 diagnostic.

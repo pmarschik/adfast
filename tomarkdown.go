@@ -14,8 +14,11 @@ import (
 // trips.
 //
 // WithPrettierFormat switches on the prettier md→md formatter: the tree is
-// first canonicalized with convert.Normalize (the single canonicalization
-// pass) and text serialization uses prettier's rules. That is applied
+// first canonicalized with convert.NormalizeFormat (the format leg of the
+// single canonicalization pass, which unlike the encode-side
+// convert.Normalize keeps the directives ADF cannot represent, because a
+// formatter may reshape an author's syntax but never delete it) and text
+// serialization uses prettier's rules. That is applied
 // only in this mode — the plain adf→md render must not disturb the tree —
 // so the format composition is
 // ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat(),
@@ -30,7 +33,7 @@ import (
 func ToMarkdown(n ast.Node, opts ...Option) string {
 	o := newOptions(opts)
 	if o.prettier {
-		n = convert.Normalize(n, o.convertOptions()...)
+		n = convert.NormalizeFormat(n, o.convertOptions()...)
 		// AST transforms are the formatter's content-rewrite seam (see
 		// WithASTTransforms); they run only in the prettier-format mode,
 		// on the canonicalized tree, matching the documented contract.

@@ -146,8 +146,8 @@ primitives consume. The subpackage functions
 sit one layer down under the same shapes. The `To*` primitives normalize
 on the way out. `ToADF` encodes through the canonicalizing projection onto
 the data model of ADF, and the prettier-format mode of `ToMarkdown`
-(`WithPrettierFormat`) runs the shared `convert.Normalize` pass before it
-renders.
+(`WithPrettierFormat`) runs the shared canonicalization pass before it
+renders, through its format-leg entry point `convert.NormalizeFormat`.
 
 The prettier md → md formatter is therefore the composition
 `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`.
@@ -161,10 +161,13 @@ semantic value. Escaping is a render-only concern, and
 share one `FrontmatterProvider`, so frontmatter detection cannot diverge,
 and the flag is read on the render call only. The formatter is a pure
 md → ast → md pass. It parses to the pivot AST, applies the
-`convert.Normalize` canonicalization, and renders back with the text
-rules of prettier. That canonicalization degrades an unknown directive,
-resolves `::colwidths` and `::decisions`, canonicalizes the inline marks,
-and re-derives the canonical payload of media. Nothing routes through
+`convert.NormalizeFormat` canonicalization, and renders back with the text
+rules of prettier. That canonicalization resolves `::colwidths` and
+`::decisions`, canonicalizes the inline marks, and re-derives the
+canonical payload of media. It is **total**: every node that goes in
+comes back out, so an unknown directive survives the format verbatim
+even though the ADF encode has no node for it (the encode-side
+`convert.Normalize` is the one that degrades it). Nothing routes through
 ADF, so the formatter never loses a construct that ADF cannot model.
 Frontmatter, raw HTML, and inline images pass straight through.
 `WithASTTransforms` is its content-rewrite seam. Two test obligations
@@ -670,9 +673,11 @@ degrade to the outermost anchor.
 
 Every known directive parses into a **typed AST node** in the package
 [`dialect/`](dialect/), and that node implements the public extension
-contract. An unknown directive name keeps the generic directive kinds and
-degrades exactly like remark: a container dissolves into its content, an
-unknown leaf drops, and an unknown text directive flattens to text.
+contract. An unknown directive name keeps the generic directive kinds. On
+the way to ADF it degrades exactly like remark: a container dissolves into
+its content, an unknown leaf drops, and an unknown text directive flattens
+to text. The md → md formatter degrades none of them — it is total, and
+an unknown directive comes back out as the author wrote it.
 
 ### Related conventions (no directive needed)
 

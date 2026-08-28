@@ -371,7 +371,7 @@ func WithBlockSeparator(sep string) Option {
 }
 
 // WithASTTransforms appends transforms run on the canonical pivot AST
-// between convert.Normalize and rendering (each receives the document
+// between convert.NormalizeFormat and rendering (each receives the document
 // root and may edit it in place). Read by ToMarkdown in the
 // prettier-format mode — the formatter's content-rewrite seam (e.g.
 // re-pathing image destinations after an asset-store layout change).
@@ -385,8 +385,10 @@ func WithASTTransforms(ts ...func(ast.Node)) Option {
 // ast.Text.Raw (see markdown.PreservedEscapes) regardless of this flag, and
 // splits frontmatter with the same FrontmatterProvider md→adf uses, so
 // detection can never diverge between the two directions. ToMarkdown reads
-// the flag to canonicalize the parsed tree with convert.Normalize and
-// switch text serialization to prettier's rules. The prettier md→md
+// the flag to canonicalize the parsed tree with convert.NormalizeFormat
+// (the total, format-leg canonicalizer: unlike the encode-side
+// convert.Normalize it keeps the generic directives ADF cannot represent)
+// and switch text serialization to prettier's rules. The prettier md→md
 // formatter is thus ToMarkdown(FromMarkdown(md), WithPrettierFormat(),
 // WithPrintWidth(w)) — the flag on the render call alone, with no need to
 // pass it to FromMarkdown. Pair with WithPrintWidth for the wrap width

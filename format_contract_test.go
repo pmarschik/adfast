@@ -323,6 +323,15 @@ func TestDirectiveBeforeUnescapedSyntaxIsTerminated(t *testing.T) {
 // second parse reads back (":media[]:A" formatted to ":media{}\:A" and
 // then to ":media\:A"). The terminator is for the colons the escape
 // declines. See markdown.needsPunctTrail.
+//
+// Which colons those are moved once the format leg stopped deleting
+// generic directives (see convert.NormalizeFormat): a letter-led ":A"
+// after a directive is itself parsed as a generic text directive, and it
+// now survives the canonicalizer as one instead of decaying into the
+// text node the escape lives on. With no text node in reach there is no
+// escape to lean on, so every case below is a terminator case. Each is
+// still checked for idempotency and for ADF equality with its source, so
+// the move is a surface change only.
 func TestDirectiveBeforeColonLeansOnTheColonEscape(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -333,9 +342,12 @@ func TestDirectiveBeforeColonLeansOnTheColonEscape(t *testing.T) {
 		{
 			// The fuzz repro: an empty label writes no brackets, so the
 			// form ends in its name and the following ":A" reaches it.
+			// The ":A" is a generic text directive of its own, kept
+			// whole by the format leg, so the terminator does the
+			// separating here too.
 			name: "colon into a letter-led name",
 			md:   ":media[]:A",
-			want: ":media\\:A\n",
+			want: ":media{}:A\n",
 		},
 		{
 			// The source's own empty attribute block is not a terminator
@@ -343,7 +355,7 @@ func TestDirectiveBeforeColonLeansOnTheColonEscape(t *testing.T) {
 			// decision is made from scratch.
 			name: "empty attribute block in the source",
 			md:   ":media{}:A",
-			want: ":media\\:A\n",
+			want: ":media{}:A\n",
 		},
 		{
 			// The prose escape covers only a letter-led name, so a
