@@ -1,8 +1,32 @@
 {
   "extends": "https://raw.githubusercontent.com/pmarschik/devkit/v1/dprint/go.json",
+
+  // The repo root carries a `dprint.json` symlink to this file. dprint only
+  // discovers a config named `dprint.json`, `dprint.jsonc`, `.dprint.json` or
+  // `.dprint.jsonc`, and a config inside `.config/` counts for `.config/`
+  // alone. Without the symlink a bare `dprint check` finds nothing here, falls
+  // back to the config in the home directory of whoever runs it, and reports
+  // files against a plugin set this repo never chose. `mise run fmt` and the
+  // hooks pass `-c .config/dprint.json`, so both routes read the same file.
+  //
+  // The same rule keeps `.config/**` out of every dprint run: the directory
+  // holding the config is the one scope the config cannot format. Files there
+  // are formatted by hand.
+
+  // devkit pins plugins for JSON, Markdown, TOML and YAML. There is no
+  // JavaScript plugin, so `wasm/smoke.mjs` and `wasm/wasm_exec.js` are out of
+  // scope deliberately. wasm_exec.js is vendored byte for byte from
+  // `$(go env GOROOT)/lib/wasm/`, and CI diffs it against the toolchain it
+  // builds with; reformatting it would turn every Go upgrade into a conflict.
+  // See wasm/README.md.
   "includes": [
     "**/*.{json,yaml,yml,toml,md}"
   ],
+
+  // The Markdown formatter rewrites the syntax this file exists to
+  // demonstrate: it pulls a closing `:::` fence into the blockquote above it
+  // and writes `> :::`, which is a different document. The file is the
+  // reference for the directive dialect, so its source stays as written.
   "excludes": [
     "skill/assets/references/example.md"
   ]

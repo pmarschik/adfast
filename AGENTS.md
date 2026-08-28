@@ -14,6 +14,27 @@ in doc.go.
 - `go test -fuzz FuzzRoundTripIdempotent ./...` — grow the round-trip
   corpus
 
+Run the formatters through `mise`. A `gofmt` or a `dprint` taken from
+`PATH` measures something other than this repo and reports files that are
+already correct:
+
+- `mise exec -- gofmt -l .`, not `gofmt -l .`. The `gofmt` on `PATH` is
+  whichever Go the shell happens to have, while `.config/mise/config.toml`
+  pins `go = "1.27.0"`. The alignment of a long map literal moved between
+  Go releases, so an older `gofmt` reports the generated
+  `dialect/emoji_map.go`. The generator already writes what its own
+  toolchain's `gofmt` writes, and `golangci-lint` agrees because that
+  binary is built with the pinned Go.
+- The standalone `gofumpt` binary carries the same skew: 0.9.2 is built
+  with go1.25.3 and so rewrites `dialect/emoji_map.go` to the older
+  alignment. Read `mise exec -- gofumpt -l .` with that in mind, and if
+  the hooks ever rewrite that file, regenerate it with
+  `go run ./internal/genemoji -output dialect/emoji_map.go` rather than
+  keeping the rewrite.
+- `dprint` reads `.config/dprint.json` through the `dprint.json` symlink at
+  the repo root. Read the comments in that file before you move either one.
+  dprint never formats `.config/**`, so a file there is formatted by hand.
+
 ## Conventions
 
 ### Commits
