@@ -455,9 +455,12 @@ func (r *mdRenderer) writeTextDirectiveForm(b *strings.Builder, name string, att
 		b.WriteString("]")
 		last = ']'
 	}
-	if len(attrs) > 0 {
-		var ab strings.Builder
-		writeDirectiveAttrs(&ab, attrs)
+	// What decides the rest is whether a block was WRITTEN, not whether the
+	// node carries attributes: writeDirectiveAttrs drops an attribute it
+	// cannot spell, and a map of nothing but those writes no block at all.
+	var ab strings.Builder
+	writeDirectiveAttrs(&ab, attrs)
+	if ab.Len() > 0 {
 		masked := strings.ReplaceAll(ab.String(), " ", string(wrapMask))
 		b.WriteString(strings.ReplaceAll(masked, "\t", string(wrapMaskTab)))
 		last = '}'
@@ -473,7 +476,7 @@ func (r *mdRenderer) writeTextDirectiveForm(b *strings.Builder, name string, att
 	// The bare form is exposed to every hazard — its tail is a name rune,
 	// word class for every dialect name. The labeled form already ends in
 	// ']', so only a following '{' can still reach it.
-	if len(attrs) == 0 && (st.directiveHazard == '{' || (last == 0 && st.directiveHazard != 0)) {
+	if ab.Len() == 0 && (st.directiveHazard == '{' || (last == 0 && st.directiveHazard != 0)) {
 		b.WriteString("{}")
 		last = '}'
 	}

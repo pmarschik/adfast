@@ -526,6 +526,59 @@ func TestRender_DirectiveUnspellableAttrKeyKeepsTheIDShorthand(t *testing.T) {
 	}
 }
 
+// FIX: a text directive whose attributes are ALL dropped still closes its
+// form with the inert "{}" block, the way a directive that never had any
+// does.
+//
+// The text form asks whether the node carries attributes, not whether the
+// renderer wrote a block for them, so a map that drops away entirely left
+// the form open: ":x" ran straight into a following "{y}", which the
+// re-parse then read as the directive's own attribute block and swallowed
+// the text. Dropping an unwritable attribute must not cost the content
+// next to the directive.
+func TestRender_TextDirectiveClosesTheFormWhenEveryAttributeIsDropped(t *testing.T) {
+	cases := []struct {
+		attrs map[string]string
+		name  string
+	}{
+		{name: "no attributes at all", attrs: nil},
+		{name: "only an unwritable value", attrs: map[string]string{"k": "a\nb"}},
+		{name: "only an unwritable key", attrs: map[string]string{"a b": "1"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := &ast.Root{Children: []ast.Node{&ast.Paragraph{Children: []ast.Node{
+				&ast.TextDirective{Name: "x", Attrs: tc.attrs},
+				&ast.Text{Value: "{y}"},
+			}}}}
+			out := Render(root)
+			if out != ":x{}{y}\n" {
+				t.Fatalf("rendered %q, want \":x{}{y}\\n\"", out)
+			}
+			assertRenderFixedPoint(t, out)
+			para, ok := ast.Children(Parse([]byte(out)))[0].(*ast.Paragraph)
+			if !ok {
+				t.Fatalf("%q does not re-parse as a paragraph", out)
+			}
+			kids := ast.Children(para)
+			if len(kids) != 2 {
+				t.Fatalf("%q re-parsed to %d inline nodes, want the directive and the text beside it", out, len(kids))
+			}
+			dir, ok := kids[0].(*ast.TextDirective)
+			if !ok {
+				t.Fatalf("%q does not re-parse as a text directive", out)
+			}
+			if len(dir.Attrs) != 0 {
+				t.Errorf("Parse read back %v, want no attributes", dir.Attrs)
+			}
+			if text, ok := kids[1].(*ast.Text); !ok || text.Value != "{y}" {
+				t.Errorf("the text beside the directive did not survive: %#v", kids[1])
+			}
+		})
+	}
+}
+
 // directiveForm round-trips an attribute map through one of the three
 // directive forms: build a node carrying attrs, Render it, Parse the
 // output back, and return the attributes that survived alongside the
