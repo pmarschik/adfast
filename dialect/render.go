@@ -10,15 +10,17 @@ import (
 // rendering it replaced.
 
 // RenderMarkdown implements extension.Node. Panel attrs have no ADF
-// equivalent and render nothing (the historical degradation).
+// equivalent, but they are written back out: they survive the markdown →
+// AST → markdown round trip like the generic container form's, so a
+// re-render does not delete what the author wrote.
 func (n *Panel) RenderMarkdown(ctx extension.RenderContext) {
-	ctx.WriteContainerDirective(n.PanelType, nil, n.Children)
+	ctx.WriteContainerDirective(n.PanelType, n.Attrs, n.Children)
 }
 
 // RenderMarkdown implements extension.Node. Expand attrs have no ADF
-// equivalent and render nothing (the historical degradation).
+// equivalent, and render back out like Panel's.
 func (n *Expand) RenderMarkdown(ctx extension.RenderContext) {
-	ctx.WriteContainerDirective("expand", nil, n.Children)
+	ctx.WriteContainerDirective("expand", n.Attrs, n.Children)
 }
 
 // RenderMarkdown implements extension.Node.

@@ -619,8 +619,13 @@ insignificant whitespace. That JSON holds a `"`, so the attribute is
 `'`, a single quote would not be lossless. The attribute then falls back
 to double quotes and writes every `"` as `&quot;`. This is
 remark-compatible, because remark decodes a character reference in an
-attribute value. The `sources` attribute of `dataConsumer` is a plain
-comma-separated list of source ids, and it is not JSON.
+attribute value. adfast's own parse does not: it reads the literal
+`&quot;` back, and `dialect.DecodeJSONAttr` is what decodes it for the
+JSON payload. So a value carrying **both** quote characters round-trips
+only as a JSON attribute; there is no escape inside a quoted attribute
+value, so any other attribute has to keep one of the two quotes out. The
+`sources` attribute of `dataConsumer` is a plain comma-separated list of
+source ids, and it is not JSON.
 
 ### Leaf directives (standalone lines)
 

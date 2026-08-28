@@ -42,6 +42,13 @@ Attributes live in `{…}` after the label:
   double quotes with every `"` written as `&quot;` (remark decodes
   character references in attribute values, so this stays
   remark-compatible).
+- **A value carrying both quote characters is lossy.** There is no escape
+  inside a quoted attribute value, so neither quote encloses such a value
+  and the `&quot;` fallback above is the only spelling. adfast's own parse
+  does **not** decode character references in an attribute value: it hands
+  back the literal `&quot;`. Only the JSON payload closes the loop, because
+  `dialect.DecodeJSONAttr` decodes the reference before unmarshalling. Keep
+  one of the two quote characters out of any other attribute value.
 - **Comma-separated sources**: `sources` on `:::dataConsumer` is a plain
   comma-separated list of opaque source ids (not JSON) —
   `sources="id1,id2"`.
