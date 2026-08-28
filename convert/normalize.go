@@ -16,7 +16,7 @@ package convert
 //     mark), and empty links vanish;
 //   - unknown text directives flatten to ":name" + label, unknown leaf
 //     directives drop, unknown containers dissolve into a single child
-//     (or drop);
+//     (or drop) — on the encode leg only; see NormalizeFormat;
 //   - ::colwidths resolves onto the following table (orphans drop),
 //     ::decisions marks the following plain bullet list (orphans drop);
 //   - task lists collapse to the canonical tight form;
@@ -24,11 +24,20 @@ package convert
 //     payloads (the equivalent of their ADF encode∘decode), including
 //     media→image conversion against a configured asset map.
 //
-// Normalize is idempotent, and ToADF is invariant under it
-// (ToADF(Normalize(n)) == ToADF(n) for every parsed AST). The prettier
-// md→md formatter is the composition Render∘Normalize∘Parse; that render
-// is byte-for-byte what routing the parse AST through ADF and back used
-// to produce.
+// The pass has two entry points, one per leg, differing in exactly one
+// rule. Normalize is the encode-side one, and it may drop: a generic
+// directive has no ADF node to become. NormalizeFormat is the md→md
+// formatter's, and it may not: the format leg is total — every node in,
+// some node out — because a formatter may reshape an author's syntax but
+// never delete it. Only the ADF encode is allowed to drop.
+//
+// Both are idempotent, and ToADF is invariant under either
+// (ToADF(Normalize(n)) == ToADF(n) for every parsed AST, and the same for
+// NormalizeFormat, because ToADF drops the kept directives itself). The
+// prettier md→md formatter is the composition
+// Render∘NormalizeFormat∘Parse; that render is byte-for-byte what routing
+// the parse AST through ADF and back used to produce, except for the
+// generic directives ADF has no room for.
 
 import (
 	"maps"
@@ -55,17 +64,51 @@ import (
 // The input tree is normalized in place and returned; pass a fresh parse
 // if the caller must retain the faithful tree. A nil or non-root node is
 // treated as a document whose children are n's children.
+//
+// This is the encode-side entry point, and it is allowed to drop: a
+// generic directive has no ADF node to become, so it goes away exactly
+// as ToADF would make it go away. Use NormalizeFormat for the md→md
+// formatter, whose contract forbids that.
 func Normalize(n ast.Node, opts ...Option) ast.Node {
+	return normalizeWith(n, false, opts)
+}
+
+// NormalizeFormat returns the canonical form of the pivot AST rooted at n
+// for the md→md formatter leg. It reads the same options as Normalize and
+// produces the same canonical form, with one difference, which is the
+// whole reason it exists: the format leg is total. Every node that goes
+// in comes back out.
+//
+// Normalize drops the directives ADF cannot represent — a generic leaf
+// directive, a generic container that does not reduce to exactly one
+// child — and flattens a generic text directive to its literal ":name"
+// plus label. That is right for an encode whose target has no node for
+// them. It is wrong for a formatter: a Markdown formatter may reshape an
+// author's syntax but must never delete it, and prettier, which has no
+// directive grammar at all, leaves an unknown directive verbatim. Running
+// the encode-side pass on the format leg silently erased an author's
+// "::include{path=...}" from every file the storysmith-md page pull
+// rewrote.
+//
+// Only the ADF encode is allowed to drop. Everything else about the two
+// passes is identical, so the ToADF invariant survives: encoding either
+// result yields the same ADF, because ToADF drops the kept nodes itself.
+func NormalizeFormat(n ast.Node, opts ...Option) ast.Node {
+	return normalizeWith(n, true, opts)
+}
+
+func normalizeWith(n ast.Node, keepGenericDirectives bool, opts []Option) ast.Node {
 	cfg := config{}
 	for _, o := range opts {
 		o(&cfg)
 	}
 	fn := &normalizer{
-		assets:      newMediaAssets(cfg),
-		encodeSL:    cfg.smartLinks,
-		decodeSL:    cfg.smartLinks,
-		diagnostics: cfg.diagnostics,
-		codeLangs:   cfg.codeLanguages,
+		assets:                newMediaAssets(cfg),
+		encodeSL:              cfg.smartLinks,
+		decodeSL:              cfg.smartLinks,
+		diagnostics:           cfg.diagnostics,
+		codeLangs:             cfg.codeLanguages,
+		keepGenericDirectives: keepGenericDirectives,
 	}
 	root, ok := n.(*ast.Root)
 	if !ok {
@@ -82,6 +125,12 @@ type normalizer struct {
 	decodeSL    SmartLinks // render-side resolver (KeyFromURL)
 	diagnostics func(Diagnostic)
 	codeLangs   map[string]bool
+	// keepGenericDirectives selects the format leg (NormalizeFormat):
+	// the generic leaf, container and text directives survive the pass
+	// instead of dropping. Unexported on purpose — it is a property of
+	// which leg is running, not a knob a caller tunes, so it never
+	// reaches the Option set ToADF and FromADF share.
+	keepGenericDirectives bool
 }
 
 func (fn *normalizer) diag(code, message string) {
@@ -164,7 +213,99 @@ var fmtAtomSpanOps = spanOps[fmtAtom]{
 // sibling — see inferAfterCode's lax parameter.
 func regroupAtoms(atoms []fmtAtom) []ast.Node {
 	inferAcrossCode(atoms, fmtAtomSpanOps, false)
-	return groupSpans(joinTextAtoms(atoms), fmtAtomSpanOps, openMarks{})
+	return joinMarkWrappers(groupSpans(joinTextAtoms(atoms), fmtAtomSpanOps, openMarks{}))
+}
+
+// joinMarkWrappers merges neighboring wrappers that wrapAtomMarks built for
+// the same mark. One run of atoms under one link is one link, whatever sits
+// between them: joinTextAtoms cannot reach across an opaque atom (a
+// footnote reference, or a generic text directive the format leg keeps), so
+// each side is wrapped on its own and the mark comes apart into two.
+//
+// A link is the case that shows. goldmark-directive reads a directive name
+// out of a link LABEL — ":30" in "[Call at 5:30](u)" is one, its grammar
+// taking digits — and hands the parse back as three links; rewrapping each
+// atom separately would write the three back out. Joining them restores the
+// one link the author wrote, which is also what the mark means.
+func joinMarkWrappers(nodes []ast.Node) []ast.Node {
+	out := make([]ast.Node, 0, len(nodes))
+	for _, n := range nodes {
+		if k := len(out) - 1; k >= 0 && sameMarkWrapper(out[k], n) {
+			ast.SetChildren(out[k], append(ast.Children(out[k]), ast.Children(n)...))
+			continue
+		}
+		out = append(out, n)
+	}
+	for _, n := range out {
+		if isMarkWrapper(n) {
+			ast.SetChildren(n, joinMarkWrappers(ast.Children(n)))
+		}
+	}
+	return out
+}
+
+// sameMarkWrapper reports whether two neighbors are the same mark written
+// twice, so one of them can take the other's children.
+func sameMarkWrapper(a, b ast.Node) bool {
+	ka, ok := markWrapperKey(a)
+	if !ok {
+		return false
+	}
+	kb, ok := markWrapperKey(b)
+	return ok && ka == kb
+}
+
+// markWrapperIdentity is what makes two wrappers the same mark: the kind,
+// and the mark's own values (a link's target, a color, an annotation).
+type markWrapperIdentity struct {
+	kind     string
+	value    string
+	extra    string
+	explicit bool
+}
+
+// markWrapperKey returns the mark identity of a wrapper this pass builds
+// itself, and false for everything else. Only these kinds qualify: every
+// link and every dialect mark dissolved into the atom context on the way
+// in (see flattenInline), so a node of one of these kinds here is one
+// wrapAtomMarks just made.
+//
+// A bare or inline-card link is left out: its text is its URL, and a
+// second child would contradict that.
+func markWrapperKey(n ast.Node) (markWrapperIdentity, bool) {
+	switch x := n.(type) {
+	case *ast.Link:
+		if x.Bare || x.InlineCard {
+			return markWrapperIdentity{}, false
+		}
+		return markWrapperIdentity{kind: "link", value: x.URL, extra: x.Title, explicit: x.Explicit}, true
+	case *dialect.Sup:
+		return markWrapperIdentity{kind: "sup"}, true
+	case *dialect.Sub:
+		return markWrapperIdentity{kind: "sub"}, true
+	case *dialect.Underline:
+		return markWrapperIdentity{kind: "underline"}, true
+	case *dialect.Bg:
+		return markWrapperIdentity{kind: "bg", value: x.Color}, true
+	case *dialect.Color:
+		return markWrapperIdentity{kind: "color", value: x.Color}, true
+	case *dialect.Annotation:
+		return markWrapperIdentity{kind: "annotation", value: x.ID, extra: x.Attrs["annotationType"]}, true
+	}
+	return markWrapperIdentity{}, false
+}
+
+// isMarkWrapper reports whether n is one of the wrappers this pass builds
+// around an atom run — the mark wrappers plus the nesting spans groupSpans
+// produces, whose children are a regrouped run of their own.
+func isMarkWrapper(n ast.Node) bool {
+	switch n.(type) {
+	case *ast.Link, *ast.Strong, *ast.Emphasis, *ast.Delete,
+		*dialect.Sup, *dialect.Sub, *dialect.Underline,
+		*dialect.Bg, *dialect.Color, *dialect.Annotation:
+		return true
+	}
+	return false
 }
 
 // joinTextAtoms concatenates neighboring plain-text atoms carrying the
@@ -277,7 +418,19 @@ func (fn *normalizer) flattenLeafInline(n ast.Node, ctx fmtMarks) ([]fmtAtom, bo
 		return []fmtAtom{{node: &ast.HTML{Value: v.Value}}}, true
 	case *ast.TextDirective:
 		// Generic (unknown) text directive: the colon-prefixed name as
-		// plain text followed by the label; attributes drop.
+		// plain text followed by the label; attributes drop. On the
+		// format leg it rides as an opaque atom under its marks instead,
+		// like an image or a footnote reference, so the directive comes
+		// back out spelled the way the author wrote it (see
+		// NormalizeFormat).
+		if fn.keepGenericDirectives {
+			kept := &ast.TextDirective{
+				Name:     v.Name,
+				Attrs:    cloneAttrs(v.Attrs),
+				Children: fn.normalizeInlines(v.Children),
+			}
+			return []fmtAtom{{node: kept, m: ctx}}, true
+		}
 		out := []fmtAtom{{text: ":" + v.Name, m: ctx}}
 		return append(out, fn.flattenInlines(v.Children, ctx)...), true
 	}
@@ -439,14 +592,24 @@ func atomLeaf(item fmtAtom) ast.Node {
 		return &ast.Break{}
 	}
 	if item.node != nil {
-		if ref, isRef := item.node.(*ast.FootnoteRef); isRef {
+		switch item.node.(type) {
+		case *ast.FootnoteRef:
 			// A footnote reference keeps its inherited marks, unlike the
 			// other opaque atoms (an image carries none in ADF): the
 			// marks around a reference are the source's own, and the ADF
 			// encode puts them on the superscript the reference becomes,
 			// so dropping them here would break the invariant Normalize
 			// owes ToADF.
-			return wrapAtomMarks(ref, item.m)
+			return wrapAtomMarks(item.node, item.m)
+		case *ast.TextDirective:
+			// Only NormalizeFormat produces this atom, and for the same
+			// reason: the marks around a kept generic text directive are
+			// the author's own, and ToADF puts them on the literal text
+			// the directive flattens to. Dropping them here turned
+			// "[:name](https://e.com)" into a bare ":name" — the very
+			// deletion the format leg exists to prevent (probe:
+			// TestFormatSemanticCoherence_Corpus adf/8).
+			return wrapAtomMarks(item.node, item.m)
 		}
 		return item.node
 	}
@@ -857,17 +1020,51 @@ func (fn *normalizer) encodeStructuralBlock(node ast.Node) ([]encItem, bool) {
 		return []encItem{{kind: encTable, node: t}}, true
 	case *ast.ContainerDirective:
 		// Generic (unknown) container: a single converted child replaces
-		// it; anything else drops.
+		// it; anything else drops. On the format leg the shell survives
+		// whole instead (see NormalizeFormat).
+		if fn.keepGenericDirectives {
+			return normalItem(&ast.ContainerDirective{
+				Name:         v.Name,
+				Attrs:        cloneAttrs(v.Attrs),
+				Children:     fn.normalizeDirectiveBody(v.Children),
+				BlockSpacing: v.BlockSpacing,
+			}), true
+		}
 		sub := fn.resolveColwidths(fn.encodeBlocks(v.Children))
 		if len(sub) == 1 {
 			return sub, true
 		}
 		return nil, true
 	case *ast.LeafDirective:
-		// Generic (unknown) leaf directives drop.
+		// Generic (unknown) leaf directives drop — except on the format
+		// leg, which keeps every node (see NormalizeFormat).
+		if fn.keepGenericDirectives {
+			return normalItem(&ast.LeafDirective{
+				Name:         v.Name,
+				Attrs:        cloneAttrs(v.Attrs),
+				Children:     fn.normalizeInlines(v.Children),
+				BlockSpacing: v.BlockSpacing,
+			}), true
+		}
 		return nil, true
 	}
 	return nil, false
+}
+
+// normalizeDirectiveBody canonicalizes a kept generic container's
+// children. A container label is not a field: remark carries it as a
+// leading child paragraph flagged DirectiveLabel (see
+// ast.Paragraph.DirectiveLabel), and the flag does not survive that
+// paragraph's own canonicalization, so it is split off and re-attached —
+// the same move normalizeExpand makes for an ::: expand title.
+func (fn *normalizer) normalizeDirectiveBody(children []ast.Node) []ast.Node {
+	label, ok := expandLabelParagraph(children)
+	if !ok {
+		return fn.normalizeBlocks(children)
+	}
+	body := fn.normalizeBlocks(children[1:])
+	kept := &ast.Paragraph{DirectiveLabel: true, Children: fn.normalizeInlines(label.Children)}
+	return append([]ast.Node{kept}, body...)
 }
 
 // encodeDialectBlock handles the dialect's own block directives.

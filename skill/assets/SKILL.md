@@ -43,9 +43,10 @@ cell ABOVE (rowspan). Literal `>` / `^` cell content is escaped as
 
 ## What to avoid
 
-- **Unknown directive names** degrade like remark: containers dissolve
-  into their content, unknown leaves drop, unknown text directives
-  flatten to plain text — each with a diagnostic when a sink is wired.
+- **Unknown directive names** degrade like remark on the way to ADF:
+  containers dissolve into their content, unknown leaves drop, unknown
+  text directives flatten to plain text — each with a diagnostic when a
+  sink is wired. The md → md formatter keeps them all.
 - **Raw HTML**: ADF has no mapping — block HTML is dropped, inline tags
   become literal text. Use directives instead.
 - **Local image paths** (`![alt](assets/x.png)`) drop from the ADF

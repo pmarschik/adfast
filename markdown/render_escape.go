@@ -302,10 +302,20 @@ func linkifiesAsEmail(s string, i int, st *inlineContext) bool {
 	// The local part can also run out of the node and into the markup that
 	// precedes it — an emphasis closer is an underscore, which the linkify
 	// scan reads as part of the address ("*a*@b.com" renders "_a_@b.com",
-	// whose literal is "a_@b.com"). The walk cannot follow it there, so
-	// escape whenever it might continue.
+	// whose literal is "a_@b.com"). The walk cannot follow it there, so a
+	// local part that might continue is assumed to, and answered with a
+	// stand-in. The domain half is still this node's to answer, exactly as
+	// it is for a literal that starts inside the node: no domain, no link,
+	// and no escape.
+	//
+	// The domain check is what keeps the escape stable. The fuzzer found
+	// ":0_@", which formats to ":0\_@" — one text node, whose local-part
+	// walk stops at the ':' — and then to ":0\_\@", because the second
+	// parse reads a ":0" directive and leaves "_@" as a node of its own,
+	// whose predecessor is the directive's name rune. Neither spelling can
+	// linkify: nothing follows the '@'.
 	if lo == 0 && st.nodeHasPrev && isEmailLocalByte(st.nodePrev) {
-		return true
+		return emailLiteralMatches(emailLocalStandIn+s[lo:], i-lo+len(emailLocalStandIn))
 	}
 	for p := lo; p < i; p++ {
 		if emailLiteralStarts(s, p, st) && emailLiteralMatches(s[p:], i-p) {
@@ -314,6 +324,10 @@ func linkifiesAsEmail(s string, i int, st *inlineContext) bool {
 	}
 	return false
 }
+
+// emailLocalStandIn stands for a local part that runs out of the node into
+// the markup before it: one local-part byte is all the domain check needs.
+const emailLocalStandIn = "a"
 
 // emailLiteralStarts reports whether an autolink literal can begin at s[p]:
 // goldmark's linkify parser is triggered by one of " *_~(" (or a line head,

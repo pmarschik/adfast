@@ -109,11 +109,93 @@ func (r *mdRenderer) needsPunctTrail(nodes []ast.Node, i int, st *inlineContext)
 	// bare stays bare and fuses onto the name (probe: ":media[\n]"
 	// formatted to ":media[ ]", whose label swallowed the text).
 	escapable := isText && st.escape && !r.cfg.prettierText
-	colonEscaped := isText && r.escapesLeadColon(text, nextTextLead(nodes, i+1), st)
-	if fusesOntoDirectiveName(lead, escapable, colonEscaped) {
+	if isText && r.hexEncodesLead(text, nodes, i+1, st) {
+		return 0
+	}
+	nextLead := nextTextLead(nodes, i+1)
+	colonEscaped := isText && r.escapesLeadColon(text, nextLead, st)
+	underscoreEscaped := isText && st.escape && r.escapesLeadUnderscore(text, nextLead, st)
+	if fusesOntoDirectiveName(lead, escapable, colonEscaped, underscoreEscaped) {
 		return lead
 	}
 	return 0
+}
+
+// hexEncodesLead reports whether the emphasis repair will replace the
+// leading rune of the text node at nodes[j] with a '&#xNN;' reference.
+// The reference starts with '&', which is punctuation: it cannot fuse
+// onto the directive name, and it ends the form's neighborhood in
+// punctuation, so both hazards needsPunctTrail exists for are already
+// answered and the empty attribute block must not go out on top.
+//
+// Emitting it anyway is unstable, the same way the colon and underscore
+// cases are: the block appears on one format and not the next. The fuzzer
+// found it on "*:*0*0*0", where the first format writes
+// "_:0&#x30;_&#x30;" (goldmark reads the bare source as one text node
+// ":00", with no directive in it) and a second format of that output —
+// which now DOES parse a ":0" directive — added the block, giving
+// "_:0{}&#x30;_&#x30;".
+//
+// Only the encode that reaches the LEAD counts, so the node has to be a
+// single encodable rune: writeTextInline's repair replaces the trailing
+// rune, and the two are the same rune only then. The lead-side repair
+// (writeWrapped's encodeLead) never reaches here — a directive form
+// clears it as it writes, because hex-encoding a directive's own tail
+// would rename it.
+func (r *mdRenderer) hexEncodesLead(text *ast.Text, nodes []ast.Node, j int, st *inlineContext) bool {
+	if text == nil {
+		return false
+	}
+	lead := firstRuneOf(text.Value)
+	if lead == 0 || len(text.Value) != len(string(lead)) {
+		return false
+	}
+	if !isEncodableRune(lead, r.cfg.noSpaceEscapes) {
+		return false
+	}
+	// The two places writeTextInline turns the trail encode on: the
+	// enclosing construct asked for it (closeProblem, and only the last
+	// child carries it), or the next sibling is an emphasis marker this
+	// rune would leave unopenable.
+	if st.encodeTrail && j == len(nodes)-1 {
+		return true
+	}
+	if j+1 < len(nodes) {
+		if m := emphasisMarkerByte(nodes[j+1]); m != 0 {
+			return !canOpenMarker(m, lead, r.renderedChildLead(nodes[j+1], st))
+		}
+	}
+	return false
+}
+
+// escapesLeadUnderscore reports whether the renderer's own underscore
+// escape will separate a following text node from the directive name just
+// written. Prettier is not escape-free about '_': escapeUnderscore writes
+// "\_" at a word boundary, which is exactly where a directive name ends,
+// so the escape often already does the separating that the empty
+// attribute block would otherwise be emitted for.
+//
+// Emitting the block anyway is not merely redundant, it is unstable, in
+// the same way the colon case documents: the block goes out on one format
+// and not on the next. The fuzzer found it on "0:0_", where the first
+// format writes "0:0\_" (goldmark reads the bare source as one text node,
+// with no directive in it at all) and a second format of that output —
+// which now DOES parse a ":0" directive — added the block, giving
+// "0:0{}\_".
+//
+// It asks escapeUnderscore the question escapeUnderscore will be asked at
+// render time, with the same directive-tail stand-in escapesLeadColon
+// uses: the character before the '_' is the directive's own tail, which is
+// a name rune, ']' or '}'. Only "is it a word byte" is asked of it, and
+// that is settled — if the block does not go out the tail is the name
+// rune, which is one.
+func (r *mdRenderer) escapesLeadUnderscore(text *ast.Text, nextLead byte, st *inlineContext) bool {
+	if text == nil || !strings.HasPrefix(text.Value, "_") {
+		return false
+	}
+	after := *st
+	after.prev, after.hasPrev = directiveTailStandIn, true
+	return r.escapeUnderscore(text.Value, 0, nextLead, &after)
 }
 
 // escapesLeadColon reports whether the renderer's own colon escape will
@@ -165,7 +247,7 @@ func (r *mdRenderer) markerNeedsPunctBefore(marker byte, next ast.Node, st *inli
 // the punctuation members of the set (goldmark-directive's name grammar is
 // alphanumerics plus '-'/'_' runs; '[' opens a label and '{' an attribute
 // block).
-func fusesOntoDirectiveName(r rune, escapable, colonEscaped bool) bool {
+func fusesOntoDirectiveName(r rune, escapable, colonEscaped, underscoreEscaped bool) bool {
 	switch {
 	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
 		return true
@@ -173,7 +255,12 @@ func fusesOntoDirectiveName(r rune, escapable, colonEscaped bool) bool {
 		// A backslash before '-' is dropped by the renderer, so a text
 		// node cannot separate this one either.
 		return true
-	case r == '_', r == '[':
+	case r == '_':
+		// Prettier keeps an INTRAWORD underscore bare and escapes the
+		// rest, so the escape has to be asked for rather than assumed
+		// away with the rest of prettier's (see escapesLeadUnderscore).
+		return !escapable && !underscoreEscaped
+	case r == '[':
 		return !escapable
 	case r == '{':
 		// Unlike '_' and '[', a brace is not in remark's escape set, so a
@@ -232,6 +319,12 @@ func nodeLeadRune(node ast.Node) rune {
 		return '~'
 	case *ast.Link:
 		return linkLeadRune(n)
+	case *ast.Image:
+		// Its own marker, not its alt text: the walk below would have
+		// answered with the first rune INSIDE the brackets, which is
+		// what "![0](p.png)" after a directive turned into a "{}" that
+		// went out on the second format and not the first.
+		return '!'
 	case *ast.TextDirective:
 		return ':'
 	case extension.InlineLead:

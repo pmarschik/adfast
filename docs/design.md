@@ -404,12 +404,13 @@ The flattening is one shape, chosen so that nothing leaves the page:
   label and the number. The flattening is the only construct that does
   not decode back, so the caller needs the notice.
 
-`convert.Normalize` keeps both kinds, which is what makes the md → md
+Both canonicalizer legs keep both kinds, which is what makes the md → md
 formatter footnote-preserving, and it holds the invariant it owes `ToADF`
 because a kept definition encodes the same either way. A reference is an
 opaque inline atom, because the label is the identifier the definition
-pairs on and no part of it may be rewritten. It is the one opaque atom
-that keeps its inherited marks: an image carries none in ADF, but the
+pairs on and no part of it may be rewritten. It is one of the two opaque
+atoms that keep their inherited marks (the other is the generic text
+directive the format leg keeps): an image carries none in ADF, but the
 marks around a reference are the source's own, and the encode puts them on
 the superscript.
 
@@ -550,7 +551,11 @@ preserve the construct. A named regression test pins each of these:
   positions are answered conservatively, where the escape only ever
   keeps plain text plain: a local part that runs out of the text node
   into the markup before it, and an emphasis closer, which is an
-  underscore and therefore an address byte to the scan. The equivalent
+  underscore and therefore an address byte to the scan. The domain half
+  is not conservative in either position — no domain in the node, no
+  link, and no escape — which is what keeps the escape stable when a
+  kept text directive splits one text node into two, and moves a name
+  rune into the predecessor of the second. The equivalent
   fusion of a URL or a `www` literal has no repair, because
   `relinkifyTexts` re-linkifies a decoded text value whatever escapes it
   was written with. An unlinked URL literal is therefore inexpressible
@@ -575,7 +580,7 @@ The prettier md → md formatter is the composition
 `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`
 — a pure md → ast → md pass with no ADF leg. `FromMarkdown` produces the
 faithful parse AST, and the format mode of `ToMarkdown` runs
-`convert.Normalize` over it before it renders. `FromMarkdown` is a
+`convert.NormalizeFormat` over it before it renders. `FromMarkdown` is a
 _single_ parse for both directions. `ast.Text.Value` is always fully
 decoded, because that is the ADF currency, and the literal escapes of
 prettier are captured separately on `ast.Text.Raw` as escape provenance,
@@ -608,8 +613,19 @@ move with it in `TestFormatMarkdown_PrettierParity` and
 
 ### A single normalized AST
 
-Canonicalization of the pivot AST lives in one place: `convert.Normalize`,
-the shared AST → AST pass in `convert/normalize.go`. `FromMarkdown`, and
+Canonicalization of the pivot AST lives in one place: the shared AST → AST
+pass in `convert/normalize.go`, entered as `convert.Normalize` on the
+encode leg and as `convert.NormalizeFormat` on the md → md format leg.
+The two differ in exactly one rule, which is the reason the split exists:
+the encode leg may drop what ADF has no node for (a generic leaf
+directive, a generic container that does not reduce to one child, the
+generic text directive that flattens to its literal `:name`), and the
+format leg may not. **The format leg is total: every node in, some node
+out.** A Markdown formatter may reshape an author's syntax but must never
+delete it, and prettier, which has no directive grammar at all, leaves an
+unknown directive verbatim. Only the ADF encode is allowed to drop. The
+invariant survives the split, because `ToADF` drops the kept nodes itself.
+`FromMarkdown`, and
 the lower-level `markdown.Parse`, returns the _faithful_ parse tree with
 no canonicalization. An advanced consumer can therefore still see the
 un-normalized pivot AST, which preserves its "remark-faithful,
@@ -639,14 +655,24 @@ on the way out:
   registered text directive with no content (`:u` in `*0aaa[0 :u ]*`).
   Without the junction rule the md → adf → md round trip is not
   idempotent, so this is a correctness requirement, not a cosmetic one.
-- The prettier-format mode of `ToMarkdown` runs `convert.Normalize`
+- The prettier-format mode of `ToMarkdown` runs `convert.NormalizeFormat`
   before it renders. The renderer needs the _nested_ AST while ADF is
-  flat, so `Normalize` performs the inverse of the encode flatten. It
+  flat, so the pass performs the inverse of the encode flatten. It
   collects the mark set of each atom and regroups the run into the
   canonical `strong`/`em`/`delete` nesting, re-derives the canonical
   payloads of the dialect kinds, and resolves the same
-  `::colwidths` and `::decisions` cross-sibling patterns. `Normalize` is
+  `::colwidths` and `::decisions` cross-sibling patterns, and keeps the
+  generic directives the encode leg drops. Both entry points are
   idempotent.
+- One run of atoms under one mark is **one** wrapper. Adjacent text atoms
+  with equal marks join before the regrouping, but an opaque atom between
+  them — a footnote reference, or a generic text directive the format leg
+  keeps — blocks that join, and each side would then be wrapped on its
+  own. `joinMarkWrappers` merges the wrappers back. A link is where it
+  shows: goldmark-directive reads a directive name out of a link _label_
+  (`:30` in `[Call at 5:30](u)`, its grammar taking digits) and hands the
+  parse back as three links, which without the merge the formatter would
+  write back as three.
 
 The flat → nested mark regrouping is the one canonicalization that
 genuinely recurred. The ADF decode (`FromADF`) needs it, because ADF
@@ -719,8 +745,9 @@ carries the short table, and this is the full version:
   (dialect, typed directive nodes) plus the remark-compatible renderer
   (`Parse`, `Render`, `NewParser`).
 - **`convert/`** — the AST ⇄ ADF transforms (`ToADF`, `FromADF`), the
-  shared `Normalize` canonicalization pass (`normalize.go`, which the
-  formatter mode of `ToMarkdown` uses), and their parameter types
+  shared canonicalization pass (`normalize.go`: `Normalize` on the encode
+  leg, `NormalizeFormat` for the formatter mode of `ToMarkdown`), and
+  their parameter types
   (`SmartLinks`, `MediaAsset`, the resolvers, `Diagnostic`).
 - **`assets/`** — the pluggable attachment store behind the media
   resolvers. See [Asset store internals](#asset-store-internals).
@@ -847,7 +874,7 @@ When the store layout changes — a local folder becomes a shared root, or
 a fused store becomes a split one — the markdown rewrites through the
 formatter. `assets.RewriteReferences(old, new)` re-paths the image
 destinations as an AST transform, wired through `WithASTTransforms` and
-run on the tree of the formatter between `convert.Normalize` and the
+run on the tree of the formatter between `convert.NormalizeFormat` and the
 render, while the formatting pass keeps every other byte:
 
 ```go
