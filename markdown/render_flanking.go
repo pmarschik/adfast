@@ -101,7 +101,7 @@ func (r *mdRenderer) needsPunctTrail(nodes []ast.Node, i int, st *inlineContext)
 		}
 		return 0
 	}
-	_, isText := next.(*ast.Text)
+	text, isText := next.(*ast.Text)
 	lead := nodeLeadRune(next)
 	// The formatter adds no escapes of its own — it writes the source
 	// form the parse captured (ast.Text.Raw, which normalization has
@@ -109,11 +109,35 @@ func (r *mdRenderer) needsPunctTrail(nodes []ast.Node, i int, st *inlineContext)
 	// bare stays bare and fuses onto the name (probe: ":media[\n]"
 	// formatted to ":media[ ]", whose label swallowed the text).
 	escapable := isText && st.escape && !r.cfg.prettierText
-	if fusesOntoDirectiveName(lead, escapable) {
+	colonEscaped := isText && r.escapesLeadColon(text, nextTextLead(nodes, i+1), st)
+	if fusesOntoDirectiveName(lead, escapable, colonEscaped) {
 		return lead
 	}
 	return 0
 }
+
+// escapesLeadColon reports whether the renderer's own colon escape will
+// separate a following text node from the directive name just written:
+// ":media" before ":A" renders ":media\:A", which reads back as the
+// directive plus the text, with no help from an attribute block.
+//
+// It asks escapesColon the question escapesColon will be asked at render
+// time, with the one piece of context that is already settled here: the
+// character before the colon is the directive's own tail, which is a name
+// rune, ']' or '}' — never a colon and never a newline, so which of the
+// three it turns out to be cannot change the answer. That the tail is not
+// yet decided is the reason for the stand-in: whether the attribute block
+// goes out is what this call is deciding.
+func (r *mdRenderer) escapesLeadColon(text *ast.Text, nextLead byte, st *inlineContext) bool {
+	after := *st
+	after.prev, after.hasPrev = directiveTailStandIn, true
+	return r.escapesColon(text.Value, 0, nextLead, &after)
+}
+
+// directiveTailStandIn stands for the last character a directive form
+// writes, for the escape questions that only care that it is neither a
+// colon nor a newline. See escapesLeadColon.
+const directiveTailStandIn = 'x'
 
 // markerNeedsPunctBefore asks whether an emphasis marker's opener is
 // unsalvageable at a word-class predecessor — no encodeLead assignment
@@ -141,7 +165,7 @@ func (r *mdRenderer) markerNeedsPunctBefore(marker byte, next ast.Node, st *inli
 // the punctuation members of the set (goldmark-directive's name grammar is
 // alphanumerics plus '-'/'_' runs; '[' opens a label and '{' an attribute
 // block).
-func fusesOntoDirectiveName(r rune, escapable bool) bool {
+func fusesOntoDirectiveName(r rune, escapable, colonEscaped bool) bool {
 	switch {
 	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
 		return true
@@ -161,9 +185,16 @@ func fusesOntoDirectiveName(r rune, escapable bool) bool {
 		// goldmark-directive does not open a bare text directive whose
 		// name butts straight into a following colon, so ":media:u[x]"
 		// and ":media:" both lose the first directive. The colon escape
-		// only covers a colon that leads into a name (`\:x`), so this one
-		// is a hazard whatever the neighbor is.
-		return true
+		// covers only a colon that leads into a name (`\:x`) and only in
+		// a text node, so ":media" before ":9", before a bare ":", or
+		// before another directive is still a hazard.
+		//
+		// Where the escape does fire, the attribute block is not just
+		// redundant but wrong: it goes out on the first render and not on
+		// the second, because the escape it duplicates has by then become
+		// part of the text the second parse reads back. ":media[]:A"
+		// formatted to ":media{}\:A" and then to ":media\:A".
+		return !colonEscaped
 	}
 	return false
 }
