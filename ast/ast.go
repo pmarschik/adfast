@@ -93,6 +93,16 @@ func SetGapBefore(n Node, v bool) {
 // Root is the document root.
 type Root struct {
 	Children []Node
+	// ByteOrderMark records that the source opened with a UTF-8 byte order
+	// mark. The mark is a decoding artifact, not content: the parse peels
+	// it off before the frontmatter split and the goldmark parse (left in
+	// place it is ordinary text on line 1, which misparses the whole first
+	// block), and the Markdown render prepends it again so a document that
+	// carried one still carries one. It is deliberately NOT part of the
+	// tree — no node holds it, so no walk, normalization or ADF encoding
+	// has to know about it. A tree built from ADF never sets it, because
+	// ADF has nowhere to keep it.
+	ByteOrderMark bool
 }
 
 // Kind implements Node.

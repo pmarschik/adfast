@@ -459,6 +459,11 @@ type FrontmatterProvider func(md string) (front, rest string, outcome Frontmatte
 // renderer re-emits it) and only the body is parsed; a FrontmatterMalformed
 // outcome keeps the whole source as body and emits a malformed-frontmatter
 // diagnostic; FrontmatterAbsent parses the whole source as body.
+//
+// The provider is handed source with line endings already normalized and
+// any leading UTF-8 byte order mark already peeled (see
+// ast.Root.ByteOrderMark), so a convention never needs its own tolerance
+// for either: the first byte it sees is the first byte of the document.
 func WithFrontmatterProvider(fp FrontmatterProvider) Option {
 	return func(o *options) { o.frontmatter = fp }
 }

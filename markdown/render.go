@@ -64,8 +64,17 @@ func WithoutSignificantSpaceEscapes() RenderOption {
 	return func(c *renderConfig) { c.noSpaceEscapes = true }
 }
 
+// ByteOrderMark is the UTF-8 encoding of U+FEFF, the byte order mark a
+// document may open with. It is a decoding artifact rather than Markdown:
+// the parse peels it off before goldmark sees the source and records it on
+// ast.Root.ByteOrderMark, and Render prepends it again from that flag.
+const ByteOrderMark = "\ufeff"
+
 // Render serializes an AST tree to Markdown text: the render half of
 // ToMarkdown and the counterpart of Parse.
+//
+// A root with ast.Root.ByteOrderMark set re-emits the leading byte order
+// mark the source opened with; nothing else in the tree carries it.
 func Render(root ast.Node, opts ...RenderOption) string {
 	cfg := renderConfig{blockSep: "\n", wrapWidth: 80}
 	for _, o := range opts {
@@ -93,9 +102,16 @@ func (r *mdRenderer) availWidth() int {
 
 // render converts an AST root node to a Markdown string.
 func (r *mdRenderer) render(root ast.Node) string {
+	// The byte order mark is not a node, so it is prepended here rather
+	// than rendered: it precedes even a frontmatter block, and an empty
+	// document that opened with one still opens with one.
+	bom := ""
+	if rt, ok := root.(*ast.Root); ok && rt.ByteOrderMark {
+		bom = ByteOrderMark
+	}
 	children := ast.Children(root)
 	if len(children) == 0 {
-		return "\n"
+		return bom + "\n"
 	}
 	var b strings.Builder
 	r.renderBlockSequence(&b, children, r.cfg.blockSep)
@@ -103,7 +119,7 @@ func (r *mdRenderer) render(root ast.Node) string {
 	// ensure a single trailing newline.
 	out := strings.ReplaceAll(b.String(), string(wrapMask), " ")
 	out = strings.ReplaceAll(out, string(wrapMaskTab), "\t")
-	return strings.TrimRight(out, "\n") + "\n"
+	return bom + strings.TrimRight(out, "\n") + "\n"
 }
 
 // breakSafeBullet flips a '-' bullet to '*' when any item starts with a

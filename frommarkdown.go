@@ -10,7 +10,9 @@ import (
 )
 
 // FromMarkdown parses a Markdown string into the pivot AST — the parse
-// half of the md side. It performs line-ending normalization, splits
+// half of the md side. It peels a leading UTF-8 byte order mark onto
+// ast.Root.ByteOrderMark (a decoding artifact, not content; ToMarkdown
+// prepends it again), performs line-ending normalization, splits
 // leading document metadata with a FrontmatterProvider (see
 // WithFrontmatterProvider; a found block is kept as a leading
 // ast.Frontmatter node), runs the goldmark parse with the dialect and
@@ -45,6 +47,17 @@ func FromMarkdown(md string, opts ...Option) ast.Node {
 // identical line-ending, frontmatter and diagnostics handling instead of
 // restating it.
 func parseMarkdownSource(md string, o options, extra ...markdown.ParseOption) ast.Node {
+	// A leading UTF-8 byte order mark is a decoding artifact, not content.
+	// Peeled here, before the frontmatter provider and the goldmark parse
+	// see the source: left in place it is ordinary text at the start of
+	// line 1, so the first block misparses (a heading degrades to a
+	// paragraph, a list's first item splits off, a fence is reflowed) and
+	// a provider would need its own mark tolerance to find the block.
+	// ast.Root carries the fact so the render prepends it again; adfast
+	// does not silently change a document's encoding preamble.
+	bom := strings.HasPrefix(md, markdown.ByteOrderMark)
+	md = strings.TrimPrefix(md, markdown.ByteOrderMark)
+
 	// CommonMark line-ending normalization: remark treats a lone CR as a
 	// line ending; goldmark does not, which would leave raw \r bytes inside
 	// text nodes.
@@ -93,6 +106,7 @@ func parseMarkdownSource(md string, o options, extra ...markdown.ParseOption) as
 	if front != "" {
 		root.Children = append([]ast.Node{&ast.Frontmatter{Value: front}}, root.Children...)
 	}
+	root.ByteOrderMark = bom
 	return root
 }
 
