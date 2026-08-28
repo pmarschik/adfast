@@ -411,6 +411,121 @@ func TestRender_DirectiveAttrValueKeepsWhatQuotesCanHold(t *testing.T) {
 	}
 }
 
+// FIX: an attribute KEY the block cannot spell is dropped, and the other
+// attributes of the same block survive intact.
+//
+// The renderer wrote every map key verbatim, so a key carrying an
+// attribute-boundary byte, an "=", or nothing at all corrupted the block
+// the same way an unspellable id did: a key runs to the first boundary
+// byte or to the "=" that opens its value (scanAttrKeyValue), so
+// {a b="1"} splits into a bare "a" plus b="1", and a key holding a brace,
+// a quote or an "=" leaves the block malformed and the directive with no
+// attributes at all.
+//
+// A key opening with "#" or "." is the third shape, and it is the parser's
+// dispatch rather than the key scan that decides it: the block reader
+// branches on the FIRST byte of each attribute, so such a key is read as
+// the id/class shortcut. It either invalidates the block (#k="v") or,
+// worse, silently arrives under a different name (a bare #k comes back as
+// id="k").
+//
+// The hazard is shared by all three directive forms, because they all
+// serialize their attributes through writeDirectiveAttrs.
+func TestRender_DirectiveUnspellableAttrKeyIsDropped(t *testing.T) {
+	keys := []struct {
+		name string
+		key  string
+	}{
+		{name: "a space", key: "a b"},
+		{name: "a tab", key: "a\tb"},
+		{name: "an opening brace", key: "a{b"},
+		{name: "a closing brace", key: "a}b"},
+		{name: "a double quote", key: `a"b`},
+		{name: "a single quote", key: "a'b"},
+		{name: "an equals sign", key: "a=b"},
+		{name: "an LF", key: "a\nb"},
+		{name: "a CR", key: "a\rb"},
+		{name: "a leading space", key: " ab"},
+		{name: "a trailing space", key: "ab "},
+		{name: "nothing at all", key: ""},
+		{name: "a leading hash, which opens the id shortcut", key: "#ab"},
+		{name: "a leading dot, which opens the class shortcut", key: ".ab"},
+		{name: "only a hash", key: "#"},
+		{name: "only a dot", key: "."},
+	}
+	// A bare key and a valued one reach the parser through different
+	// branches, so both are exercised: the empty value is where a
+	// shortcut-shaped key is read back under the wrong NAME rather than
+	// taking the block down.
+	values := []struct {
+		name  string
+		value string
+	}{
+		{name: "with a value", value: "1"},
+		{name: "bare", value: ""},
+	}
+
+	for _, k := range keys {
+		for _, v := range values {
+			t.Run(k.name+" "+v.name, func(t *testing.T) {
+				attrs := map[string]string{k.key: v.value, "keep": "1", "id": "intro"}
+				want := map[string]string{"keep": "1", "id": "intro"}
+				for _, form := range directiveForms {
+					got, out := form.roundTrip(t, attrs)
+					if !maps.Equal(got, want) {
+						t.Errorf("%s form: round trip through %q: got %v, want %v",
+							form.name, out, got, want)
+					}
+				}
+			})
+		}
+	}
+}
+
+// PIN (preserved behavior): a key that CAN be spelled is still written, so
+// the guard does not swallow the ordinary ones. The shortcut markers only
+// matter as the first byte, and the boundary set is a set of bytes, so a
+// multi-byte rune never trips it.
+func TestRender_DirectiveSpellableAttrKeyIsKept(t *testing.T) {
+	keys := []string{
+		"k",
+		"data-source",
+		"data_source",
+		"a#b",
+		"a.b",
+		"a#",
+		"a.",
+		"9lives",
+		"Größe",
+		"id",
+		"class",
+	}
+
+	for _, key := range keys {
+		t.Run(key, func(t *testing.T) {
+			want := map[string]string{key: "1", "keep": "2"}
+			for _, form := range directiveForms {
+				got, out := form.roundTrip(t, want)
+				if !maps.Equal(got, want) {
+					t.Errorf("%s form: round trip through %q: got %v, want %v",
+						form.name, out, got, want)
+				}
+			}
+		})
+	}
+}
+
+// FIX: an unspellable key does not take the id shortcut down with it — the
+// block is still written, and the id still uses the compact spelling.
+func TestRender_DirectiveUnspellableAttrKeyKeepsTheIDShorthand(t *testing.T) {
+	root := &ast.Root{Children: []ast.Node{
+		&ast.LeafDirective{Name: "x", Attrs: map[string]string{"a b": "1", "id": "intro"}},
+	}}
+	if out := Render(root); out != "::x{#intro}\n" {
+		t.Errorf("rendered %q, want \"::x{#intro}\\n\"", out)
+	}
+}
+
 // directiveForm round-trips an attribute map through one of the three
 // directive forms: build a node carrying attrs, Render it, Parse the
 // output back, and return the attributes that survived alongside the

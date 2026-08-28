@@ -85,7 +85,8 @@ func writeLeafDirectiveForm(b *strings.Builder, name string, attrs map[string]st
 // "b", so the id would be silently truncated, while id="a b" reads back
 // whole.
 //
-// An attribute no spelling can hold at all is DROPPED — see valueSpells.
+// An attribute the block cannot spell at all is DROPPED, whether it is
+// the key that has no written form (keySpells) or the value (valueSpells).
 // Writing it would not spoil that one attribute: the block itself would
 // no longer parse, and the directive would come back with none of its
 // attributes (or, in the text form, as ordinary paragraph text). Losing
@@ -106,7 +107,7 @@ func writeDirectiveAttrs(b *strings.Builder, attrs map[string]string) {
 		if k == "id" && shortID {
 			continue
 		}
-		if !valueSpells(v) {
+		if !keySpells(k) || !valueSpells(v) {
 			continue
 		}
 		keys = append(keys, k)
@@ -160,6 +161,38 @@ func shorthandSpells(v string) bool {
 	}
 	for i := range len(v) {
 		if isAttrBoundary(v[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// keySpells reports whether a directive attribute key k can be written
+// into a `{…}` block and read back as itself.
+//
+// The rule is the parser's, read off two places rather than guessed. The
+// key scan (scanAttrKeyValue) runs a key from its first byte to the first
+// attribute-boundary byte (isAttrBoundary) or to the "=" that opens its
+// value, and it rejects an empty key outright — which invalidates the
+// whole block. So {a b="1"} comes back as a bare "a" plus b="1", and a
+// key holding a brace, a quote or an "=" leaves the block malformed and
+// the directive with no attributes at all.
+//
+// The block reader (scanDirectiveAttributes) adds the other half: it
+// branches on the FIRST byte of each attribute, so a key opening with
+// "#" or "." is read as the id/class shortcut instead of a key. That is
+// the quieter failure of the two — {#k="v"} takes the block down, but a
+// bare {#k} parses cleanly and simply arrives under the wrong name.
+//
+// Only the first byte carries that meaning, and the boundary set is a set
+// of BYTES, so "a#b" is a fine key and no multi-byte rune can trip either
+// rule.
+func keySpells(k string) bool {
+	if k == "" || k[0] == '#' || k[0] == '.' {
+		return false
+	}
+	for i := range len(k) {
+		if isAttrBoundary(k[i]) || k[i] == '=' {
 			return false
 		}
 	}
