@@ -697,7 +697,7 @@
   },
   {
     "md": ":status[:status[inner]]{a=b}\n",
-    "json": "[{\"attrs\":{},\"name\":\"status\",\"start\":0,\"end\":22,\"level\":1}]"
+    "json": "[{\"attrs\":{\"a\":\"b\"},\"name\":\"status\",\"start\":0,\"end\":28,\"level\":1}]"
   },
   {
     "md": "::include{}\n",
