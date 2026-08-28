@@ -141,7 +141,15 @@ halves, because each primitive ignores what it does not read:
 
 `FromMarkdown` parses to the faithful pivot AST and stops. It produces no
 ADF and no canonicalization, so it is the currency that the `To*`
-primitives consume. The subpackage functions
+primitives consume. Before it parses anything it clears the two decoding
+artifacts that are not Markdown: line endings normalize to `\n`, and a
+leading UTF-8 byte order mark is peeled onto `ast.Root.ByteOrderMark`
+(left in the source it is ordinary text on line 1 and the whole first
+block misparses). `ToMarkdown` prepends the mark again from that flag, so
+a document that opened with one still opens with one and a document that
+did not still does not — adfast never adds or drops an encoding preamble
+of its own. A `FrontmatterProvider` therefore also sees a source with no
+mark in it, and needs no tolerance for one. The subpackage functions
 `markdown.Parse`/`markdown.Render` and `convert.ToADF`/`convert.FromADF`
 sit one layer down under the same shapes. The `To*` primitives normalize
 on the way out. `ToADF` encodes through the canonicalizing projection onto
