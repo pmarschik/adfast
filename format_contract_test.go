@@ -314,6 +314,76 @@ func TestDirectiveBeforeUnescapedSyntaxIsTerminated(t *testing.T) {
 	}
 }
 
+// A ':' after a directive is a hazard the renderer already has an answer
+// for: the colon escape (see markdown.escapesColon) writes "\:" wherever
+// the colon leads into a name, which separates the two on re-parse. Adding
+// the empty attribute block on top of that escape is not merely redundant,
+// it is unstable — the block goes out on the first format and not on the
+// second, because the escape it duplicates is by then part of the text the
+// second parse reads back (":media[]:A" formatted to ":media{}\:A" and
+// then to ":media\:A"). The terminator is for the colons the escape
+// declines. See markdown.needsPunctTrail.
+func TestDirectiveBeforeColonLeansOnTheColonEscape(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			// The fuzz repro: an empty label writes no brackets, so the
+			// form ends in its name and the following ":A" reaches it.
+			name: "colon into a letter-led name",
+			md:   ":media[]:A",
+			want: ":media\\:A\n",
+		},
+		{
+			// The source's own empty attribute block is not a terminator
+			// the renderer keeps: it carries no attributes, so the same
+			// decision is made from scratch.
+			name: "empty attribute block in the source",
+			md:   ":media{}:A",
+			want: ":media\\:A\n",
+		},
+		{
+			// The prose escape covers only a letter-led name, so a
+			// digit-led one is left bare and the terminator is what keeps
+			// the directive from butting into it.
+			name: "colon into a digit-led name",
+			md:   ":media[]:9",
+			want: ":media{}:9\n",
+		},
+		{
+			name: "colon at the end of the paragraph",
+			md:   ":media[]:",
+			want: ":media{}:\n",
+		},
+		{
+			// The escape belongs to a text node, and this colon opens a
+			// directive instead — nothing escapes it, so the terminator
+			// stands.
+			name: "colon that opens the next directive",
+			md:   ":media[]:media[x]",
+			want: ":media{}:media[x]\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
 // TestDirectiveLabelIndentStaysOutOfCode pins the character reference
 // that keeps a text-directive label from opening as an indented code
 // block, where escapes stay literal and grow a backslash per format.
