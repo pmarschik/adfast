@@ -309,6 +309,108 @@ func TestRender_DirectiveUnspellableIDKeepsItsNeighbours(t *testing.T) {
 	}
 }
 
+// FIX: an attribute value carrying a line ending is dropped, and the rest
+// of the block is written as usual.
+//
+// A quoted value is read up to its own quote character and stops dead at a
+// CR or an LF (scanAttrValue), and an unterminated value does not spoil one
+// attribute — it invalidates the WHOLE block, so the directive re-parsed
+// with none of its attributes, or, in the text form, as ordinary paragraph
+// text. Neither spelling can hold such a value: the shortcut refuses it
+// (CR and LF are attribute-boundary bytes) and the long form has no escape
+// for a line ending inside quotes. So the attribute drops, the way an
+// unwritable heading id drops, and the attributes around it survive.
+//
+// The hazard is shared by all three directive forms, because they all
+// serialize their attributes through writeDirectiveAttrs.
+func TestRender_DirectiveAttrValueWithALineEndingIsDropped(t *testing.T) {
+	values := []struct {
+		name  string
+		value string
+	}{
+		{name: "an LF", value: "a\nb"},
+		{name: "a CR", value: "a\rb"},
+		{name: "a CRLF", value: "a\r\nb"},
+		{name: "a leading LF", value: "\nab"},
+		{name: "a trailing LF", value: "ab\n"},
+		{name: "only an LF", value: "\n"},
+		{name: "only a CR", value: "\r"},
+		{name: "an LF beside a quote the fallback would escape", value: "a\n\"b'c"},
+	}
+	// The id key takes the shortcut path, so it is covered alongside the
+	// ordinary key rather than assumed to behave like it.
+	keys := []string{"k", "id", "class"}
+
+	for _, v := range values {
+		for _, key := range keys {
+			t.Run(v.name+" in the "+key, func(t *testing.T) {
+				attrs := map[string]string{key: v.value, "keep": "1", "bare": ""}
+				want := map[string]string{"keep": "1", "bare": ""}
+				for _, form := range directiveForms {
+					got, out := form.roundTrip(t, attrs)
+					if !maps.Equal(got, want) {
+						t.Errorf("%s form: round trip through %q: got %v, want %v",
+							form.name, out, got, want)
+					}
+				}
+			})
+		}
+	}
+}
+
+// FIX: dropping the only attribute drops the block with it, rather than
+// writing an empty "{}" — which re-parses as no attributes anyway, so the
+// next render would write nothing and the spelling would not be a fixed
+// point.
+func TestRender_DirectiveDropsTheBlockWhenNoAttributeSurvives(t *testing.T) {
+	root := &ast.Root{Children: []ast.Node{
+		&ast.LeafDirective{Name: "x", Attrs: map[string]string{"k": "a\nb"}},
+	}}
+	out := Render(root)
+	if out != "::x\n" {
+		t.Fatalf("rendered %q, want \"::x\\n\"", out)
+	}
+	leaf, ok := ast.Children(Parse([]byte(out)))[0].(*ast.LeafDirective)
+	if !ok {
+		t.Fatalf("%q does not re-parse as a leaf directive", out)
+	}
+	if len(leaf.Attrs) != 0 {
+		t.Errorf("Parse read back %v, want no attributes", leaf.Attrs)
+	}
+}
+
+// PIN (preserved behavior): every byte a quoted value CAN hold still
+// round-trips, so the line-ending guard does not cost the values that were
+// always writable. A tab and the brace characters are attribute boundaries
+// only outside quotes; the quotes themselves are handled by
+// writeDirectiveAttrValue's quote choice.
+func TestRender_DirectiveAttrValueKeepsWhatQuotesCanHold(t *testing.T) {
+	values := []struct {
+		name  string
+		value string
+	}{
+		{name: "a space", value: "a b"},
+		{name: "a tab", value: "a\tb"},
+		{name: "braces", value: "a{b}c"},
+		{name: "a double quote", value: `a"b`},
+		{name: "a single quote", value: "a'b"},
+		{name: "an equals sign", value: "a=b"},
+	}
+
+	for _, v := range values {
+		t.Run(v.name, func(t *testing.T) {
+			want := map[string]string{"k": v.value, "keep": "1"}
+			for _, form := range directiveForms {
+				got, out := form.roundTrip(t, want)
+				if !maps.Equal(got, want) {
+					t.Errorf("%s form: round trip through %q: got %v, want %v",
+						form.name, out, got, want)
+				}
+			}
+		})
+	}
+}
+
 // directiveForm round-trips an attribute map through one of the three
 // directive forms: build a node carrying attrs, Render it, Parse the
 // output back, and return the attributes that survived alongside the

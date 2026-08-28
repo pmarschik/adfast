@@ -84,26 +84,44 @@ func writeLeafDirectiveForm(b *strings.Builder, name string, attrs map[string]st
 // style that survives: {#a b} re-parses as id="a" plus a bare attribute
 // "b", so the id would be silently truncated, while id="a b" reads back
 // whole.
+//
+// An attribute no spelling can hold at all is DROPPED — see valueSpells.
+// Writing it would not spoil that one attribute: the block itself would
+// no longer parse, and the directive would come back with none of its
+// attributes (or, in the text form, as ordinary paragraph text). Losing
+// one attribute is recoverable, losing the block is not, so the guard
+// drops rather than corrupts, the same way renderHeading drops an id
+// that has no writable anchor form. Only a hand-built or decoded tree can
+// carry one; the parser cannot produce it. When nothing survives, no
+// block is written at all — an empty "{}" reads back as no attributes
+// anyway, so writing one would cost the fixed point.
 func writeDirectiveAttrs(b *strings.Builder, attrs map[string]string) {
 	if len(attrs) == 0 {
 		return
 	}
-	b.WriteString("{")
-	wrote := false
 	id, hasID := attrs["id"]
 	shortID := hasID && shorthandSpells(id)
+	keys := make([]string, 0, len(attrs))
+	for k, v := range attrs {
+		if k == "id" && shortID {
+			continue
+		}
+		if !valueSpells(v) {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	if !shortID && len(keys) == 0 {
+		return
+	}
+	sort.Strings(keys)
+	b.WriteString("{")
+	wrote := false
 	if shortID {
 		b.WriteString("#")
 		b.WriteString(id)
 		wrote = true
 	}
-	keys := make([]string, 0, len(attrs))
-	for k := range attrs {
-		if k != "id" || !shortID {
-			keys = append(keys, k)
-		}
-	}
-	sort.Strings(keys)
 	for _, k := range keys {
 		if wrote {
 			b.WriteString(" ")
@@ -146,6 +164,29 @@ func shorthandSpells(v string) bool {
 		}
 	}
 	return true
+}
+
+// valueSpells reports whether a directive attribute value v can be
+// written into a `{…}` block at all — in either spelling, since an
+// attribute the renderer cannot write is dropped rather than corrupted.
+//
+// The rule is the parser's, not a guess: a quoted value runs to its own
+// quote character and stops dead at a CR or an LF (scanAttrValue), and an
+// unterminated value is not a bad attribute but a malformed BLOCK — the
+// scan gives up and the directive re-parses with no attributes at all.
+// writeDirectiveAttrValue already picks the quote character that
+// survives, and the dialect has no escape for a line ending inside a
+// quoted value, so a line ending is the one byte no long-form spelling
+// holds. The shortcut has the same hole and refuses it already, because
+// CR and LF are attribute-boundary bytes (see shorthandSpells).
+//
+// Every other byte is representable: a space, a tab, a brace and an
+// equals sign are attribute boundaries only OUTSIDE quotes, and the two
+// quote characters are the quote choice's job. A value carrying both of
+// them is lossy but not malformed — that documented case stays on
+// writeDirectiveAttrValue.
+func valueSpells(v string) bool {
+	return !strings.ContainsAny(v, "\r\n")
 }
 
 // writeDirectiveAttrValue serializes ="value" for a directive attribute,
