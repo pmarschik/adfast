@@ -6,6 +6,9 @@ require (
 	github.com/pmarschik/adfast v0.7.0
 	github.com/pmarschik/adfast/confluence v0.7.0
 	github.com/pmarschik/adfast/jira v0.7.0
-	github.com/pmarschik/goldmark-directive v0.3.1
-	github.com/yuin/goldmark v1.8.5
+)
+
+require (
+	github.com/pmarschik/goldmark-directive v0.3.2 // indirect
+	github.com/yuin/goldmark v1.8.5 // indirect
 )
