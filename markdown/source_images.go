@@ -125,14 +125,58 @@ func collectImages(doc gast.Node, src []byte) []Image {
 	return out
 }
 
-// imageSpan resolves one image to its written extent.
+// imageSpan resolves one image to its written extent. An image is a `[label]`
+// behind a `!`, so the resolver is the shared one — see bracketedSpan.
+func imageSpan(img *gast.Image, src []byte) (Image, bool) {
+	whole, alt, dest, ok := bracketedSpan(bracketed{
+		node: img, dest: img.Destination, ref: img.Reference, lead: 1,
+	}, src)
+	if !ok {
+		return Image{}, false
+	}
+	return Image{Span: whole, Alt: alt, Dest: dest}, true
+}
+
+// bracketed is what an image and a link have in common, which is everything
+// this file measures.
 //
-// goldmark records an image's Pos — the `!` — and its parsed destination,
-// and nothing else about where it ends: the inline parser consumes the
-// label, the destination, the title and the closers off a reader that
-// keeps no positions. So the tail has to be re-read from the source, which
-// this does with goldmark's own grammar (see scanLinkDestination and
-// scanClosure) rather than a lookalike.
+// goldmark gives both kinds the same three fields off one embedded baseLink —
+// Destination, Title and Reference — and sets Pos to the first byte of the
+// WRITTEN form for both (parser/link.go: SetPos(last.Segment.Start), where the
+// segment starts one byte earlier for an image). So the four written forms,
+// the label-closer search and the tail grammar are one problem, not two, and
+// the only thing that differs between them is how many bytes stand before the
+// `[`. That is lead.
+//
+// The fields are copied out rather than reached through an interface because
+// they ARE fields: Go has no way to name a struct field two concrete types
+// share, and an interface here would mean a method set goldmark does not have.
+//
+// The field order is the one govet's fieldalignment wants, not the reading
+// order.
+type bracketed struct {
+	// ref is the reference the parser matched, or nil for an inline form.
+	ref *gast.ReferenceLink
+	// node is the image or the link, used for its Pos and for the walk over
+	// its label's children.
+	node gast.Node
+	// dest is the destination the parser recorded, which is what proves a
+	// candidate closer.
+	dest []byte
+	// lead is the number of bytes between Pos and the `[`: 1 for an image's
+	// `!`, 0 for a link.
+	lead int
+}
+
+// bracketedSpan resolves one image or link to its written extent, and reports
+// the whole span, the label's span, and the destination's span.
+//
+// goldmark records Pos — the `!` of an image, the `[` of a link — and the
+// parsed destination, and nothing else about where the written form ends: the
+// inline parser consumes the label, the destination, the title and the closers
+// off a reader that keeps no positions. So the tail has to be re-read from the
+// source, which this does with goldmark's own grammar (see scanLinkDestination
+// and scanClosure) rather than a lookalike.
 //
 // The label's closing `]` is the one ambiguity, because a `]` can appear
 // inside the label — escaped, inside inline code, inside a nested bracket
@@ -141,27 +185,27 @@ func collectImages(doc gast.Node, src []byte) []Image {
 // closer is only accepted when the tail after it parses back to the
 // destination the parser recorded. A wrong candidate therefore fails
 // rather than producing a plausible-looking wrong span.
-func imageSpan(img *gast.Image, src []byte) (Image, bool) {
-	pos := img.Pos()
-	if pos < 0 || pos+1 >= len(src) || src[pos] != '!' || src[pos+1] != '[' {
-		return Image{}, false
+func bracketedSpan(b bracketed, src []byte) (whole, label, dest Span, ok bool) {
+	pos := b.node.Pos()
+	open := pos + b.lead
+	if pos < 0 || open >= len(src) || src[open] != '[' {
+		return Span{}, Span{}, Span{}, false
 	}
-	altStart, lines := pos+2, enclosingLines(img)
-	for k := labelFloor(img, altStart); k < len(src); k++ {
+	if b.lead == 1 && src[pos] != '!' {
+		return Span{}, Span{}, Span{}, false
+	}
+	labelStart, lines := open+1, enclosingLines(b.node)
+	for k := labelFloor(b.node, labelStart); k < len(src); k++ {
 		if src[k] != ']' {
 			continue
 		}
-		dest, end, ok := imageTail(img, src, altStart, k, lines)
+		dest, end, ok := bracketedTail(b, src, labelStart, k, lines)
 		if !ok {
 			continue
 		}
-		return Image{
-			Span: Span{Start: pos, Stop: end},
-			Alt:  Span{Start: altStart, Stop: k},
-			Dest: dest,
-		}, true
+		return Span{Start: pos, Stop: end}, Span{Start: labelStart, Stop: k}, dest, true
 	}
-	return Image{}, false
+	return Span{}, Span{}, Span{}, false
 }
 
 // labelFloor returns the lowest offset the label's closing `]` can have:
@@ -172,9 +216,9 @@ func imageSpan(img *gast.Image, src []byte) (Image, bool) {
 // is label content by definition and no `]` inside them is the closer. A
 // node kind that carries no segments (an autolink) leaves the floor lower
 // than it could be, which costs a few rejected candidates and no accuracy —
-// imageTail is what decides.
-func labelFloor(img *gast.Image, altStart int) int {
-	floor := altStart
+// bracketedTail is what decides.
+func labelFloor(n gast.Node, labelStart int) int {
+	floor := labelStart
 	var walk func(gast.Node)
 	walk = func(n gast.Node) {
 		switch t := n.(type) {
@@ -189,29 +233,31 @@ func labelFloor(img *gast.Image, altStart int) int {
 			walk(c)
 		}
 	}
-	walk(img)
+	walk(n)
 	return floor
 }
 
-// imageTail reads what follows a candidate closing `]` at k and reports the
-// destination's span and the offset one past the image, or false when the
-// candidate is not the closer.
+// bracketedTail reads what follows a candidate closing `]` at k and reports
+// the destination's span and the offset one past the written form, or false
+// when the candidate is not the closer.
 //
 // Which of the four written forms to expect is not guessed: goldmark
-// records it on the node. An inline image has no Reference; a reference
-// image has one, and its Value is the raw label bytes the parser matched,
-// which is what makes a reference form checkable at all.
-func imageTail(img *gast.Image, src []byte, altStart, k int, lines *text.Segments) (Span, int, bool) {
-	if img.Reference == nil {
-		return inlineTail(img, src, k, lines)
+// records it on the node. An inline image or link has no Reference; a
+// reference one has one, and its Value is the raw label bytes the parser
+// matched, which is what makes a reference form checkable at all.
+func bracketedTail(
+	b bracketed, src []byte, labelStart, k int, lines *text.Segments,
+) (Span, int, bool) {
+	if b.ref == nil {
+		return inlineTail(b, src, k, lines)
 	}
 	// A shortcut (`![alt]`) and a collapsed (`![alt][]`) reference both key
 	// off the label itself, so the label is what proves the candidate.
-	if img.Reference.Type != gast.ReferenceLinkFull &&
-		!bytes.Equal(src[altStart:k], img.Reference.Value) {
+	if b.ref.Type != gast.ReferenceLinkFull &&
+		!bytes.Equal(src[labelStart:k], b.ref.Value) {
 		return Span{}, 0, false
 	}
-	if img.Reference.Type == gast.ReferenceLinkShortcut {
+	if b.ref.Type == gast.ReferenceLinkShortcut {
 		return Span{}, k + 1, true
 	}
 	if k+1 >= len(src) || src[k+1] != '[' {
@@ -222,8 +268,8 @@ func imageTail(img *gast.Image, src []byte, altStart, k int, lines *text.Segment
 		return Span{}, 0, false
 	}
 	// A full reference (`![alt][id]`) keys off the second bracket pair.
-	if img.Reference.Type == gast.ReferenceLinkFull &&
-		!bytes.Equal(src[k+2:end-1], img.Reference.Value) {
+	if b.ref.Type == gast.ReferenceLinkFull &&
+		!bytes.Equal(src[k+2:end-1], b.ref.Value) {
 		return Span{}, 0, false
 	}
 	return Span{}, end, true
@@ -232,20 +278,20 @@ func imageTail(img *gast.Image, src []byte, altStart, k int, lines *text.Segment
 // inlineTail reads a `(destination "title")` tail after a candidate closing
 // `]` at k. It mirrors goldmark's parseLink step for step, so that what it
 // accepts is what the parser accepted.
-func inlineTail(img *gast.Image, src []byte, k int, lines *text.Segments) (Span, int, bool) {
+func inlineTail(b bracketed, src []byte, k int, lines *text.Segments) (Span, int, bool) {
 	if k+1 >= len(src) || src[k+1] != '(' {
 		return Span{}, 0, false
 	}
 	i := skipMarkdownSpaces(src, k+2, lines)
 	if i < len(src) && src[i] == ')' {
 		// `![alt]()`, which the parser reads as an empty destination.
-		if len(img.Destination) != 0 {
+		if len(b.dest) != 0 {
 			return Span{}, 0, false
 		}
 		return Span{Start: i, Stop: i}, i + 1, true
 	}
 	dest, next, ok := scanLinkDestination(src, i)
-	if !ok || !bytes.Equal(src[dest.Start:dest.Stop], img.Destination) {
+	if !ok || !bytes.Equal(src[dest.Start:dest.Stop], b.dest) {
 		return Span{}, 0, false
 	}
 	i = skipMarkdownSpaces(src, next, lines)
