@@ -213,3 +213,165 @@ func TestRender_DirectiveAttrValueQuoting(t *testing.T) {
 		})
 	}
 }
+
+// FIX: an id whose value the {#id} shortcut cannot spell falls back to the
+// long form. The shortcut token ends at the first attribute-boundary byte
+// (space, tab, CR, LF, a brace, or either quote character), so a value
+// carrying one is either truncated ({#a b} re-parses as id="a" plus a bare
+// attribute "b") or invalidates the whole block ({#a}b} leaves the
+// directive with no attributes at all). The renderer wrote the shortcut
+// unconditionally, so every such id was lost on re-parse.
+//
+// The class half of each case is a PIN (preserved behavior): the renderer
+// never wrote the {.class} shortcut, so a class already took the long
+// form. It is asserted here so the two shorthand-shaped keys can never
+// drift apart.
+//
+// The hazard is shared by all three directive forms, because they all
+// serialize their attributes through writeDirectiveAttrs — so each case
+// runs against the text, leaf and container forms.
+func TestRender_DirectiveShorthandFallsBackWhenItCannotSpellTheValue(t *testing.T) {
+	values := []struct {
+		name  string
+		value string
+	}{
+		{name: "a space", value: "a b"},
+		{name: "a closing brace", value: "a}b"},
+		{name: "a double quote", value: `a"b`},
+		{name: "a single quote", value: "a'b"},
+		{name: "an opening brace", value: "a{b"},
+		{name: "a tab", value: "a\tb"},
+		{name: "a leading space", value: " ab"},
+		{name: "a trailing space", value: "ab "},
+		{name: "only a space", value: " "},
+		{name: "spellable, so the shortcut is kept", value: "intro"},
+	}
+	keys := []string{"id", "class"}
+
+	for _, v := range values {
+		for _, key := range keys {
+			t.Run(v.name+" in the "+key, func(t *testing.T) {
+				want := map[string]string{key: v.value}
+				for _, form := range directiveForms {
+					got, out := form.roundTrip(t, want)
+					if !maps.Equal(got, want) {
+						t.Errorf("%s form: attrs lost in the round trip through %q: got %v, want %v",
+							form.name, out, got, want)
+					}
+				}
+			})
+		}
+	}
+}
+
+// FIX: the shortcut is still taken when it can spell the value, so the
+// fallback does not cost the compact spelling in the common case.
+func TestRender_DirectiveIDKeepsTheShorthandWhenItSpellsTheValue(t *testing.T) {
+	root := &ast.Root{Children: []ast.Node{
+		&ast.LeafDirective{Name: "x", Attrs: map[string]string{"id": "intro"}},
+	}}
+	if out := Render(root); out != "::x{#intro}\n" {
+		t.Errorf("rendered %q, want \"::x{#intro}\\n\"", out)
+	}
+}
+
+// FIX: an id explicitly set to the empty string used to be dropped
+// outright — the shortcut needs a non-empty token, and the long-form loop
+// skipped the id key unconditionally, so nothing was written for it. It
+// now takes the bare-key form every other empty-valued attribute takes.
+func TestRender_DirectiveEmptyIDIsNotDropped(t *testing.T) {
+	root := &ast.Root{Children: []ast.Node{
+		&ast.LeafDirective{Name: "x", Attrs: map[string]string{"id": ""}},
+	}}
+	out := Render(root)
+	if out != "::x{id}\n" {
+		t.Fatalf("rendered %q, want \"::x{id}\\n\"", out)
+	}
+	leaf, ok := ast.Children(Parse([]byte(out)))[0].(*ast.LeafDirective)
+	if !ok {
+		t.Fatalf("%q does not re-parse as a leaf directive", out)
+	}
+	if !maps.Equal(leaf.Attrs, map[string]string{"id": ""}) {
+		t.Errorf("Parse read back %v, want map[id:]", leaf.Attrs)
+	}
+}
+
+// FIX: an unspellable id sits beside the other attributes without
+// disturbing them — the long-form id joins the sorted key run.
+func TestRender_DirectiveUnspellableIDKeepsItsNeighbours(t *testing.T) {
+	want := map[string]string{"id": "a b", "class": "warn", "a": "1", "bare": ""}
+	for _, form := range directiveForms {
+		got, out := form.roundTrip(t, want)
+		if !maps.Equal(got, want) {
+			t.Errorf("%s form: attrs lost in the round trip through %q: got %v, want %v",
+				form.name, out, got, want)
+		}
+	}
+}
+
+// directiveForm round-trips an attribute map through one of the three
+// directive forms: build a node carrying attrs, Render it, Parse the
+// output back, and return the attributes that survived alongside the
+// rendered text (for the failure message). It also asserts that a second
+// render is a fixed point, since an unstable spelling is its own defect.
+type directiveForm struct {
+	roundTrip func(t *testing.T, attrs map[string]string) (got map[string]string, rendered string)
+	name      string
+}
+
+var directiveForms = []directiveForm{
+	{name: "text", roundTrip: roundTripTextDirectiveAttrs},
+	{name: "leaf", roundTrip: roundTripLeafDirectiveAttrs},
+	{name: "container", roundTrip: roundTripContainerDirectiveAttrs},
+}
+
+func roundTripTextDirectiveAttrs(t *testing.T, attrs map[string]string) (got map[string]string, rendered string) {
+	t.Helper()
+	root := &ast.Root{Children: []ast.Node{&ast.Paragraph{Children: []ast.Node{
+		&ast.TextDirective{Name: "x", Attrs: maps.Clone(attrs)},
+	}}}}
+	out := Render(root)
+	assertRenderFixedPoint(t, out)
+	para, ok := ast.Children(Parse([]byte(out)))[0].(*ast.Paragraph)
+	if !ok {
+		t.Fatalf("%q does not re-parse as a paragraph", out)
+	}
+	dir, ok := ast.Children(para)[0].(*ast.TextDirective)
+	if !ok {
+		t.Fatalf("%q does not re-parse as a text directive", out)
+	}
+	return dir.Attrs, out
+}
+
+func roundTripLeafDirectiveAttrs(t *testing.T, attrs map[string]string) (got map[string]string, rendered string) {
+	t.Helper()
+	root := &ast.Root{Children: []ast.Node{
+		&ast.LeafDirective{Name: "x", Attrs: maps.Clone(attrs)},
+	}}
+	out := Render(root)
+	assertRenderFixedPoint(t, out)
+	leaf, ok := ast.Children(Parse([]byte(out)))[0].(*ast.LeafDirective)
+	if !ok {
+		t.Fatalf("%q does not re-parse as a leaf directive", out)
+	}
+	return leaf.Attrs, out
+}
+
+func roundTripContainerDirectiveAttrs(t *testing.T, attrs map[string]string) (got map[string]string, rendered string) {
+	t.Helper()
+	root := &ast.Root{Children: []ast.Node{&ast.ContainerDirective{
+		Name:     "sidebar",
+		Attrs:    maps.Clone(attrs),
+		Children: []ast.Node{&ast.Paragraph{Children: []ast.Node{&ast.Text{Value: "body"}}}},
+	}}}
+	out := Render(root)
+	assertRenderFixedPoint(t, out)
+	return directiveAttrs(t, Parse([]byte(out))), out
+}
+
+func assertRenderFixedPoint(t *testing.T, out string) {
+	t.Helper()
+	if again := Render(Parse([]byte(out))); again != out {
+		t.Errorf("render is not a fixed point: %q then %q", out, again)
+	}
+}

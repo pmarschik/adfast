@@ -77,20 +77,29 @@ func writeLeafDirectiveForm(b *strings.Builder, name string, attrs map[string]st
 // other attributes are quoted key="value" pairs (sorted; empty-string
 // values as a bare attribute name; quote style per writeDirectiveAttrValue);
 // nothing for an empty map.
+//
+// The shortcut is only taken when it can spell the id — see
+// shorthandSpells. An id the shortcut cannot hold falls back to the long
+// form, exactly the way writeDirectiveAttrValue falls back to the quote
+// style that survives: {#a b} re-parses as id="a" plus a bare attribute
+// "b", so the id would be silently truncated, while id="a b" reads back
+// whole.
 func writeDirectiveAttrs(b *strings.Builder, attrs map[string]string) {
 	if len(attrs) == 0 {
 		return
 	}
 	b.WriteString("{")
 	wrote := false
-	if id := attrs["id"]; id != "" {
+	id, hasID := attrs["id"]
+	shortID := hasID && shorthandSpells(id)
+	if shortID {
 		b.WriteString("#")
 		b.WriteString(id)
 		wrote = true
 	}
 	keys := make([]string, 0, len(attrs))
 	for k := range attrs {
-		if k != "id" {
+		if k != "id" || !shortID {
 			keys = append(keys, k)
 		}
 	}
@@ -107,6 +116,36 @@ func writeDirectiveAttrs(b *strings.Builder, attrs map[string]string) {
 		wrote = true
 	}
 	b.WriteString("}")
+}
+
+// shorthandSpells reports whether the {#id} / {.class} shortcut can spell
+// the value v — that is, whether the shortcut re-parses as v and nothing
+// else.
+//
+// The rule is the parser's, not a guess: a shorthand token runs from the
+// marker to the first attribute-boundary byte (isAttrBoundary — space,
+// tab, CR, LF, an opening or closing brace, and either quote character),
+// and an empty token invalidates the whole attribute block. So a value
+// carrying any boundary byte is unspellable: the token stops early and
+// the tail becomes separate attributes ({#a b} → id="a" + bare "b"), or
+// the block is malformed and the directive loses its attributes
+// altogether ({#a}b}). An empty value
+// is unspellable for the same reason, and takes the bare-key long form
+// ({id}) that every other empty-valued attribute already takes.
+//
+// The long form is always available instead, because a quoted value stops
+// only at its own quote and writeDirectiveAttrValue picks the quote that
+// survives.
+func shorthandSpells(v string) bool {
+	if v == "" {
+		return false
+	}
+	for i := range len(v) {
+		if isAttrBoundary(v[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // writeDirectiveAttrValue serializes ="value" for a directive attribute,
