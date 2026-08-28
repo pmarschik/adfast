@@ -169,8 +169,12 @@ type inlineWriteVisitor struct {
 }
 
 // The optional visitor interfaces are asserted, not inferred: without
-// this the footnote kinds would silently fall through to VisitExtension.
-var _ ast.FootnoteVisitor[struct{}] = (*inlineWriteVisitor)(nil)
+// this the footnote and link reference kinds would silently fall through
+// to VisitExtension.
+var (
+	_ ast.FootnoteVisitor[struct{}]  = (*inlineWriteVisitor)(nil)
+	_ ast.ReferenceVisitor[struct{}] = (*inlineWriteVisitor)(nil)
+)
 
 // VisitText implements ast.Visitor.
 func (v *inlineWriteVisitor) VisitText(*ast.Text) struct{} {
@@ -251,6 +255,26 @@ func (v *inlineWriteVisitor) VisitFootnoteRef(n *ast.FootnoteRef) struct{} {
 	v.b.WriteString("[^" + label + "]")
 	v.st.prev, v.st.hasPrev = ']', true
 	v.st.prevRune, v.st.encodeLead = ']', false
+	return struct{}{}
+}
+
+// VisitDefinition implements ast.ReferenceVisitor: a definition is a
+// block, so in inline position it degrades to its content — and it has
+// none, so it writes nothing rather than leaking a half construct into
+// the line.
+func (v *inlineWriteVisitor) VisitDefinition(n *ast.Definition) struct{} {
+	return v.inlineFallback(n)
+}
+
+// VisitLinkRef implements ast.ReferenceVisitor.
+func (v *inlineWriteVisitor) VisitLinkRef(n *ast.LinkRef) struct{} {
+	v.r.writeLinkRef(v.b, n, v.st)
+	return struct{}{}
+}
+
+// VisitImageRef implements ast.ReferenceVisitor.
+func (v *inlineWriteVisitor) VisitImageRef(n *ast.ImageRef) struct{} {
+	writeImageRef(v.b, n, v.st)
 	return struct{}{}
 }
 

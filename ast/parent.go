@@ -119,3 +119,19 @@ func (n *TextDirective) ChildNodes() []Node { return n.Children }
 
 // SetChildNodes implements Parent.
 func (n *TextDirective) SetChildNodes(kids []Node) { n.Children = kids }
+
+// ChildNodes implements Parent.
+func (n *LinkRef) ChildNodes() []Node { return n.Children }
+
+// SetChildNodes implements Parent.
+func (n *LinkRef) SetChildNodes(kids []Node) { n.Children = kids }
+
+// ChildNodes implements Parent.
+func (n *ImageRef) ChildNodes() []Node { return n.Children }
+
+// SetChildNodes implements Parent.
+func (n *ImageRef) SetChildNodes(kids []Node) { n.Children = kids }
+
+// Definition holds no children — its label, destination and title are
+// strings, the way mdast's definition node has no `children` either — so
+// it is a leaf and gets no methods here.

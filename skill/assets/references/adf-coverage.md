@@ -74,16 +74,20 @@ documents no product-specific availability.
 
 ## Markdown with no ADF kind
 
-One construct goes the other way: the dialect accepts it, and ADF has
-nothing to hold it.
+Two constructs go the other way: the dialect accepts them, and ADF has
+nothing to hold them.
 
-| Markdown                         | adfast support | ADF mapping / notes                                                                                                                                                                                                                                                                          |
-| -------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| footnote (`[^1]` / `[^1]: note`) | flattened      | each reference becomes its number as `text` under a `subsup` `sup` mark; the definitions become a `rule` plus one `orderedList` at the end of the document, in definition order. No link to the definition — ADF has no anchor construct. One `footnote-flattened` diagnostic per definition |
+| Markdown                                           | adfast support | ADF mapping / notes                                                                                                                                                                                                                                                                          |
+| -------------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| footnote (`[^1]` / `[^1]: note`)                   | flattened      | each reference becomes its number as `text` under a `subsup` `sup` mark; the definitions become a `rule` plus one `orderedList` at the end of the document, in definition order. No link to the definition — ADF has no anchor construct. One `footnote-flattened` diagnostic per definition |
+| link reference (`[spec]` / `[spec]: ./spec.md`)    | resolved       | the reference becomes the ordinary inline link its definition describes — byte for byte the ADF of the same document written inline, marks included — and the definition drops. Only a definition nothing referenced loses anything: one `unused-definition-dropped` diagnostic for that one |
+| image reference (`![logo]` / `[logo]: ./logo.png`) | resolved       | the same, through the image path: block media for a lone one (with the definition's title as the caption), the three inline-image fates otherwise                                                                                                                                            |
 
-The flattening is one-way: nothing in ADF decodes back to a footnote, so
-the md → ADF → md round trip returns the flattened form. The md → md
-formatter preserves footnotes untouched.
+Both are one-way: nothing in ADF decodes back to a footnote or to a
+reference, so the md → ADF → md round trip returns the flattened form and
+the inline links. The md → md formatter preserves footnotes and
+references untouched — labels, written forms, definition positions and
+unreferenced definitions included.
 
 In short: unknown or undocumented ADF content survives ADF-level round
 trips losslessly and can be reported through diagnostics; only the

@@ -421,6 +421,90 @@ renderer. A list inside a definition uses the `-` bullet of adfast, where
 remark uses `*`. The measured pins in `markdown/footnote_test.go` name
 both causes.
 
+## Link reference definitions: the pair goldmark already resolved
+
+A reference-style link is the other half of the `[…]:` surface the
+footnote rules had to be exact about. The markdown is two places at once —
+`[the spec]` somewhere in the prose, `[the spec]: ./spec.md` somewhere
+else — and the destination lives at the second one. ADF has one link mark
+with a URL on it and no notion of a destination written down for later, so
+the pair cannot survive the ADF leg. It must survive the md → md leg,
+which is where it was being lost.
+
+goldmark resolves the pair during the parse. Its
+`linkReferenceParagraphTransformer` registers each definition in the parse
+context's reference map and copies the destination onto every `gast.Link`
+or `gast.Image` that pairs with it. The pivot AST had no kind for either
+end, so the lift kept only what the link node then held: a destination.
+That inlined every reference and deleted every definition — including the
+definitions nothing referenced, which are content the author wrote and
+which the formatter therefore owes back.
+
+**No new parser was needed.** The transformer leaves the
+`*gast.LinkReferenceDefinition` node in the tree, at the source position
+it was written, whether it sits in the document, a blockquote or a list
+item; and the resolved link carries `Reference` (`*gast.ReferenceLink`),
+which records the written form and the source label. Both ends are
+therefore a lift, not a parse: three kinds join the pivot AST with mdast's
+names and fields — `definition` (`ast.Definition`), `linkReference`
+(`ast.LinkRef`) and `imageReference` (`ast.ImageRef`), the two references
+carrying `ReferenceType` with mdast's `shortcut`, `collapsed` and `full`.
+Definition-after-use needs no second pass, because goldmark parses every
+block before any inline.
+
+The label is an **identifier**, not prose. It is written back verbatim,
+escapes included, and no leg may re-escape it, re-case it or rewrite it to
+match the spelling at the other end: the two ends pair on
+`ast.NormalizeLabel`, which is micromark's `normalizeIdentifier` (collapse
+whitespace runs, trim, fold the case twice) — the rule the footnote labels
+already needed, now shared by both families. Only the full form has link
+text distinct from the label, and only there do the reference nodes'
+children render.
+
+The kinds ride an additive companion interface, `ast.ReferenceVisitor[T]`,
+for the same reason the footnote kinds ride `ast.FootnoteVisitor[T]`:
+`ast.Visitor[T]` is exhaustive and consumer-implemented, so a new method
+on it would break every downstream visitor. A visitor that does not
+implement the companion sees the three kinds as extension nodes. Every
+in-repo visitor implements it, with a `var _` assertion next to it — and
+here that assertion is load-bearing rather than tidy, because the
+extension fallback recurses into children, and a reference's children are
+its own label: every reference would have quietly become plain text.
+
+The ADF leg **resolves** rather than flattens, which is a smaller loss
+than the footnote one:
+
+- A reference becomes the ordinary inline link (or image) its definition
+  describes, so it takes every link path an inline link takes — the
+  marks, the smart links, the link resolver, the file cards, the three
+  fates of an inline image. The equality is the pin: a reference
+  document's ADF is byte-identical to the ADF of the same document
+  written inline. A lone reference-style image is substituted before the
+  paragraph converts, because a lone image is block media in ADF and that
+  promotion pattern-matches the image node.
+- A definition drops. It renders as nothing on a page, and its
+  destination has already travelled to every use.
+- Only a definition **nothing** referenced loses anything, and that one
+  reports `unused-definition-dropped`, naming the label and the
+  destination.
+- A reference resolves to the **first** definition sharing its normalized
+  label, as CommonMark does and as goldmark already did when it paired
+  the uses.
+
+Both canonicalizer legs keep all three kinds, which is what makes the
+formatter reference-preserving. A reference is an opaque inline atom for
+the same reason a footnote reference is: the label is the identifier, and
+no part of it may be rewritten. A link reference keeps its inherited
+marks; an image reference drops them, like an inline image.
+
+One consequence reaches outside the conversion. `assets` collects the
+local images a document references (to upload them) and re-paths them
+(after a layout change), and a reference-style image holds its path on the
+definition. Both walks therefore ask which definitions an **image**
+reference resolves to. Only image references count: a definition a link
+uses is a document the author pointed at, not an embed, and uploading or
+re-pathing it would treat a link like an attachment.
+
 ## Rendering compatibility
 
 The markdown renderer is measured against remark-stringify, and against

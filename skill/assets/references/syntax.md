@@ -3,8 +3,9 @@
 The base dialect is **CommonMark + GFM**: pipe tables (padded to column
 width, plus cell merging — see [Tables](#tables)), task lists (`- [ ]` /
 `- [x]`), strikethrough (`~~text~~`), autolink literals, and footnotes
-(`[^1]` / `[^1]: note` — see [Footnotes](#footnotes)). On top of
-that: YAML `---` frontmatter (split off before parsing, re-emitted
+(`[^1]` / `[^1]: note` — see [Footnotes](#footnotes)). CommonMark's link
+reference pair is kept as written too (see
+[Link references](#link-references)). On top of that: YAML `---` frontmatter (split off before parsing, re-emitted
 verbatim by the formatter), decision lists, heading anchors
 (`## Title {#id}`), and the directive dialect below.
 
@@ -239,8 +240,8 @@ A definition stays where the source put it, nested containers included,
 and one nothing references is kept. Continuation lines indent by four
 spaces.
 
-**ADF has no footnote of any kind**, so the ADF leg flattens, and this is
-the one construct that does not come back:
+**ADF has no footnote of any kind**, so the ADF leg flattens, and — like
+a link reference — the pair does not come back:
 
 | Direction | Result                                                                                                                                   |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -253,6 +254,49 @@ at the end of the document. A reference carries no link to its
 definition, because ADF has no anchor to link to. Every flattened
 footnote reports a `footnote-flattened` diagnostic naming the label and
 the number.
+
+## Link references
+
+CommonMark's other `[…]:` pair: a reference in the prose and a definition
+that holds the destination.
+
+```markdown
+See [the spec][spec] and the [changelog].
+
+[spec]: ./spec.md "The Spec"
+[changelog]: ./CHANGELOG.md
+```
+
+All three written forms are kept as written, for links and for images:
+
+| Form      | Link               | Image               |
+| --------- | ------------------ | ------------------- |
+| shortcut  | `[spec]`           | `![logo]`           |
+| collapsed | `[spec][]`         | `![logo][]`         |
+| full      | `[the spec][spec]` | `![the logo][logo]` |
+
+The label is an identifier, so the two ends pair after whitespace
+collapsing and case folding (`[A]` pairs with `[ a ]`) and **neither end
+is rewritten to the other**. A definition stays where the source put it,
+nested containers included, and one nothing references is kept. A
+reference with no definition in the same document is literal text
+(rendered back as `\[missing]`).
+
+**ADF has neither construct**, so the ADF leg resolves:
+
+| Direction | Result                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------- |
+| md → md   | unchanged — the formatter never inlines a reference, rewrites a label, or deletes a definition  |
+| md → ADF  | the reference becomes the inline link (or image) its definition describes; the definition drops |
+| ADF → md  | the inline form (`[the spec](./spec.md)`), never a reference                                    |
+
+The resolution is exact: a reference document's ADF is byte-identical to
+the ADF of the same document written inline, so a reference takes every
+link path an inline link takes (marks, smart links, the resolver, file
+cards, the three inline-image fates). A definition something references
+drops silently — its destination already travelled to the use. A
+definition nothing references reports an `unused-definition-dropped`
+diagnostic naming the label and the destination.
 
 ## Escaping
 

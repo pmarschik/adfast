@@ -62,6 +62,14 @@ type footnoteNamer struct{ kindNamer }
 func (footnoteNamer) VisitFootnoteDef(*FootnoteDef) string { return "FootnoteDef" }
 func (footnoteNamer) VisitFootnoteRef(*FootnoteRef) string { return "FootnoteRef" }
 
+// referenceNamer adds the optional link reference half on top, so the
+// three reference kinds route to it instead of VisitExtension.
+type referenceNamer struct{ footnoteNamer }
+
+func (referenceNamer) VisitDefinition(*Definition) string { return "Definition" }
+func (referenceNamer) VisitLinkRef(*LinkRef) string       { return "LinkRef" }
+func (referenceNamer) VisitImageRef(*ImageRef) string     { return "ImageRef" }
+
 // TestVisitDispatchIsExhaustive pins one node per known kind against the
 // method it must reach. Visit splits the kind list across the
 // visit*Kind helpers, and a kind dropped from all of them still
@@ -98,9 +106,15 @@ func TestVisitDispatchIsExhaustive(t *testing.T) {
 		{&TextDirective{}, "TextDirective"},
 		{&FootnoteDef{}, "FootnoteDef"},
 		{&FootnoteRef{}, "FootnoteRef"},
+		{&Definition{}, "Definition"},
+		{&LinkRef{}, "LinkRef"},
+		{&ImageRef{}, "ImageRef"},
 	}
-	var fv footnoteNamer
-	var _ FootnoteVisitor[string] = fv
+	var fv referenceNamer
+	var (
+		_ FootnoteVisitor[string]  = fv
+		_ ReferenceVisitor[string] = fv
+	)
 	for _, tc := range cases {
 		if got := Visit[string](tc.node, fv); got != tc.want {
 			t.Errorf("%s dispatched to %q, want %q", tc.node.Kind(), got, tc.want)
@@ -118,5 +132,46 @@ func TestVisitFootnoteFallback(t *testing.T) {
 	}
 	if got := Visit[string](&FootnoteRef{}, v); got != "extension:footnoteReference" {
 		t.Errorf("footnote reference: %q", got)
+	}
+}
+
+// TestVisitReferenceFallback is TestVisitFootnoteFallback for the link
+// reference kinds: a consumer's Visitor written before they existed still
+// compiles, and sees them as extensions rather than not at all.
+func TestVisitReferenceFallback(t *testing.T) {
+	v := kindNamer{}
+	cases := map[Node]string{
+		&Definition{}: "extension:definition",
+		&LinkRef{}:    "extension:linkReference",
+		&ImageRef{}:   "extension:imageReference",
+	}
+	for node, want := range cases {
+		if got := Visit[string](node, v); got != want {
+			t.Errorf("%s: %q, want %q", node.Kind(), got, want)
+		}
+	}
+}
+
+// TestNormalizeLabelIsMicromarksIdentifier pins the pairing rule the
+// three kinds share with GFM footnotes: whitespace runs collapse, the
+// ends are trimmed, and the case folds twice so the characters whose
+// lower case is not a round trip still pair.
+func TestNormalizeLabelIsMicromarksIdentifier(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"A", "A"},
+		{" a ", "A"},
+		{"the  spec", "THE SPEC"},
+		{"the\n\tspec", "THE SPEC"},
+		{"ẛ", "Ṡ"}, // ẛ folds to Ṡ only via lower-then-upper
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := NormalizeLabel(tc.in); got != tc.want {
+			t.Errorf("NormalizeLabel(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+		// The footnote-facing name is the same rule, by construction.
+		if got := NormalizeFootnoteLabel(tc.in); got != tc.want {
+			t.Errorf("NormalizeFootnoteLabel(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }

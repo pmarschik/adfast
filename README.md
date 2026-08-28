@@ -708,6 +708,24 @@ an unknown directive comes back out as the author wrote it.
   href — with an `inline-image-degraded` diagnostic. Any other path is
   an asset not in the store yet, so it drops with an `unresolved-asset`
   diagnostic that an upload flow can act on.
+- **Link reference definitions** — CommonMark's other pair, `[the spec]`
+  with `[the spec]: ./spec.md` elsewhere in the document. All three
+  written forms are kept as written: shortcut (`[spec]`), collapsed
+  (`[spec][]`) and full (`[the spec][spec]`), and the same three for
+  images (`![logo]`, `![logo][]`, `![the logo][logo]`). The md → md route
+  keeps both ends where the source put them, so the formatter never
+  inlines a reference, never rewrites a label to match its pair, and
+  never deletes a definition nothing references — the label is an
+  identifier, and the two ends pair on it after the whitespace and case
+  folding of micromark, not byte for byte. A reference with no definition
+  in the same document is literal text, as in CommonMark. ADF has neither
+  construct, so the ADF route **resolves**: a reference becomes the
+  ordinary inline link (or image) its definition describes, byte for byte
+  the ADF of the same document written inline, and the definition itself
+  drops — it is bookkeeping that renders as nothing on the page. Only a
+  definition nothing referenced loses anything, and that one reports an
+  `unused-definition-dropped` diagnostic. Like footnotes, this does not
+  come back: `adf → md` returns the inline form.
 - **Footnotes** — GFM footnotes, `a[^1]` with `[^1]: the note`. The
   label rules are micromark's: no whitespace inside it, not even escaped
   (`[^a b]:` is a link reference definition), an escaped `\[` allowed
@@ -720,7 +738,7 @@ an unknown directive comes back out as the author wrote it.
   `rule`, as one `orderedList` whose item numbers are those numbers. The
   numbering is definition order, the order of that list. A reference
   carries no link to its definition, because ADF has no anchor to link
-  to. This is the one construct that does not come back: `adf → md`
+  to. Like a link reference, the pair does not come back: `adf → md`
   returns the flattened form, and each flattened footnote reports a
   `footnote-flattened` diagnostic.
 - **Heading anchors** — `## Title {#my-anchor}` gives the heading an

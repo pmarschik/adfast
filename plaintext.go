@@ -64,7 +64,19 @@ func writePlainText(b *strings.Builder, n ast.Node) {
 		b.WriteString(":" + v.Name)
 	case *ast.TextDirective:
 		b.WriteString(":" + v.Name)
+	case *ast.Definition:
+		// A link reference definition is the source's bookkeeping, not
+		// prose: it renders as nothing on the page, so it contributes
+		// nothing here. It carries no children either, so this case states
+		// the intent rather than changing the outcome — and it says so, so
+		// that giving the kind children later does not silently start
+		// leaking a URL into the reader's text.
+		return
 	}
+	// A reference-style link or image (ast.LinkRef, ast.ImageRef) needs no
+	// case: its children are the text a reader sees — the link text, or
+	// the label doubling as it — and the recursion below writes exactly
+	// that, the way it does for an inline link.
 	for _, c := range ast.Children(n) {
 		writePlainText(b, c)
 	}
