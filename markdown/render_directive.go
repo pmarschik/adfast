@@ -15,10 +15,12 @@ import (
 
 // renderContainerDirective renders a generic :::name container directive
 // (the form-based helper does the work; see writeContainerDirectiveForm).
-// Generic containers render without attributes, matching the historical
-// degradation path; the typed dialect kinds pass their attrs explicitly.
+// The attribute block is written like the leaf form's: a container that
+// was authored with attributes has to read back with them, or every
+// re-render of the document deletes what the directive was configured
+// with. (It did: this branch used to pass nil.)
 func (r *mdRenderer) renderContainerDirective(b *strings.Builder, node *ast.ContainerDirective, _ int) {
-	r.writeContainerDirectiveForm(b, node.Name, nil, node.Children)
+	r.writeContainerDirectiveForm(b, node.Name, node.Attrs, node.Children)
 }
 
 // writeContainerDirectiveForm renders :::name[label]{attrs} fenced
@@ -108,14 +110,28 @@ func writeDirectiveAttrs(b *strings.Builder, attrs map[string]string) {
 }
 
 // writeDirectiveAttrValue serializes ="value" for a directive attribute,
-// choosing a quote style that survives the round trip. A value carrying
+// choosing the quote style that survives the round trip. A value carrying
 // a double quote but no single quote is single-quoted so JSON payloads
 // (e.g. extension parameters) stay readable and lossless:
-// parameters='{"k":"v"}'. Otherwise the value is double-quoted, with any
-// double quote written as the &quot; character reference (the fallback
-// the parser decodes back — used when the value also contains a single
-// quote, so single-quoting would not be lossless). Values with no double
-// quote (the common case) render as plain double-quoted attributes.
+// parameters='{"k":"v"}'. Values with no double quote (the common case)
+// render as plain double-quoted attributes.
+//
+// A value carrying BOTH quote characters has no lossless spelling: the
+// dialect has no escape inside a quoted attribute value, so neither quote
+// can enclose it. It is double-quoted with every double quote written as
+// the &quot; character reference, and that is where the round trip stops
+// being lossless — Parse hands the six literal characters "&quot;" back
+// as part of the value, because goldmark-directive does not decode
+// character references in an attribute value. The one consumer the
+// fallback exists for closes the loop itself: dialect.DecodeJSONAttr
+// decodes &quot; before unmarshalling a JSON payload, which is why an
+// extension's parameters survive both quotes. Any other attribute does
+// not, and a caller that must not lose the value has to keep one of the
+// two quote characters out of it. (remark decodes the reference for every
+// attribute, so the spelling stays remark-compatible either way.)
+//
+// TestRender_DirectiveAttrValueQuoting pins each shape and what Parse
+// reads back for it.
 func writeDirectiveAttrValue(b *strings.Builder, v string) {
 	if strings.Contains(v, `"`) && !strings.Contains(v, `'`) {
 		b.WriteString("='")

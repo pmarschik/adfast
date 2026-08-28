@@ -70,9 +70,9 @@ import (
 type Panel struct {
 	// PanelType is info|note|warning|success|error.
 	PanelType string
-	// Attrs is the raw directive attribute payload (no ADF equivalent;
-	// kept for payload fidelity, dropped by render and encode like the
-	// generic container form).
+	// Attrs is the raw directive attribute payload (no ADF equivalent, so
+	// the encode drops it; render writes it back out like the generic
+	// container form, which keeps the markdown round trip lossless).
 	Attrs    map[string]string
 	Children []ast.Node
 	ast.BlockSpacing
