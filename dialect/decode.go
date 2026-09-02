@@ -446,13 +446,19 @@ func plainCaptionText(inlines []ast.Node) (string, bool) {
 }
 
 // setImageTitle stores the caption text as the title of the image
-// paragraph decodeMediaNode's image forms produce.
+// paragraph decodeMediaNode's image forms produce. A linked image keeps
+// the picture one level down, inside the link wrapper, so the walk
+// descends into it: the title belongs to the IMAGE
+// ([![alt](url "caption")](href)), never to the link.
 func setImageTitle(n ast.Node, title string) {
 	p, ok := n.(*ast.Paragraph)
 	if !ok {
 		return
 	}
 	for _, child := range p.Children {
+		if link, ok := child.(*ast.Link); ok && len(link.Children) == 1 {
+			child = link.Children[0]
+		}
 		if img, ok := child.(*ast.Image); ok {
 			img.Title = title
 			return
@@ -530,13 +536,63 @@ func mediaBlocksImage(media *adf.Media, single *adf.MediaSingle, defaultLayout s
 }
 
 // imageParagraph wraps a plain ![alt](url) image in its own paragraph,
-// the block form both image paths return.
-func imageParagraph(url, alt string) ast.Node {
+// the block form both image paths return. A non-empty href makes it the
+// LINKED image form, [![alt](url)](href) — the exact markdown the encode
+// leg turns back into media plus a link mark, so the two cannot drift.
+func imageParagraph(url, alt, href string) ast.Node {
 	img := &ast.Image{URL: url}
 	if alt != "" {
 		img.Children = []ast.Node{&ast.Text{Value: alt}}
 	}
-	return &ast.Paragraph{Children: []ast.Node{img}}
+	var child ast.Node = img
+	if href != "" {
+		// Explicit: the resource form is what a markdown parse of this
+		// output produces, so both legs describe one node identically.
+		child = &ast.Link{URL: href, Explicit: true, Children: []ast.Node{img}}
+	}
+	return &ast.Paragraph{Children: []ast.Node{child}}
+}
+
+// mediaLinkHref answers the destination a link mark puts on a media
+// node: what the picture links to.
+//
+// Two placements are schema-legal (see docs/adf-coverage.md). adfast
+// WRITES the mark on the media node — that is the placement the Jira ADF
+// reference documents for media in so many words — so the media node is
+// read first. The mediaSingle wrapper is read as a fallback, because a
+// remote written by Atlassian's own editor may spell it there and
+// dropping it would lose the same href this fix exists to keep. When
+// BOTH carry one and they disagree, the media node wins: a document with
+// two different destinations on one picture has no markdown form (a link
+// cannot nest), and the media node's is the one adfast itself would have
+// written.
+//
+// Only the href travels. A link mark's other attributes (its title, or
+// the id/collection a media link mark may carry) have no place in a
+// markdown link either — the text-link projection drops them the same
+// way (see convert's flatInline).
+func mediaLinkHref(media *adf.Media, single *adf.MediaSingle) string {
+	if href, ok := linkMarkHref(media.Marks); ok {
+		return href
+	}
+	if single != nil {
+		if href, ok := linkMarkHref(single.Marks); ok {
+			return href
+		}
+	}
+	return ""
+}
+
+// linkMarkHref answers the first link mark's destination. An absent href
+// (or an empty one) is no destination: there is nothing to click and
+// nothing to keep, matching the encode side's refusal to write a link
+// mark without one.
+func linkMarkHref(marks []adf.Mark) (string, bool) {
+	link, ok := adf.FindMark[*adf.Link](marks)
+	if !ok || link.Href == nil || *link.Href == "" {
+		return "", false
+	}
+	return *link.Href, true
 }
 
 // fileMediaAsImage renders a file-type media node as a plain
@@ -560,7 +616,7 @@ func fileMediaAsImage(media *adf.Media, single *adf.MediaSingle, ctx extension.D
 	if mediaBlocksImage(media, single, "align-start") {
 		return nil
 	}
-	return imageParagraph(asset.Path, media.Alt)
+	return imageParagraph(asset.Path, media.Alt, mediaLinkHref(media, single))
 }
 
 // dimsMatchAsset reports whether the media's recorded intrinsic
@@ -599,7 +655,7 @@ func mediaAsImage(media *adf.Media, single *adf.MediaSingle, preserveLocal bool)
 	if mediaBlocksImage(media, single, "center") {
 		return nil
 	}
-	return imageParagraph(media.URL, media.Alt)
+	return imageParagraph(media.URL, media.Alt, mediaLinkHref(media, single))
 }
 
 // hasDimension reports whether the media carries the named intrinsic
@@ -651,6 +707,18 @@ func mediaBorderAttrs(media *adf.Media, attrs map[string]string) {
 	}
 	if border.Size != 0 {
 		attrs["borderSize"] = strconv.Itoa(border.Size)
+	}
+}
+
+// mediaLinkAttrs writes the link mark's destination. The directive form
+// carries it as an attribute for the same reason it carries the border
+// mark as one: a ::media node is a block leaf with no room for a
+// markdown link around it, and the alternative is losing the href. The
+// image-expressible forms use the [![alt](url)](href) wrapper instead
+// (see imageParagraph).
+func mediaLinkAttrs(media *adf.Media, single *adf.MediaSingle, attrs map[string]string) {
+	if href := mediaLinkHref(media, single); href != "" {
+		attrs["href"] = href
 	}
 }
 
@@ -725,6 +793,7 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	om := mediaOmissionsOf(media, single, ctx)
 	attrs := map[string]string{}
 	mediaBorderAttrs(media, attrs)
+	mediaLinkAttrs(media, single, attrs)
 	mediaShapeAttrs(media, om, group, attrs)
 	mediaSingleAttrs(media, single, om, attrs)
 	mediaSourceAttrs(media, om, attrs)
@@ -933,6 +1002,12 @@ func decodeMediaInline(n adf.Node, _ extension.DecodeContext) ([]ast.Node, bool)
 	// Omit the default media type ("file"); mediaInline encode re-infers it.
 	if mi.Type != "" && mi.Type != "file" {
 		attrs["type"] = mi.Type
+	}
+	// A linked inline attachment keeps its destination as an attribute:
+	// this directive form is what a mediaInline the asset store cannot
+	// place falls back to, and a :media[…] label is not a link.
+	if href, ok := linkMarkHref(mi.Marks); ok {
+		attrs["href"] = href
 	}
 	var children []ast.Node
 	if mi.Alt != "" {

@@ -179,6 +179,24 @@ type fmtAtom struct {
 	spacesBreak bool
 }
 
+// linkOnly keeps just the enclosing link out of a mark context and
+// discards the rest. It is the mark set an image may ride under: a media
+// node takes (link | border | annotation), so the destination survives
+// while strong, em, strike and the colors — which media cannot carry —
+// drop, exactly as the ADF encode drops them (see mediaLinkMark).
+func linkOnly(ctx fmtMarks) fmtMarks {
+	if !ctx.link {
+		return fmtMarks{}
+	}
+	return fmtMarks{
+		link:         true,
+		href:         ctx.href,
+		linkTitle:    ctx.linkTitle,
+		linkBare:     ctx.linkBare,
+		linkExplicit: ctx.linkExplicit,
+	}
+}
+
 // normalizeInlines runs the full inline normalization on a phrasing run.
 func (fn *normalizer) normalizeInlines(nodes []ast.Node) []ast.Node {
 	return regroupAtoms(fn.flattenInlines(nodes, fmtMarks{}))
@@ -400,10 +418,14 @@ func (fn *normalizer) flattenLeafInline(n ast.Node, ctx fmtMarks) ([]fmtAtom, bo
 		}
 		return []fmtAtom{{text: v.Value, isCode: true, m: m}}, true
 	case *ast.Image:
-		// Inline images ride as opaque atoms; inherited marks drop (ADF
-		// carried them as a synthetic node without a mark slot).
+		// Inline images ride as opaque atoms under the LINK they sit in
+		// and nothing else: a linked image is representable — media and
+		// mediaInline take a (link | border | annotation) mark set — so
+		// dropping the enclosing destination here would erase an href
+		// the ADF leg keeps. The text marks still drop: media carries no
+		// strong, em or color.
 		img := &ast.Image{URL: v.URL, Title: v.Title, Children: fn.normalizeInlines(v.Children)}
-		return []fmtAtom{{node: img}}, true
+		return []fmtAtom{{node: img, m: linkOnly(ctx)}}, true
 	case *ast.FootnoteRef:
 		// A reference rides as an opaque atom under its marks: the label
 		// is the identifier the definition pairs on, so nothing in it may
@@ -421,14 +443,15 @@ func (fn *normalizer) flattenLeafInline(n ast.Node, ctx fmtMarks) ([]fmtAtom, bo
 			Children:      fn.normalizeInlines(v.Children),
 		}, m: ctx}}, true
 	case *ast.ImageRef:
-		// A reference-style image rides opaquely like an inline image, and
-		// loses its inherited marks for the same reason (ADF gives a
-		// mediaInline no mark slot).
+		// A reference-style image rides opaquely like an inline image,
+		// and keeps its enclosing link for the same reason: every
+		// spelling of one linked image reaches the same ADF, so no
+		// spelling may lose the destination here either.
 		return []fmtAtom{{node: &ast.ImageRef{
 			Label:         v.Label,
 			ReferenceType: v.ReferenceType,
 			Children:      fn.normalizeInlines(v.Children),
-		}}}, true
+		}, m: linkOnly(ctx)}}, true
 	case *ast.Break:
 		return []fmtAtom{{isBreak: true, spacesBreak: v.Value == "  "}}, true
 	case *ast.HTML:
@@ -613,14 +636,20 @@ func atomLeaf(item fmtAtom) ast.Node {
 	}
 	if item.node != nil {
 		switch item.node.(type) {
+		case *ast.Image, *ast.ImageRef:
+			// An image keeps the one mark it can carry: flattenLeafInline
+			// already reduced its context to the enclosing LINK, which is
+			// representable — a linked image is media plus a link mark —
+			// so wrapping it back is what keeps the destination.
+			return wrapAtomMarks(item.node, item.m)
 		case *ast.LinkRef:
 			// A reference-style link keeps its inherited marks for the
 			// footnote reference's reason below: they are the source's own,
 			// and ToADF puts them on the text the resolved link becomes.
 			return wrapAtomMarks(item.node, item.m)
 		case *ast.FootnoteRef:
-			// A footnote reference keeps its inherited marks, unlike the
-			// other opaque atoms (an image carries none in ADF): the
+			// A footnote reference keeps its inherited marks, all of
+			// them (an image keeps only its link): the
 			// marks around a reference are the source's own, and the ADF
 			// encode puts them on the superscript the reference becomes,
 			// so dropping them here would break the invariant Normalize
@@ -747,6 +776,12 @@ func normalizeMediaInline(v *dialect.MediaInline) ast.Node {
 	}
 	if v.Attrs["id"] != "" {
 		attrs["id"] = v.Attrs["id"]
+	}
+	// The link mark's destination is the caller's to keep, like the
+	// collection: an inline attachment that links somewhere may not lose
+	// where (mirrors dialect's decodeMediaInline).
+	if href := v.Attrs["href"]; href != "" {
+		attrs["href"] = href
 	}
 	var children []ast.Node
 	if alt := strings.TrimSpace(ast.PlainText(v.Children)); alt != "" {
@@ -1892,9 +1927,11 @@ type fmtMedia struct {
 	url           string
 	occurrenceKey string
 	borderColor   string
-	borderSize    int
-	hasBorder     bool
-	hasSingle     bool
+	// href is the link mark's destination: what the picture links to.
+	href       string
+	borderSize int
+	hasBorder  bool
+	hasSingle  bool
 }
 
 // mediaFromAttrs mirrors dialect's mediaFromAttrs.
@@ -1938,6 +1975,7 @@ func mediaFromAttrs(attrs map[string]string, alt string) *fmtMedia {
 			m.borderSize = size
 		}
 	}
+	m.href = attrs["href"]
 	return m
 }
 
@@ -2037,13 +2075,18 @@ func plainCaptionLabel(inlines []ast.Node) (string, bool) {
 	return text.Value, true
 }
 
-// setImageTitle mirrors dialect's setImageTitle.
+// setImageTitle mirrors dialect's setImageTitle, link wrapper included:
+// on a linked image the picture sits one level down and the title
+// belongs to it.
 func setImageTitle(n ast.Node, title string) {
 	p, ok := n.(*ast.Paragraph)
 	if !ok {
 		return
 	}
 	for _, child := range p.Children {
+		if link, ok := child.(*ast.Link); ok && len(link.Children) == 1 {
+			child = link.Children[0]
+		}
 		if img, ok := child.(*ast.Image); ok {
 			img.Title = title
 			return
@@ -2082,11 +2125,7 @@ func mediaAsImage(m *fmtMedia) ast.Node {
 	if m.singleBlocksImage("center") {
 		return nil
 	}
-	img := &ast.Image{URL: m.url}
-	if m.alt != "" {
-		img.Children = []ast.Node{&ast.Text{Value: m.alt}}
-	}
-	return &ast.Paragraph{Children: []ast.Node{img}}
+	return imageParagraph(m.url, m.alt, m.href)
 }
 
 // fileMediaAsImage mirrors dialect's fileMediaAsImage against the
@@ -2115,11 +2154,22 @@ func (fn *normalizer) fileMediaAsImage(m *fmtMedia) ast.Node {
 	if m.singleBlocksImage("align-start") {
 		return nil
 	}
-	img := &ast.Image{URL: asset.Path}
-	if m.alt != "" {
-		img.Children = []ast.Node{&ast.Text{Value: m.alt}}
+	return imageParagraph(asset.Path, m.alt, m.href)
+}
+
+// imageParagraph mirrors dialect's imageParagraph: the plain
+// ![alt](url) image in its own paragraph, or the [![alt](url)](href)
+// linked form when the media carries a destination.
+func imageParagraph(url, alt, href string) ast.Node {
+	img := &ast.Image{URL: url}
+	if alt != "" {
+		img.Children = []ast.Node{&ast.Text{Value: alt}}
 	}
-	return &ast.Paragraph{Children: []ast.Node{img}}
+	var child ast.Node = img
+	if href != "" {
+		child = &ast.Link{URL: href, Explicit: true, Children: []ast.Node{img}}
+	}
+	return &ast.Paragraph{Children: []ast.Node{child}}
 }
 
 // mediaOmissions mirrors dialect's mediaOmissions: the facts a canonical
@@ -2158,6 +2208,15 @@ func mediaBorderAttrs(m *fmtMedia, attrs map[string]string) {
 	}
 	if m.borderSize != 0 {
 		attrs["borderSize"] = strconv.Itoa(m.borderSize)
+	}
+}
+
+// mediaLinkAttrs mirrors dialect's mediaLinkAttrs: the link mark's
+// destination rides as an attribute on the directive forms, which have
+// no room for a markdown link around them.
+func mediaLinkAttrs(m *fmtMedia, attrs map[string]string) {
+	if m.href != "" {
+		attrs["href"] = m.href
 	}
 }
 
@@ -2230,6 +2289,7 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	om := fn.mediaOmissionsOf(m)
 	attrs := map[string]string{}
 	mediaBorderAttrs(m, attrs)
+	mediaLinkAttrs(m, attrs)
 	mediaShapeAttrs(m, om, group, attrs)
 	mediaSingleAttrs(m, om, attrs)
 	mediaSourceAttrs(m, om, attrs)
