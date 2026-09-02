@@ -373,11 +373,24 @@
         "content": [
           {
             "type": "paragraph",
-            "content": []
+            "content": [
+              {
+                "type": "text",
+                "text": "rel",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "./assets/a.png"
+                    }
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
-      "roundtrip": "\n"
+      "roundtrip": "[rel](./assets/a.png)\n"
     },
     {
       "md": "text (![x](https://example.com/i.png)) more\n",
@@ -451,11 +464,24 @@
         "content": [
           {
             "type": "paragraph",
-            "content": []
+            "content": [
+              {
+                "type": "text",
+                "text": "unknown asset",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "assets/diagram.png"
+                    }
+                  }
+                ]
+              }
+            ]
           }
         ]
       },
-      "roundtrip": "\n"
+      "roundtrip": "[unknown asset](assets/diagram.png)\n"
     },
     {
       "md": "* + *\n",

@@ -93,49 +93,14 @@ func fixtureImageDims(path string) (width, height int, ok bool) {
 	return 0, 0, false
 }
 
-// repinnedEncodes are the probes where adfast DELIBERATELY does not encode
-// what the reference corpus recorded, keyed by the probe's markdown and
-// holding the payload adfast produces instead. A new entry needs a reason
-// here and a matching row in docs/adf-coverage.md; the corpus file itself is
-// generated and is not hand-edited.
-//
-// Both entries below are one decision: the reference dropped an image the
-// asset store could not place, and the image was the paragraph's only child,
-// so the paragraph came out empty and the whole document rendered to "\n" —
-// the corpus records that as the probe's roundtrip. Total content loss is not
-// a behavior worth parity, so adfast keeps what ADF can still hold: the label,
-// as a link to the destination. The picture is still lost and still reported
-// (unresolved-asset). See convert.inlineFlattener.degradeUnplaceableImage.
-var repinnedEncodes = map[string]string{
-	"![rel](./assets/a.png)\n": `{"type":"doc","content":[{"type":"paragraph","content":` +
-		`[{"type":"text","marks":[{"attrs":{"href":"./assets/a.png"},"type":"link"}],` +
-		`"text":"rel"}]}],"version":1}`,
-	"![unknown asset](assets/diagram.png)\n": `{"type":"doc","content":[{"type":"paragraph","content":` +
-		`[{"type":"text","marks":[{"attrs":{"href":"assets/diagram.png"},"type":"link"}],` +
-		`"text":"unknown asset"}]}],"version":1}`,
-}
-
-// the exact ADF the remark reference pipeline produces for every directive
-// probe, bar the deliberate divergences in repinnedEncodes.
+// the exact ADF the remark reference pipeline produces for every directive probe.
 func TestDirectiveFixtures_FromMarkdown(t *testing.T) {
 	fixtures := loadDirectiveFixtures(t)
-	seen := map[string]bool{}
 	for _, f := range fixtures.Markdown {
 		want := normalizeAdfJSON(t, f.Adf)
-		if repinned, ok := repinnedEncodes[f.Md]; ok {
-			want = repinned
-			seen[f.Md] = true
-		}
 		got := marshalDoc(t, mdToADF(f.Md, WithImageDimsResolver(fixtureImageDims), WithAssetIDResolver(fixtureAssetID), WithSmartLinks(jiraTestSmartLinks)))
 		if got != want {
 			t.Errorf("mdToADF(%q) diverged from the remark reference corpus\n got: %s\nwant: %s", f.Md, got, want)
-		}
-	}
-	// A re-pin that no longer matches a probe is a stale exception hiding
-	// whatever the corpus says now.
-	for md := range repinnedEncodes {
-		if !seen[md] {
-			t.Errorf("re-pinned encode for %q matches no corpus probe", md)
 		}
 	}
 }

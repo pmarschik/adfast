@@ -6,8 +6,11 @@ Without an asset store wired in (`WithMediaAssets` or
 `WithMediaAssetResolver`, plus `WithAssetIDResolver` and
 `WithImageDimsResolver` — or the `assets` package's
 `MarkdownOptions`/`RenderOptions` bundles), a local image
-reference like `![sketch](assets/sketch.png)` has no media id and is
-**dropped from the ADF payload** with an `unresolved-asset` diagnostic.
+reference like `![sketch](assets/sketch.png)` has no media id, so the
+**picture is not in the ADF payload** — its label stays, as a link to
+the path, with an `unresolved-asset` diagnostic. The block the image sat
+in is therefore never emptied, and an upload undoes the loss: once the
+store maps the path, the next encode places the picture.
 A **block** image with an absolute `https://` URL survives as external
 media. An **inline** one (inside a paragraph, a table cell, or a list
 item) does not: ADF's `mediaInline` addresses an uploaded attachment by
@@ -57,7 +60,10 @@ vocabulary:
 - `span-marker-invalid` — a table span marker (`>`/`^`) whose merge
   cannot apply; kept as literal cell text.
 - `unresolved-asset` — an `![alt](assets/…)` reference the asset store
-  could not map to a media id.
+  could not map to a media id. The picture leaves the document and the
+  label stays, as a link, so the block the image sat in is never
+  emptied. It is the one loss an upload undoes: the next encode finds
+  the id.
 - `inline-image-degraded` — an inline `![alt](https://…)` rewritten as a
   link, because ADF has no inline image that can carry an external URL.
   The content stays visible and the round trip is stable; only the

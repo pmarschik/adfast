@@ -336,8 +336,11 @@ key order, comments, and quoting untouched.
   no ADF form at all, because `mediaInline` addresses an uploaded
   attachment by id and has no external variant (unlike block media), so
   it degrades to a link — alt text as the label, image URL as the href —
-  with an `inline-image-degraded` diagnostic. Any other path drops with
-  `unresolved-asset`.
+  with an `inline-image-degraded` diagnostic. Any other path is an asset
+  the store cannot map yet, and it degrades the same way — the picture
+  leaves the document, the label stays as a link — with an
+  `unresolved-asset` diagnostic. Upload the asset and the next encode
+  places the picture.
 - **Issue/page links** — a link whose text equals the resolver-derived
   key (e.g. `[ABC-123](https://…/browse/ABC-123)`, or
   `[DOCS/123456](https://…/wiki/spaces/DOCS/pages/123456/…)` with the
