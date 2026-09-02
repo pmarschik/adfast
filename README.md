@@ -720,8 +720,16 @@ an unknown directive comes back out as the author wrote it.
   external variant, unlike block media. It therefore degrades to the
   link it can still be — the alt text is the label, the image URL the
   href — with an `inline-image-degraded` diagnostic. Any other path is
-  an asset not in the store yet, so it drops with an `unresolved-asset`
-  diagnostic that an upload flow can act on.
+  an asset not in the store yet, and it degrades the same way: the
+  picture has no ADF form before the upload, so the alt text stays as a
+  link — to the enclosing destination when the image sits inside one —
+  with an `unresolved-asset` diagnostic that an upload flow can act on.
+  That last one is the only fate an upload undoes: once the store maps
+  the path, the next encode places the picture. A lone local image the
+  store cannot map degrades the same way, because there is no block
+  media to promote it to either — so the block it sat in is never left
+  empty. `WithPreserveLocalImages` is the opt-in that keeps the path as
+  external media instead.
 - **Link reference definitions** — CommonMark's other pair, `[the spec]`
   with `[the spec]: ./spec.md` elsewhere in the document. All three
   written forms are kept as written: shortcut (`[spec]`), collapsed
@@ -1267,8 +1275,9 @@ out := adfast.ToMarkdown(adfast.FromADF(doc, rOpts...), rOpts...)
 ```
 
 Markdown-first assets are supported. Reference a local file before any
-upload, and the encode side reports an `unresolved-asset` diagnostic
-instead of a silent drop. The upload seam is the pluggable `Uploader`
+upload, and the encode side keeps the image's label as a link and
+reports an `unresolved-asset` diagnostic, rather than dropping the
+reference silently. The upload seam is the pluggable `Uploader`
 interface. `assets.Sync(ctx, store, uploader)` uploads the pending
 worklist in one batch. `assets.PushPipeline(ctx, store, uploader)`
 returns an `adfast.Pipeline` that uploads the referenced pending assets

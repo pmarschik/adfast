@@ -521,7 +521,11 @@ probe input and an analysis next to the fuzz target.
 
 Parity with remark is the default. The exception is a construct where
 the output of remark is itself unstable or lossy and adfast has to
-preserve the construct. A named regression test pins each of these:
+preserve the construct. Where a fixture probe recorded the reference
+behavior, the entry in `testdata/directive_fixtures.json` is re-pinned in
+place and the reason is written here: the corpus stays the single home
+for what adfast produces, so an exception table beside the fixture test
+would only be a second one. A named regression test pins each of these:
 
 - **A text directive that stays open gets an empty attribute block.**
   The bare `:name` form ends in a name rune, and the labelled `:name[l]`
@@ -659,6 +663,33 @@ preserve the construct. A named regression test pins each of these:
   trim, the parse claimed a longer link than the render could write
   back, and the format changed the href. See
   `markdown.trimURLLiteralEnd` and `format_contract_test.go`.
+- **An image no asset store can place keeps its label.** This one is on
+  the encode leg rather than in the renderer, and it is the only
+  divergence here that the reference loses a whole document to. ADF
+  addresses an attachment by media id, so an image the store cannot map
+  has no node for the picture, and the reference emits nothing for it.
+  An image is very often the ONLY child of its block, so emitting
+  nothing empties the block: a paragraph, a table cell and a list item
+  came back blank, and a document that was one image came back EMPTY.
+  `![a](./a.png "cap")` round-tripped to `"\n"`, with an
+  `unresolved-asset` diagnostic the only surviving trace of the whole
+  document. Total content loss is not a behavior worth parity. The
+  picture genuinely has no ADF form before upload, but the label does,
+  so the unplaceable image degrades the way the mid-sentence external
+  image already degrades: the label stays, as a link to the destination
+  — the ENCLOSING destination when the image sits inside a link, the one
+  the reader means to click. An image with no destination keeps its alt
+  as plain text; one with neither alt nor destination still emits
+  nothing, and still says nothing, because there is no asset behind it
+  to resolve. The image title is the one thing the degradation loses: an
+  ADF `link` mark has no title attribute to put it on. See
+  `convert.inlineFlattener.degradeUnplaceableImage`,
+  `unplaceableimage_test.go` and the media rows of
+  `docs/adf-coverage.md`. The two re-pinned image entries in
+  `testdata/directive_fixtures.json` (`![rel](./assets/a.png)` and
+  `![unknown asset](assets/diagram.png)`, which recorded an empty
+  paragraph and a `"\n"` round trip) record this against the reference
+  corpus.
 
 The prettier md → md formatter is the composition
 `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`
