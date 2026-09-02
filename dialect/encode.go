@@ -107,7 +107,24 @@ func mediaFromAttrs(attrs map[string]string, alt string) *adf.Media {
 	if mark := borderMarkFromAttrs(attrs); mark != nil {
 		media.Marks = append(media.Marks, mark)
 	}
+	if mark := linkMarkFromAttrs(attrs); mark != nil {
+		media.Marks = append(media.Marks, mark)
+	}
 	return media
+}
+
+// linkMarkFromAttrs builds the ADF link mark carried as the href
+// attribute on the media directive forms — what the picture links to.
+// The mark goes on the MEDIA node, the placement the Jira ADF reference
+// documents and the one the markdown [![alt](img)](href) form encodes to,
+// so a linked image reaches the same ADF whichever markdown spelling it
+// arrived in.
+func linkMarkFromAttrs(attrs map[string]string) adf.Mark {
+	href := attrs["href"]
+	if href == "" {
+		return nil
+	}
+	return &adf.Link{Href: &href}
 }
 
 // borderMarkFromAttrs builds the ADF border mark carried as
@@ -275,6 +292,9 @@ func (n *MediaInline) EncodeADF(_ extension.EncodeContext) []adf.Node {
 	}
 	if label := strings.TrimSpace(ast.PlainText(n.Children)); label != "" {
 		mi.Alt = label
+	}
+	if mark := linkMarkFromAttrs(n.Attrs); mark != nil {
+		mi.Marks = append(mi.Marks, mark)
 	}
 	return []adf.Node{mi}
 }

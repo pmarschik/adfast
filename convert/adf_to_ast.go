@@ -137,8 +137,14 @@ func (rc renderCtx) fileCardLink(n *adf.MediaInline) (FileCardLink, bool) {
 // of the block fileMediaAsImage, and declines on the same principle:
 // only a card that carries nothing beyond what ![alt](path) can say
 // goes back to an image, so anything the directive alone can express
-// (a collection, an occurrence key, a mark, a non-file type) keeps the
+// (a collection, an occurrence key, a border, a non-file type) keeps the
 // directive rather than losing that detail silently.
+//
+// A LINK mark is the exception, because markdown says it perfectly:
+// [![alt](path)](href) is the linked image, and it is the exact form the
+// encode leg turns back into a mediaInline carrying the same mark. Any
+// other mark alongside it sends the card back to the directive, which
+// carries both as attributes.
 func (rc renderCtx) mediaInlineAsImage(n *adf.MediaInline) ast.Node {
 	if n.Type != "file" || n.ID == "" {
 		return nil
@@ -146,7 +152,11 @@ func (rc renderCtx) mediaInlineAsImage(n *adf.MediaInline) ast.Node {
 	if n.Collection != nil && *n.Collection != "" {
 		return nil
 	}
-	if len(n.Marks) > 0 || adf.HasExtra(n, "occurrenceKey") {
+	if adf.HasExtra(n, "occurrenceKey") {
+		return nil
+	}
+	href, hasLink := linkMarkHref(n.Marks)
+	if len(n.Marks) > 1 || (len(n.Marks) == 1 && !hasLink) {
 		return nil
 	}
 	asset, ok := rc.assets.lookup(n.ID)
@@ -157,7 +167,23 @@ func (rc renderCtx) mediaInlineAsImage(n *adf.MediaInline) ast.Node {
 	if n.Alt != "" {
 		img.Children = []ast.Node{&ast.Text{Value: n.Alt}}
 	}
-	return img
+	if href == "" {
+		return img
+	}
+	// Explicit: the resource form is what a markdown parse of this
+	// output produces, so the projection and the parse agree on the node.
+	return &ast.Link{URL: href, Explicit: true, Children: []ast.Node{img}}
+}
+
+// linkMarkHref answers the first link mark's destination, mirroring
+// dialect's helper of the same name: an absent or empty href is no
+// destination at all.
+func linkMarkHref(marks []adf.Mark) (string, bool) {
+	link, ok := adf.FindMark[*adf.Link](marks)
+	if !ok || link.Href == nil || *link.Href == "" {
+		return "", false
+	}
+	return *link.Href, true
 }
 
 // reportRawNode emits the raw-node diagnostic: the markdown projection

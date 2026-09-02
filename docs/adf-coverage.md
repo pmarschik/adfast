@@ -236,12 +236,49 @@ The last two rows are the lossy ones, and neither is silent:
   mark has no node left to ride on. A `link-destination-dropped`
   diagnostic names the href.
 
-**The decode (ADF → md) leg does not yet read the mark back.** A pulled
-`media` or `mediaInline` carrying a `link` mark projects as a plain
-`![alt](url)` image (or a `::media` directive) and the destination is
-dropped in silence. The `adf` codec itself keeps the mark losslessly —
-decode → encode returns it unchanged — so this is a gap in the markdown
-projection only, tracked separately.
+### Reading one back
+
+The **decode** (ADF → md) leg reads the mark from the same place encode
+writes it — the `media` or `mediaInline` node — and it has two ways to
+say it, because not every media node has a markdown image form:
+
+| ADF                                                 | Markdown                             | Lost    |
+| --------------------------------------------------- | ------------------------------------ | ------- |
+| `mediaSingle` → `media` + `link`, image-expressible | `[![alt](url)](href)`                | nothing |
+| `media` + `link`, image form blocked                | `::media[alt]{href="…" …}`           | nothing |
+| `mediaGroup` member `media` + `link`                | `::media{… group="true" href="…"}`   | nothing |
+| `mediaSingle` → `media` + `link` + `caption`        | `[![alt](url "caption")](href)`      | nothing |
+| `mediaInline` + `link`, asset store knows the path  | `see [![alt](path)](href) here`      | nothing |
+| `mediaInline` + `link`, no asset store              | `see :media[alt]{#id href="…"} here` | nothing |
+
+The `[![alt](url)](href)` wrapper is the exact markdown the encode leg
+turns back into `media` plus a `link` mark, so the two legs describe one
+document identically and a pull → push cycle is a no-op. The directive
+forms have no room for a markdown link around a block leaf, so they
+carry the destination as an `href` attribute — the same way the
+neighboring `border` mark rides as `borderColor`/`borderSize`. The
+attribute is spelled `href` because `url` already means the picture's
+own source. `::media`/`:media` read it back on encode, so both spellings
+reach the same ADF.
+
+**Placement, when a remote disagrees with itself.** Both placements are
+schema-legal, so decode reads the `media` node first and falls back to
+the `mediaSingle` wrapper: a document written by Atlassian's own editor
+may spell it on the wrapper, and dropping that would lose the same href
+this projection exists to keep. When BOTH carry a mark and they
+disagree, **the media node wins** — a picture with two different
+destinations has no markdown form (a link cannot nest), and the media
+node's is the placement adfast itself writes.
+
+**Only the href travels.** A `link` mark's other attributes (its title,
+or the id/collection a media link mark may carry) have no place in a
+markdown link, and the ordinary text-link projection drops them the same
+way.
+
+**Still dropped in silence:** an `annotation` mark on the same node. It
+is the third member of the media mark union and has no markdown form at
+all, so a pulled inline comment anchor on a picture leaves without a
+diagnostic. `link` surviving does not fix that; it is a separate gap.
 
 ## Historical documentation gaps (now empirically resolved)
 
