@@ -64,10 +64,11 @@ type Definition struct {
 	Label string
 	// URL is the destination, with its CommonMark escapes decoded.
 	URL string
-	// Title is the optional title. The delimiter the source used ('"',
-	// '\'' or '(') is NOT recorded: remark-stringify writes every title
-	// in double quotes, and so does this renderer for an inline link's
-	// title already.
+	// Title is the optional title, with its CommonMark escapes decoded.
+	// The delimiter the source used ('"', '\'' or '(') is NOT recorded:
+	// the render picks the delimiter from the title's own content and
+	// escapes what it must, exactly as it does for an inline link's
+	// title (see markdown/render_title.go).
 	Title string
 	BlockSpacing
 }

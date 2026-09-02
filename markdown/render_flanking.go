@@ -462,32 +462,11 @@ func (r *mdRenderer) writeLink(b *strings.Builder, node *ast.Link, st *inlineCon
 	}
 	link.WriteString(url)
 	if node.Title != "" {
-		link.WriteString(" \"")
-		link.WriteString(r.escapeTitle(node.Title))
-		link.WriteString("\"")
+		link.WriteString(r.titleSegment(node.Title))
 	}
 	link.WriteString(")")
 	masked := strings.ReplaceAll(link.String(), " ", string(wrapMask))
 	b.WriteString(strings.ReplaceAll(masked, "\t", string(wrapMaskTab)))
-}
-
-// escapeTitle applies remark's directive colon escaping inside link/image
-// titles (a ':' before an ASCII letter re-parses as a text directive);
-// prettier mode leaves titles verbatim (source escapes ride the
-// preserved-escape sentinels).
-func (r *mdRenderer) escapeTitle(s string) string {
-	if r.cfg.prettierText || !strings.ContainsRune(s, ':') {
-		return s
-	}
-	var sb strings.Builder
-	sb.Grow(len(s) + 2)
-	for i := range len(s) {
-		if s[i] == ':' && i+1 < len(s) && isASCIILetter(s[i+1]) && (i == 0 || s[i-1] != ':') {
-			sb.WriteByte('\\')
-		}
-		sb.WriteByte(s[i])
-	}
-	return sb.String()
 }
 
 // autolinkableURLRe is CommonMark's absolute-URI autolink grammar (scheme

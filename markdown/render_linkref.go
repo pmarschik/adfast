@@ -27,9 +27,7 @@ func (r *mdRenderer) renderDefinition(b *strings.Builder, node *ast.Definition) 
 	b.WriteString("]: ")
 	b.WriteString(definitionURL(node.URL, r.cfg.prettierText))
 	if node.Title != "" {
-		b.WriteString(" \"")
-		b.WriteString(r.escapeTitle(node.Title))
-		b.WriteString("\"")
+		b.WriteString(r.titleSegment(node.Title))
 	}
 	b.WriteString("\n")
 }

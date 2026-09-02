@@ -441,7 +441,7 @@ func (r *mdRenderer) writeHardBreak(b *strings.Builder, node *ast.Break, st *inl
 func (r *mdRenderer) writeImage(b *strings.Builder, node *ast.Image, st *inlineContext) {
 	img := "![" + escapeImageAlt(ast.PlainText(node.Children)) + "](" + formatLinkURL(node.URL, r.cfg.prettierText)
 	if node.Title != "" {
-		img += " \"" + r.escapeTitle(node.Title) + "\""
+		img += r.titleSegment(node.Title)
 	}
 	img += ")"
 	img = strings.ReplaceAll(img, " ", string(wrapMask))
