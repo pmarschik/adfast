@@ -1,7 +1,10 @@
 package markdown
 
 import (
+	"fmt"
 	"maps"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/pmarschik/adfast/ast"
@@ -643,5 +646,248 @@ func assertRenderFixedPoint(t *testing.T, out string) {
 	t.Helper()
 	if again := Render(Parse([]byte(out))); again != out {
 		t.Errorf("render is not a fixed point: %q then %q", out, again)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Directive names
+// ---------------------------------------------------------------------------
+
+// FIX: a directive name the dialect cannot spell panics instead of being
+// written, and a spellable name still renders (the second half of the
+// same test, so neither a revert of the guard nor a guard that refuses
+// everything can pass).
+//
+// The name is the one part of a directive that has no degradation. An
+// unspellable ATTRIBUTE is dropped and the directive survives; a name
+// cannot be dropped, and writing it anyway destroys the node: the form
+// re-parses as an ordinary paragraph, or — when the name carries a line
+// ending — as a directive under the truncated prefix with its attribute
+// block stranded on the next line. Sanitizing it silently renames the
+// author's directive. No parse can produce such a name (the parser
+// refuses the whole directive instead), so every occurrence comes from a
+// caller that built the node by hand, and a panic naming the offender is
+// strictly better than a corrupt document.
+//
+// The hazard is shared by all three directive forms, because each writes
+// the name verbatim into its marker.
+func TestRender_UnspellableDirectiveNamePanics(t *testing.T) {
+	names := []struct {
+		why  string
+		name string
+	}{
+		{why: "a space", name: "a b"},
+		{why: "a closing brace", name: "a}b"},
+		{why: "an opening brace", name: "a{b"},
+		{why: "an opening bracket", name: "a[b"},
+		{why: "a closing bracket", name: "a]b"},
+		{why: "a colon", name: "a:b"},
+		{why: "the empty name", name: ""},
+		{why: "an LF", name: "a\nb"},
+		{why: "a CR", name: "a\rb"},
+		{why: "a tab", name: "a\tb"},
+		{why: "a double quote", name: `a"b`},
+		{why: "a single quote", name: "a'b"},
+		{why: "an equals sign", name: "a=b"},
+		{why: "a dot", name: "a.b"},
+		{why: "a hash", name: "a#b"},
+		{why: "a slash", name: "a/b"},
+		{why: "a leading hyphen", name: "-a"},
+		{why: "a leading underscore", name: "_a"},
+		{why: "a trailing hyphen", name: "a-"},
+		{why: "a trailing underscore", name: "a_"},
+		{why: "only a hyphen", name: "-"},
+		{why: "a multi-byte rune", name: "ä"},
+	}
+
+	for _, n := range names {
+		t.Run(n.why, func(t *testing.T) {
+			for _, form := range directiveNameForms {
+				assertDirectiveNamePanics(t, form, n.name)
+			}
+		})
+	}
+
+	// The good case, in the same test: a name the parser accepts is
+	// rendered and read back unchanged, attributes included.
+	t.Run("a spellable name still renders", func(t *testing.T) {
+		// Names outside the dialect: a registered name re-parses as its
+		// typed node, and what is under test here is the generic form.
+		for _, name := range []string{"a", "9", "A9", "sidebar", "a-b", "a_b", "a1-b2_c3"} {
+			for _, form := range directiveNameForms {
+				out := form.render(name)
+				if got := reparsedDirectiveName(t, out); got != name {
+					t.Errorf("%s form: %q re-parsed as %s, want the directive name %q",
+						form.name, out, reparseShape(out), name)
+				}
+				assertRenderFixedPoint(t, out)
+			}
+		}
+	})
+}
+
+// FIX (differential): nameSpells agrees with the parser on every
+// candidate name, so the guard neither writes a name that corrupts the
+// node nor panics on a name the parser would have accepted.
+//
+// nameSpells duplicates goldmark-directive's name grammar
+// (scanDirectiveName), which that package does not export, so this test
+// is what keeps the copy honest: it asks the PARSER what a name can be,
+// by rendering nothing and instead reading a leaf marker back, and
+// compares that verdict to the predicate. An upstream grammar change
+// fails here rather than drifting into a false panic.
+func TestRender_DirectiveNameSpellsMatchesTheParser(t *testing.T) {
+	for _, name := range directiveNameCandidates() {
+		if got, want := nameSpells(name), parserAcceptsDirectiveName(t, name); got != want {
+			t.Errorf("nameSpells(%q) = %v, but the parser %s the name",
+				name, got, map[bool]string{true: "accepts", false: "rejects"}[want])
+		}
+	}
+}
+
+// directiveNameCandidates enumerates the names the differential test
+// checks: every ASCII byte in each of the three positions that carry a
+// rule (opening, interior, closing), the one-byte names, and a few
+// multi-byte runes.
+func directiveNameCandidates() []string {
+	var out []string
+	for b := range 128 {
+		c := string(rune(b))
+		out = append(out, c, "a"+c+"b", "a"+c, c+"a", "ab"+c+"cd")
+	}
+	return append(out, "ä", "a€b", "aäb", "日本", "a b", "")
+}
+
+// parserAcceptsDirectiveName reports whether a leaf marker written with
+// this name reads back as that same directive, attributes intact — the
+// definition of a name the renderer may write. The marker is assembled
+// as text here on purpose: the parser, not the renderer, is the
+// authority being measured.
+func parserAcceptsDirectiveName(t *testing.T, name string) bool {
+	t.Helper()
+	src := "::" + name + "{k=\"1\"}\n"
+	kids := ast.Children(Parse([]byte(src)))
+	if len(kids) == 0 {
+		return false
+	}
+	leaf, ok := kids[0].(*ast.LeafDirective)
+	return ok && leaf.Name == name && maps.Equal(leaf.Attrs, map[string]string{"k": "1"})
+}
+
+// directiveNameForm renders one of the three directive forms carrying a
+// given name (with an attribute, so a truncated name shows up as a lost
+// attribute block too).
+type directiveNameForm struct {
+	render func(name string) string
+	name   string
+}
+
+var directiveNameForms = []directiveNameForm{
+	{name: "text", render: renderTextDirectiveName},
+	{name: "leaf", render: renderLeafDirectiveName},
+	{name: "container", render: renderContainerDirectiveName},
+}
+
+func renderTextDirectiveName(name string) string {
+	return Render(&ast.Root{Children: []ast.Node{&ast.Paragraph{Children: []ast.Node{
+		&ast.TextDirective{Name: name, Attrs: map[string]string{"k": "1"}},
+	}}}})
+}
+
+func renderLeafDirectiveName(name string) string {
+	return Render(&ast.Root{Children: []ast.Node{
+		&ast.LeafDirective{Name: name, Attrs: map[string]string{"k": "1"}},
+	}})
+}
+
+func renderContainerDirectiveName(name string) string {
+	return Render(&ast.Root{Children: []ast.Node{&ast.ContainerDirective{
+		Name:     name,
+		Attrs:    map[string]string{"k": "1"},
+		Children: []ast.Node{&ast.Paragraph{Children: []ast.Node{&ast.Text{Value: "body"}}}},
+	}}})
+}
+
+// assertDirectiveNamePanics requires the render of an unspellable name to
+// panic, with a message that names the offender and says the node was
+// built rather than parsed (whoever reads the stack needs to know where
+// to look).
+//
+// When the render does NOT panic, the failure reports what it wrote and
+// what that re-parses to: the guard's mutation does not produce a diff,
+// it produces a silently corrupted document, and that is what the
+// failure has to show.
+func assertDirectiveNamePanics(t *testing.T, form directiveNameForm, name string) {
+	t.Helper()
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("%s form: panicked with %T (%v), want a diagnostic string", form.name, r, r)
+		}
+		if !strings.Contains(msg, strconv.Quote(name)) {
+			t.Errorf("%s form: the panic does not name the offending directive name %q: %s", form.name, name, msg)
+		}
+		if !strings.Contains(msg, "BUILT BY A CALLER") {
+			t.Errorf("%s form: the panic does not say the node was built rather than parsed: %s", form.name, msg)
+		}
+	}()
+	out := form.render(name)
+	t.Errorf("%s form: rendering the name %q did not panic — it wrote %q, which re-parses as %s (the corruption the guard exists to stop)",
+		form.name, name, out, reparseShape(out))
+}
+
+// reparsedDirectiveName returns the name of the directive out re-parses
+// to, in whichever position it sits, or "" when it is not a directive at
+// all.
+func reparsedDirectiveName(t *testing.T, out string) string {
+	t.Helper()
+	kids := ast.Children(Parse([]byte(out)))
+	if len(kids) == 0 {
+		return ""
+	}
+	switch n := kids[0].(type) {
+	case *ast.LeafDirective:
+		return n.Name
+	case *ast.ContainerDirective:
+		return n.Name
+	case *ast.Paragraph:
+		inline := ast.Children(n)
+		if len(inline) == 0 {
+			return ""
+		}
+		if d, ok := inline[0].(*ast.TextDirective); ok {
+			return d.Name
+		}
+	}
+	return ""
+}
+
+// reparseShape describes what out re-parses to, for a failure message:
+// the node kind, plus the name and attributes when it is still a
+// directive. A lost directive shows up as a bare paragraph here.
+func reparseShape(out string) string {
+	kids := ast.Children(Parse([]byte(out)))
+	if len(kids) == 0 {
+		return "an empty document"
+	}
+	node := kids[0]
+	if para, ok := node.(*ast.Paragraph); ok {
+		if inline := ast.Children(para); len(inline) > 0 {
+			node = inline[0]
+		}
+	}
+	switch n := node.(type) {
+	case *ast.LeafDirective:
+		return fmt.Sprintf("%T with name %q and attrs %v", n, n.Name, n.Attrs)
+	case *ast.ContainerDirective:
+		return fmt.Sprintf("%T with name %q and attrs %v", n, n.Name, n.Attrs)
+	case *ast.TextDirective:
+		return fmt.Sprintf("%T with name %q and attrs %v", n, n.Name, n.Attrs)
+	default:
+		return fmt.Sprintf("%T", n)
 	}
 }

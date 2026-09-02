@@ -3,6 +3,7 @@ package markdown
 import (
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/pmarschik/adfast/ast"
@@ -29,6 +30,7 @@ func (r *mdRenderer) renderContainerDirective(b *strings.Builder, node *ast.Cont
 // directives (:::: > :::); attributes serialize on the fence line after
 // the label, like the leaf form.
 func (r *mdRenderer) writeContainerDirectiveForm(b *strings.Builder, name string, attrs map[string]string, children []ast.Node) {
+	mustSpellDirectiveName(name)
 	fence := strings.Repeat(":", containerFenceLength(children))
 	b.WriteString(fence)
 	b.WriteString(name)
@@ -61,6 +63,7 @@ func renderLeafDirective(b *strings.Builder, node *ast.LeafDirective) {
 // deterministic here via sorted keys, which matches the fixed layout/width
 // order the ADF conversion produces).
 func writeLeafDirectiveForm(b *strings.Builder, name string, attrs map[string]string, children []ast.Node) {
+	mustSpellDirectiveName(name)
 	b.WriteString("::")
 	b.WriteString(name)
 	if label := escapeDirectiveLabel(ast.PlainText(children)); label != "" {
@@ -135,6 +138,86 @@ func writeDirectiveAttrs(b *strings.Builder, attrs map[string]string) {
 		wrote = true
 	}
 	b.WriteString("}")
+}
+
+// mustSpellDirectiveName stops the render when a directive name has no
+// written form, rather than writing one that destroys the node.
+//
+// This is the one member of the spell-check family (nameSpells,
+// keySpells, valueSpells, shorthandSpells) that cannot degrade. An
+// unspellable attribute is DROPPED: the directive survives, one
+// attribute poorer. A name has no such fallback — a directive without a
+// name is not a directive — and writing it anyway is silent corruption:
+// the form re-parses as an ordinary paragraph (the node is gone), or, if
+// the name carries a line ending, under the truncated prefix with its
+// attribute block stranded on the next line (the node comes back
+// renamed and empty). Sanitizing is worse still: it renames the
+// author's directive without telling anyone.
+//
+// So the render panics. The name can only have come from a caller
+// building the node by hand, because no parse can produce one — the
+// parser refuses the whole directive instead — so the panic converts a
+// corrupt document into a stack trace pointing at the construction site.
+// The renderer's own directive names are literals or come from a
+// closed set (the registered directive names, the five panel types, the
+// two alignments, the Confluence macro keys), and every value the ADF
+// decode leg can put in a name position goes through one of those sets,
+// so no document can reach this panic.
+func mustSpellDirectiveName(name string) {
+	if nameSpells(name) {
+		return
+	}
+	panic("adfast/markdown: cannot render the directive name " + strconv.Quote(name) +
+		": a name is one or more ASCII alphanumerics, with '-' or '_' allowed" +
+		" inside it but not at either end. No parse produces such a name, so" +
+		" this node was BUILT BY A CALLER rather than parsed — fix whatever" +
+		" set the Name field. Writing it would destroy the node instead of" +
+		" the name (the directive re-parses as plain text, or under a" +
+		" truncated name with its attributes gone), and unlike an" +
+		" unspellable attribute a name cannot be dropped.")
+}
+
+// nameSpells reports whether a directive name can be written into any of
+// the three directive forms and read back as itself.
+//
+// The rule is goldmark-directive's scanDirectiveName: a name opens with
+// an ASCII alphanumeric, continues over alphanumerics and '-'/'_' runs,
+// and must not END in '-' or '_' — a trailing joiner invalidates the
+// whole directive, as it does in micromark. Anything outside that set
+// (a space, a brace, a quote, a colon, a line ending, a multi-byte rune,
+// the empty string) ends the parser's name scan early, and every form
+// then rejects what follows: the marker line refuses trailing
+// non-whitespace, and the text form needs a label or an attribute block
+// right after the name.
+//
+// The grammar belongs to goldmark-directive, and this is a second copy
+// of it, which is a real risk of drift. It is written here because that
+// package exports no predicate for a name (scanDirectiveName and
+// isDirectiveAlnum are unexported, and the exported surface is parsers,
+// node types and options), and adding one there would tie this fix to a
+// release of a separate public module. When goldmark-directive does
+// export one, delete this and call it. TestRender_DirectiveNameSpellsMatchesTheParser
+// pins the two together in the meantime: it checks the predicate against
+// what Parse actually reads back, so a change to the upstream grammar
+// fails here rather than drifting silently.
+func nameSpells(name string) bool {
+	if name == "" || !isDirectiveNameStart(name[0]) {
+		return false
+	}
+	for i := range len(name) {
+		if !isDirectiveNameByte(name[i]) {
+			return false
+		}
+	}
+	// The closing byte carries the same rule as the opening one: only an
+	// alphanumeric may end a name, never a '-' or a '_'.
+	return isDirectiveNameStart(name[len(name)-1])
+}
+
+// isDirectiveNameByte reports whether c can appear inside a directive
+// name (goldmark-directive: an ASCII alphanumeric, a '-' or a '_').
+func isDirectiveNameByte(c byte) bool {
+	return isDirectiveNameStart(c) || c == '-' || c == '_'
 }
 
 // shorthandSpells reports whether the {#id} / {.class} shortcut can spell

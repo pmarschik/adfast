@@ -24,6 +24,11 @@ import (
 // ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat(),
 // WithPrintWidth(w)).
 //
+// It panics on a directive node whose Name the directive dialect cannot
+// spell (see markdown.Render): no parse produces such a name, so it can
+// only come from a caller building the node by hand, and writing it
+// would destroy the node rather than the name.
+//
 // Options read: WithPrintWidth, WithNoWrap, WithBlockSeparator,
 // WithPrettierFormat, WithoutSignificantSpaceEscapes, and (in the format
 // mode only) the convert.Normalize

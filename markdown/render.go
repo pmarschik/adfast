@@ -75,6 +75,10 @@ const ByteOrderMark = "\ufeff"
 //
 // A root with ast.Root.ByteOrderMark set re-emits the leading byte order
 // mark the source opened with; nothing else in the tree carries it.
+//
+// It panics on one thing only: a directive node carrying a name the
+// dialect cannot spell, which no parse produces and which cannot be
+// written without destroying the node. See mustSpellDirectiveName.
 func Render(root ast.Node, opts ...RenderOption) string {
 	cfg := renderConfig{blockSep: "\n", wrapWidth: 80}
 	for _, o := range opts {
