@@ -968,8 +968,10 @@ func (c *astConverter) linkHref(node *ast.Link) string {
 // reference the store resolver (singleAttachmentImage, tried first) could
 // not map to an uploaded attachment; it is kept as external media carrying
 // the path ONLY when WithPreserveLocalImages is set — so a store-aware
-// round-trip and a later push upload can still see it — otherwise it is
-// dropped (the remark-reference default; a diagnostic is emitted downstream).
+// round-trip and a later push upload can still see it. Otherwise there is
+// no block media to promote to, so the paragraph converts inline instead,
+// where the picture is dropped and the label survives (see
+// inlineFlattener.degradeUnplaceableImage).
 func (c *astConverter) singleImageChild(node *ast.Paragraph) (url, alt string, ok bool) {
 	if len(node.Children) != 1 {
 		return "", "", false
@@ -1099,8 +1101,9 @@ func (v *inlineFlattener) VisitLink(n *ast.Link) []adf.Node {
 //     has no external variant, unlike block media — so it degrades to a
 //     link that keeps the content visible (CodeInlineImageDegraded);
 //   - any other path is an asset not in the store yet (no media id
-//     before upload) and drops, reported so an upload flow can pick it
-//     up (CodeUnresolvedAsset).
+//     before upload), so the picture is gone but the label stays —
+//     reported so an upload flow can pick it up (CodeUnresolvedAsset,
+//     see degradeUnplaceableImage).
 func (v *inlineFlattener) VisitImage(n *ast.Image) []adf.Node {
 	alt := ast.PlainText(n.Children)
 	if id, ok := v.c.assetID(n.URL); ok && id != "" {
@@ -1115,13 +1118,80 @@ func (v *inlineFlattener) VisitImage(n *ast.Image) []adf.Node {
 	if strings.HasPrefix(n.URL, "http://") || strings.HasPrefix(n.URL, "https://") {
 		return v.degradeInlineImage(n, alt)
 	}
+	return v.degradeUnplaceableImage(n, alt)
+}
+
+// degradeUnplaceableImage keeps an image no asset store can place. ADF
+// addresses an attachment by media id and mediaInline has no external
+// variant, so with no id there is no node that holds the PICTURE — but
+// the label is still content, and it stays: as a link to the
+// destination when there is one to click, as plain text when there is
+// not.
+//
+// Emitting nothing instead is what emptied the block the image sat in. A
+// paragraph, a table cell or a list item whose only content was such an
+// image came out blank, and a document that WAS one image came out
+// empty — a diagnostic the only trace left of the whole document. The
+// picture is lost either way and the diagnostic still says so, but the
+// loss now stops at the picture.
+//
+// Inside a link the ENCLOSING destination takes the href, for
+// degradeInlineImage's reason: it is the one the reader means to click,
+// and one text node carries one link mark.
+//
+// An image with neither a destination nor alt text ("![]()") has no
+// label to keep and still emits nothing. Nor is it reported: there is no
+// asset behind it to resolve later, the same silence reportEmptiedLink
+// keeps for a link with no destination to lose.
+func (v *inlineFlattener) degradeUnplaceableImage(n *ast.Image, alt string) []adf.Node {
+	label := imageLabel(n.URL, alt)
+	if label == "" {
+		return nil
+	}
+	href := n.URL
+	if v.ctx.hasLink && v.ctx.link != "" {
+		href = v.ctx.link
+	}
 	if v.c.diagnostics != nil && n.URL != "" {
 		v.c.diagnostics(Diagnostic{
 			Code:    CodeUnresolvedAsset,
-			Message: "image " + n.URL + " has no media id (not in the asset store); dropped from the ADF payload",
+			Message: unplaceableImageMessage(n.URL, href),
 		})
 	}
-	return nil
+	text := &adf.Text{Text: label}
+	if href != "" {
+		text.Marks = []adf.Mark{&adf.Link{Href: new(href)}}
+	}
+	return []adf.Node{text}
+}
+
+// unplaceableImageMessage names what the encode kept and what it lost,
+// because a consumer shows this sentence to the author who wrote the
+// image and the two halves are not the same news: the picture will not
+// be on the page, and the label will.
+func unplaceableImageMessage(url, href string) string {
+	kept := "its label stays as plain text"
+	if href != "" {
+		kept = "its label stays as a link to " + href
+	}
+	return "image " + url + " has no media id (not in the asset store); " +
+		"the picture is dropped from the ADF payload and " + kept
+}
+
+// imageLabel answers the text an image degrades to when ADF has no node
+// for the picture: the alt text, then the filename the URL ends in, then
+// the URL itself — the fallback a file card's label uses. A bare
+// separator or dot is not a name a reader recognizes, so it falls
+// through to the URL. Everything empty answers "", the one case with no
+// content to keep.
+func imageLabel(url, alt string) string {
+	if alt != "" {
+		return alt
+	}
+	if base := path.Base(url); base != "" && base != "." && base != "/" {
+		return base
+	}
+	return url
 }
 
 // mediaLinkMark answers the link mark an enclosing link puts on a media
@@ -1143,9 +1213,9 @@ func mediaLinkMark(ctx markCtx) []adf.Mark {
 }
 
 // degradeInlineImage rewrites an external inline image as the link it
-// can still be. The label falls back the way a file card's does (alt,
-// then the filename the URL ends in, then the URL itself), so the
-// degraded text is never empty and md → adf → md is stable.
+// can still be. The label falls back the way a file card's does (see
+// imageLabel), so the degraded text is never empty and md → adf → md is
+// stable.
 //
 // Inside a link — a linked image mid-sentence — the ENCLOSING
 // destination takes the href, because that is the one the reader means
@@ -1153,13 +1223,7 @@ func mediaLinkMark(ctx markCtx) []adf.Mark {
 // of the two can survive: the degraded form is one text node with one
 // link mark, and ADF has no inline external image to hold the other.
 func (v *inlineFlattener) degradeInlineImage(n *ast.Image, alt string) []adf.Node {
-	label := alt
-	if label == "" {
-		label = path.Base(n.URL)
-	}
-	if label == "" || label == "." || label == "/" {
-		label = n.URL
-	}
+	label := imageLabel(n.URL, alt)
 	href := n.URL
 	message := "inline image " + n.URL +
 		" rewritten as a link: ADF has no inline image for an external URL"
@@ -1326,10 +1390,12 @@ func (c *astConverter) flattenLink(node *ast.Link, ctx markCtx) []adf.Node {
 	out := c.flattenChildren(node.Children, next)
 	if len(out) == 0 {
 		// The link mark rides on the label, so a label that converted to
-		// nothing takes the destination with it. The one case markdown
-		// actually produces is a linked image the asset store cannot place
-		// (see inlineFlattener.VisitImage), where the image drops and the
-		// link had nothing else to hold.
+		// nothing takes the destination with it. What markdown produces is
+		// a label with no text ANYWHERE in it — "[![]()](href)", an image
+		// with neither alt text nor a destination to name it after (see
+		// inlineFlattener.degradeUnplaceableImage). An unplaceable image
+		// that HAS a label keeps this link alive: the label becomes the
+		// text and the enclosing destination its mark.
 		c.reportEmptiedLink(href)
 	}
 	return out

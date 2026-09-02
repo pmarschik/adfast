@@ -32,8 +32,19 @@ const (
 	// cell text. Emitted by the facade parse.
 	CodeSpanMarkerInvalid = "span-marker-invalid"
 	// CodeUnresolvedAsset reports an ![alt](assets/…) reference the
-	// configured asset store could not map back to a media id; the image
-	// is kept as external media. Emitted by ToADF.
+	// configured asset store could not map back to a media id. ADF
+	// addresses an attachment by id, so with no id there is no node for
+	// the picture: it is kept as external media carrying the path under
+	// WithPreserveLocalImages, and otherwise the PICTURE drops while the
+	// label stays — as a link to the destination, which is the enclosing
+	// one when the image sits inside a link. The document is never
+	// emptied by it. Emitted by ToADF.
+	//
+	// Unlike the other one-way losses, whether this one is permanent
+	// depends on WHEN the encode ran, not on what the document says: an
+	// asset uploads and the next encode finds its id. A consumer with an
+	// upload flow should report it only from the encode that actually
+	// ships.
 	CodeUnresolvedAsset = "unresolved-asset"
 	// CodeUnsupportedCodeLanguage reports a fenced code block whose
 	// language tag is not in the WithCodeLanguages set; the language
@@ -101,12 +112,14 @@ const (
 	// CodeLinkDestinationDropped reports a link whose whole label
 	// converted to nothing, so its destination left the document: an ADF
 	// link is a MARK, and a mark needs a node to ride on. The one case a
-	// markdown parse actually produces is a linked image whose picture
-	// could not be placed — "[![alt](assets/x.png)](https://home/)" with
-	// no asset store, where the image drops (CodeUnresolvedAsset) and the
-	// link had nothing else in its label. A link with no destination to
-	// lose ("[]()") is not reported. One diagnostic fires per emptied
-	// link, naming the href. Emitted by ToADF.
+	// markdown parse actually produces is a label with no text anywhere
+	// in it — "[![]()](https://home/)", an image with neither alt text
+	// nor a destination to name it after. A linked image the asset store
+	// cannot place is NOT this as long as it has a label: the picture
+	// drops (CodeUnresolvedAsset) but the label carries the enclosing
+	// destination as its mark. A link with no destination to lose
+	// ("[]()") is not reported. One diagnostic fires per emptied link,
+	// naming the href. Emitted by ToADF.
 	//
 	// A linked image whose picture DOES convert is not this: the
 	// destination becomes the link mark on the media node (block and
