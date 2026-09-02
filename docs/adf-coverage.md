@@ -183,6 +183,66 @@ is the fallback artifact for the "exists in the shared schema" claim.
 | fragment          | ✓    | ✓          | converted | [fragment.ts#L17](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/marks/fragment.ts#L17)                 | no page (404) — omission                                                                                                | **absent** from confluence-schema.ts. render-confirmed 2026-07-22                                                                                                                          |
 | fontSize          | —    | —          | dropped   | [font-size.ts#L11](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/marks/font-size.ts#L11)               | no page (404); shared-schema only; REST rejects it                                                                      | absent from confluence-schema.ts; shared-schema only; stripped on save                                                                                                                     |
 
+## A linked image: `link` on a media node
+
+A link wrapping an image — `[![the logo](logo.png)](https://home/)`, a
+logo that links home or a badge that links to a build — **is
+representable in ADF**, and the destination belongs on the media node,
+not on a wrapper. Two sources say so:
+
+- **The pinned schema.** `MediaDefinition` and `MediaInlineDefinition`
+  both declare
+  `marks?: Array<LinkDefinition | BorderMarkDefinition | AnnotationMarkDefinition>`
+  ([media.ts#L28](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/nodes/media.ts#L28),
+  [media-inline.ts#L18](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/nodes/media-inline.ts#L18)).
+  `MediaSingleBaseDefinition` also takes `marks?: Array<LinkDefinition>`
+  ([media-single.ts#L20](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/nodes/media-single.ts#L20)),
+  so both placements are schema-legal.
+- **The Jira reference.** The
+  [`nodes/media`](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/media/)
+  page (HTTP 200) states it outright: _"The following marks can be
+  applied: `border`, `link`"_. That is positive documented evidence for
+  Jira, which the `mediaSingle` placement does not have — so **adfast
+  writes the mark on the `media` (or `mediaInline`) node**. The
+  neighboring `border` mark in the same union was render-confirmed on
+  `media` in the 2026-07-22 live probe, which is corroborating live
+  evidence that a media node carries its marks through.
+
+What adfast does with each form of a linked image on the **encode**
+(md → ADF) leg. Every reference spelling behaves as its inline
+equivalent (`[![alt][logo]][home]` and `[![logo]][home]` included): the
+references resolve first, and both definitions count as used.
+
+| Markdown                                      | ADF                                                      | Lost                   |
+| --------------------------------------------- | -------------------------------------------------------- | ---------------------- |
+| lone in a paragraph, external image           | `mediaSingle` → `media`(external) + `link` mark          | nothing                |
+| lone in a paragraph, image in the asset store | `mediaSingle` → `media`(file) + `link` mark              | nothing                |
+| mid-sentence, image in the asset store        | `mediaInline` + `link` mark                              | nothing                |
+| mid-sentence, external image                  | one `text` node, `link` mark = **the outer** destination | the image URL          |
+| the image cannot be placed (no asset store)   | nothing — the label converted away                       | the image and the href |
+
+The last two rows are the lossy ones, and neither is silent:
+
+- **mid-sentence external.** ADF has no inline external image at all
+  (`mediaInline` addresses an uploaded attachment by id and has no
+  external variant), so the image degrades to a link — and with two
+  candidate hrefs and one link mark, the **enclosing** destination wins,
+  because that is the one the reader means to click. The image URL is
+  what leaves the document, and an `inline-image-degraded` diagnostic
+  names both halves. The block form of the same picture loses nothing,
+  so moving it onto its own line is the fix an author can apply.
+- **unplaceable image.** The image drops with an `unresolved-asset`
+  diagnostic, and the link had nothing else in its label, so an ADF link
+  mark has no node left to ride on. A `link-destination-dropped`
+  diagnostic names the href.
+
+**The decode (ADF → md) leg does not yet read the mark back.** A pulled
+`media` or `mediaInline` carrying a `link` mark projects as a plain
+`![alt](url)` image (or a `::media` directive) and the destination is
+dropped in silence. The `adf` codec itself keeps the mark losslessly —
+decode → encode returns it unchanged — so this is a gap in the markdown
+projection only, tracked separately.
+
 ## Historical documentation gaps (now empirically resolved)
 
 The `Jira` and `Confluence` columns above are **confirmed empirically by

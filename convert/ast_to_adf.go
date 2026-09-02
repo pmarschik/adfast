@@ -635,8 +635,29 @@ func (c *astConverter) convertParagraph(node *ast.Paragraph) adf.Node {
 	// the promotions below see what "![alt](url)" would have given them
 	// (see linkref.go).
 	node = c.paragraphResolvingLoneImageRef(node)
+	if media, ok := c.loneImageMedia(node); ok {
+		return media
+	}
+	// A lone image wrapped in a link is a LINKED image (a logo that links
+	// home, a badge that links to a build). It promotes exactly like the
+	// bare one — the picture is the same block media — and the destination
+	// rides along as the link mark ADF puts on the media node.
+	if inner, href, ok := c.loneLinkedImage(node); ok {
+		if media, promoted := c.loneImageMedia(inner); promoted {
+			return withMediaLink(media, href)
+		}
+	}
+	return &adf.Paragraph{Content: c.convertInlines(node.Children)}
+}
+
+// loneImageMedia promotes a paragraph whose sole child is an image to the
+// block media ADF wants in its place: the media node of a downloaded
+// attachment when the asset store knows the path, external media
+// otherwise. It answers (nil, false) for every other paragraph, including
+// an image the store cannot place (see singleImageChild).
+func (c *astConverter) loneImageMedia(node *ast.Paragraph) (adf.Node, bool) {
 	if img, id, ok := c.singleAttachmentImage(node); ok {
-		return withImageCaption(c.attachmentImageToMedia(img, id), img.Title)
+		return withImageCaption(c.attachmentImageToMedia(img, id), img.Title), true
 	}
 	if url, alt, ok := c.singleImageChild(node); ok {
 		media := &adf.Media{Type: "external", URL: url, Alt: alt}
@@ -647,9 +668,33 @@ func (c *astConverter) convertParagraph(node *ast.Paragraph) adf.Node {
 		return withImageCaption(&adf.MediaSingle{
 			Layout:  new("center"),
 			Content: []adf.Node{media},
-		}, title)
+		}, title), true
 	}
-	return &adf.Paragraph{Content: c.convertInlines(node.Children)}
+	return nil, false
+}
+
+// withMediaLink puts the destination of the link that wrapped a lone
+// image onto the media node, which is where ADF keeps it: the mark set of
+// media is (link | border | annotation), so a linked image is
+// representable and loses nothing (see docs/adf-coverage.md).
+//
+// An empty destination ("[![alt](img)]()") adds no mark: there is nothing
+// to click and nothing to lose, and a link mark without an href is not a
+// shape any product accepts.
+func withMediaLink(n adf.Node, href string) adf.Node {
+	if href == "" {
+		return n
+	}
+	single, ok := n.(*adf.MediaSingle)
+	if !ok || len(single.Content) == 0 {
+		return n
+	}
+	media, ok := single.Content[0].(*adf.Media)
+	if !ok {
+		return n
+	}
+	media.Marks = append(media.Marks, &adf.Link{Href: new(href)})
+	return single
 }
 
 // withImageCaption attaches an image title as the mediaSingle caption
@@ -881,6 +926,42 @@ func (c *astConverter) attachmentImageToMedia(img *ast.Image, id string) adf.Nod
 	}
 }
 
+// loneLinkedImage reports a paragraph whose sole child is a link wrapping
+// a single image ("[![alt](img)](href)") as the paragraph that image alone
+// would have formed, plus the destination of the link. The caller promotes
+// that paragraph exactly as it promotes a bare lone image and puts the
+// destination back with withMediaLink, so the two forms cannot drift.
+//
+// Every reference spelling answers too — the outer link, the inner image
+// or both written as "[label]" — because resolveLinkedImage resolves them
+// (see linkref.go).
+func (c *astConverter) loneLinkedImage(node *ast.Paragraph) (*ast.Paragraph, string, bool) {
+	if len(node.Children) != 1 {
+		return nil, "", false
+	}
+	link, img, ok := c.resolveLinkedImage(node.Children[0])
+	if !ok {
+		return nil, "", false
+	}
+	out := *node
+	out.Children = []ast.Node{img}
+	return &out, c.linkHref(link), true
+}
+
+// linkHref answers the href a link publishes with: the destination it
+// carries, rewritten by the configured link resolver when that resolver
+// claims it. flattenLink and the linked-image promotion share it so an
+// inline link and a linked image cannot resolve a destination differently.
+func (c *astConverter) linkHref(node *ast.Link) string {
+	if c.linkResolver.Encode == nil {
+		return node.URL
+	}
+	if resolved, ok := c.linkResolver.Encode(node.URL); ok {
+		return resolved
+	}
+	return node.URL
+}
+
 // singleImageChild reports the paragraph's sole child when it is an image
 // expressible as external media. An absolute http(s) URL is always an
 // embedded external image. A document-relative path is a local image
@@ -1028,6 +1109,7 @@ func (v *inlineFlattener) VisitImage(n *ast.Image) []adf.Node {
 			ID:         strings.ToLower(id),
 			Alt:        alt,
 			Collection: new(""),
+			Marks:      mediaLinkMark(v.ctx),
 		}}
 	}
 	if strings.HasPrefix(n.URL, "http://") || strings.HasPrefix(n.URL, "https://") {
@@ -1042,10 +1124,34 @@ func (v *inlineFlattener) VisitImage(n *ast.Image) []adf.Node {
 	return nil
 }
 
+// mediaLinkMark answers the link mark an enclosing link puts on a media
+// node, and nil outside one. media and mediaInline both take a
+// (link | border | annotation) mark set, so a media node is where a
+// linked image keeps its destination with nothing lost (see
+// docs/adf-coverage.md). The inherited TEXT marks do not travel: media
+// carries no strong, em or color.
+//
+// An empty destination ("[![alt](img)]()") adds no mark — there is
+// nothing to click and nothing to lose, and a link mark without an href
+// is not a shape any product accepts. Text keeps an empty link mark for
+// remark parity (see buildMarks); media has no such reason to.
+func mediaLinkMark(ctx markCtx) []adf.Mark {
+	if !ctx.hasLink || ctx.link == "" {
+		return nil
+	}
+	return []adf.Mark{&adf.Link{Href: new(ctx.link)}}
+}
+
 // degradeInlineImage rewrites an external inline image as the link it
 // can still be. The label falls back the way a file card's does (alt,
 // then the filename the URL ends in, then the URL itself), so the
 // degraded text is never empty and md → adf → md is stable.
+//
+// Inside a link — a linked image mid-sentence — the ENCLOSING
+// destination takes the href, because that is the one the reader means
+// to click; the image URL is what leaves the document instead. Only one
+// of the two can survive: the degraded form is one text node with one
+// link mark, and ADF has no inline external image to hold the other.
 func (v *inlineFlattener) degradeInlineImage(n *ast.Image, alt string) []adf.Node {
 	label := alt
 	if label == "" {
@@ -1054,15 +1160,20 @@ func (v *inlineFlattener) degradeInlineImage(n *ast.Image, alt string) []adf.Nod
 	if label == "" || label == "." || label == "/" {
 		label = n.URL
 	}
+	href := n.URL
+	message := "inline image " + n.URL +
+		" rewritten as a link: ADF has no inline image for an external URL"
+	if v.ctx.hasLink && v.ctx.link != "" {
+		href = v.ctx.link
+		message = "inline image " + n.URL + " inside a link: the link to " + v.ctx.link +
+			" is kept and the image URL is dropped — ADF has no inline image for an external URL"
+	}
 	if v.c.diagnostics != nil {
-		v.c.diagnostics(Diagnostic{
-			Code:    CodeInlineImageDegraded,
-			Message: "inline image " + n.URL + " rewritten as a link: ADF has no inline image for an external URL",
-		})
+		v.c.diagnostics(Diagnostic{Code: CodeInlineImageDegraded, Message: message})
 	}
 	return []adf.Node{&adf.Text{
 		Text:  label,
-		Marks: []adf.Mark{&adf.Link{Href: new(n.URL)}},
+		Marks: []adf.Mark{&adf.Link{Href: new(href)}},
 	}}
 }
 
@@ -1196,11 +1307,7 @@ func (c *astConverter) flattenLink(node *ast.Link, ctx markCtx) []adf.Node {
 			return []adf.Node{&adf.InlineCard{URL: new(href)}}
 		}
 	}
-	if c.linkResolver.Encode != nil {
-		if resolved, ok := c.linkResolver.Encode(href); ok {
-			href = resolved
-		}
-	}
+	href = c.linkHref(node)
 	// A file the host product attached publishes as the card it shows there, and
 	// the label goes with it: a card has nowhere to put one. One link is one
 	// card, however many nodes its label was split across.
@@ -1216,7 +1323,30 @@ func (c *astConverter) flattenLink(node *ast.Link, ctx markCtx) []adf.Node {
 	next := ctx
 	next.link = href
 	next.hasLink = true
-	return c.flattenChildren(node.Children, next)
+	out := c.flattenChildren(node.Children, next)
+	if len(out) == 0 {
+		// The link mark rides on the label, so a label that converted to
+		// nothing takes the destination with it. The one case markdown
+		// actually produces is a linked image the asset store cannot place
+		// (see inlineFlattener.VisitImage), where the image drops and the
+		// link had nothing else to hold.
+		c.reportEmptiedLink(href)
+	}
+	return out
+}
+
+// reportEmptiedLink reports a link whose whole label converted to
+// nothing: with no node left to carry the mark, the href leaves the
+// document. A link with no destination to lose ("[]()") stays quiet.
+func (c *astConverter) reportEmptiedLink(href string) {
+	if c.diagnostics == nil || href == "" {
+		return
+	}
+	c.diagnostics(Diagnostic{
+		Code: CodeLinkDestinationDropped,
+		Message: "link to " + href +
+			" dropped: its whole label converted to nothing, and an ADF link mark needs content to ride on",
+	})
 }
 
 // flattenTextDirective converts a generic (unknown) text directive: it
