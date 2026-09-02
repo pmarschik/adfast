@@ -485,9 +485,10 @@ it changes the pushed payload.
 
 ## Error handling
 
-The four primitives never return an error and never panic. `FromMarkdown`,
-`FromADF`, `ToADF`, and `ToMarkdown` always produce a result. A lossy or
-recovered situation flows through a diagnostics sink instead:
+The four primitives never return an error, and no document makes them
+panic. `FromMarkdown`, `FromADF`, `ToADF`, and `ToMarkdown` always
+produce a result. A lossy or recovered situation flows through a
+diagnostics sink instead:
 
 - an orphan `::colwidths` or `::decisions` that is dropped
   (`colwidths-orphan`, `decisions-orphan`),
@@ -517,6 +518,19 @@ primitives a composition runs. Without a sink, every diagnostic is
 silently dropped. `Pipeline.MarkdownToADFAll` is the errable batch
 variant. A failure of a `BeforeEncode` hook, for example a batched asset
 upload, aborts the call and returns the error.
+
+There is one programming error the render refuses to paper over.
+`ToMarkdown` panics on a directive node whose `Name` is not a name the
+directive dialect can spell — one or more ASCII alphanumerics, with `-`
+or `_` allowed inside it but not at either end. No parse produces such a
+name, so the node was built by hand, and a name has no degradation
+available: an unspellable attribute is dropped and the directive
+survives, but a directive without a name is not a directive, and writing
+it silently turns the node into plain text (or, with a line ending in the
+name, into a renamed node with its attributes gone). The panic names the
+offending string and says the node was built rather than parsed. Every
+name adfast itself writes is a literal or comes from a closed set, so no
+document reaches it.
 
 ### Product availability (`unsupported-in-product`)
 
