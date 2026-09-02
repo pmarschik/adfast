@@ -130,6 +130,59 @@ func (c *astConverter) paragraphResolvingLoneImageRef(node *ast.Paragraph) *ast.
 	return &out
 }
 
+// resolveLinkedImage answers the link and the image of a linked image —
+// "[![alt](img)](href)" — in every spelling markdown gives it: either half
+// may be written as a reference ("[![alt][logo]][home]"), and this resolves
+// those against the definitions so the caller sees the inline form the
+// promotion pattern-matches. Resolving here records both uses, so neither
+// definition reports as unused.
+//
+// It declines a link the author tagged as a smart link (ast.Link.InlineCard,
+// which adfToAst sets): that link is a card, and a card holds no image.
+func (c *astConverter) resolveLinkedImage(n ast.Node) (*ast.Link, *ast.Image, bool) {
+	link, ok := c.asInlineLink(n)
+	if !ok || link.InlineCard || len(link.Children) != 1 {
+		return nil, nil, false
+	}
+	img, ok := c.asInlineImage(link.Children[0])
+	if !ok {
+		return nil, nil, false
+	}
+	return link, img, true
+}
+
+// asInlineLink answers a link node as itself, and a link reference as the
+// inline link its definition describes.
+func (c *astConverter) asInlineLink(n ast.Node) (*ast.Link, bool) {
+	switch l := n.(type) {
+	case *ast.Link:
+		return l, true
+	case *ast.LinkRef:
+		def, ok := c.definitions.resolve(l.Label)
+		if !ok {
+			return nil, false
+		}
+		return &ast.Link{URL: def.URL, Title: def.Title, Explicit: true, Children: l.Children}, true
+	}
+	return nil, false
+}
+
+// asInlineImage answers an image node as itself, and an image reference as
+// the inline image its definition describes.
+func (c *astConverter) asInlineImage(n ast.Node) (*ast.Image, bool) {
+	switch i := n.(type) {
+	case *ast.Image:
+		return i, true
+	case *ast.ImageRef:
+		def, ok := c.definitions.resolve(i.Label)
+		if !ok {
+			return nil, false
+		}
+		return &ast.Image{URL: def.URL, Title: def.Title, Children: i.Children}, true
+	}
+	return nil, false
+}
+
 // The link reference kinds joined the AST after ast.Visitor was published,
 // so both converters implement its optional companion interface. The
 // assertions are what keep the conversion exhaustive: without them a

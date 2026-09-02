@@ -65,6 +65,16 @@ const (
 	// visible and the round trip is stable; only the "render this
 	// inline" intent is lost. An inline image the asset store resolves
 	// to a media id is unaffected — it becomes a real mediaInline.
+	//
+	// Inside a link — a linked image mid-sentence, such as a badge that
+	// links to a build — the ENCLOSING destination takes the href
+	// instead, because that is the one the reader means to click, and
+	// the IMAGE URL is what leaves the document. The message says which
+	// way round it went. Only one of the two can survive: the degraded
+	// form is one text node with one link mark. The block form of the
+	// same document ("[![alt](img)](href)" alone in a paragraph) loses
+	// neither — it becomes media with a link mark and raises nothing.
+	//
 	// Emitted by ToADF, one per degraded image.
 	CodeInlineImageDegraded = "inline-image-degraded"
 	// CodeFootnoteFlattened reports a GFM footnote flattened because ADF
@@ -88,6 +98,22 @@ const (
 	// fires per unused definition, naming its label and destination.
 	// Emitted by ToADF.
 	CodeUnusedDefinitionDropped = "unused-definition-dropped"
+	// CodeLinkDestinationDropped reports a link whose whole label
+	// converted to nothing, so its destination left the document: an ADF
+	// link is a MARK, and a mark needs a node to ride on. The one case a
+	// markdown parse actually produces is a linked image whose picture
+	// could not be placed — "[![alt](assets/x.png)](https://home/)" with
+	// no asset store, where the image drops (CodeUnresolvedAsset) and the
+	// link had nothing else in its label. A link with no destination to
+	// lose ("[]()") is not reported. One diagnostic fires per emptied
+	// link, naming the href. Emitted by ToADF.
+	//
+	// A linked image whose picture DOES convert is not this: the
+	// destination becomes the link mark on the media node (block and
+	// store-resolvable inline forms, nothing lost) or the href of the
+	// degraded link (external inline form, see
+	// CodeInlineImageDegraded).
+	CodeLinkDestinationDropped = "link-destination-dropped"
 	// CodeListItemContent reports a block inside a list item that ADF's
 	// listItem content model does not allow. The pinned schema oracle
 	// (docs/adf-coverage.md:122) gives the model as
