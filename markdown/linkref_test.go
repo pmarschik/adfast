@@ -41,8 +41,11 @@ func TestLinkRef_RoundTrip(t *testing.T) {
 		{"shortcut image", "![logo]\n\n[logo]: ./logo.png\n", "![logo]\n\n[logo]: ./logo.png\n"},
 		{"collapsed image", "![logo][]\n\n[logo]: ./logo.png\n", "![logo][]\n\n[logo]: ./logo.png\n"},
 		{"full image", "![the logo][logo]\n\n[logo]: ./logo.png\n", "![the logo][logo]\n\n[logo]: ./logo.png\n"},
-		// --- titles: every source delimiter normalizes to '"', which is
-		// what this renderer already does for an inline link's title ---
+		// --- titles: the source delimiter is not recorded, so a title
+		// that needs no escape comes back in double quotes whichever
+		// delimiter it was written with, exactly as an inline link's
+		// title does (render_title_test.go covers the ones that do need
+		// an escape) ---
 		{"double-quoted title", "Use [x].\n\n[x]: ./x.md \"T\"\n", "Use [x].\n\n[x]: ./x.md \"T\"\n"},
 		{"single-quoted title", "Use [x].\n\n[x]: ./x.md 'T'\n", "Use [x].\n\n[x]: ./x.md \"T\"\n"},
 		{"parenthesized title", "Use [x].\n\n[x]: ./x.md (T)\n", "Use [x].\n\n[x]: ./x.md \"T\"\n"},
