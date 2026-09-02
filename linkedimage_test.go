@@ -145,12 +145,15 @@ func TestExternalLinkedImageInlineKeepsTheOuterHrefAndReportsTheLoss(t *testing.
 	}
 }
 
-// The last way a destination can leave: the picture cannot be placed at all, so
-// the label converts to nothing and an ADF link mark has no node to ride on.
-// The href still may not disappear in silence.
-func TestUnplaceableLinkedImageReportsTheDroppedDestination(t *testing.T) {
+// The last way a destination can leave: the label converts to nothing ANYWHERE
+// in it, so an ADF link mark has no node to ride on. An image with neither a
+// destination nor alt text is the one markdown form that reaches it — an image
+// the store cannot place still leaves its label behind for the mark (see
+// TestUnplaceableLinkedImageKeepsTheOuterDestination). The href still may not
+// disappear in silence.
+func TestEmptyLabelledLinkReportsTheDroppedDestination(t *testing.T) {
 	var messages []string
-	mdToADF("[![the logo](assets/logo.png)](https://home.example/)\n",
+	mdToADF("[![]()](https://home.example/)\n",
 		WithDiagnostics(func(d convert.Diagnostic) {
 			if d.Code == convert.CodeLinkDestinationDropped {
 				messages = append(messages, d.Message)

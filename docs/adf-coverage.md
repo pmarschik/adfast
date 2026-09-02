@@ -213,15 +213,16 @@ What adfast does with each form of a linked image on the **encode**
 equivalent (`[![alt][logo]][home]` and `[![logo]][home]` included): the
 references resolve first, and both definitions count as used.
 
-| Markdown                                      | ADF                                                      | Lost                   |
-| --------------------------------------------- | -------------------------------------------------------- | ---------------------- |
-| lone in a paragraph, external image           | `mediaSingle` → `media`(external) + `link` mark          | nothing                |
-| lone in a paragraph, image in the asset store | `mediaSingle` → `media`(file) + `link` mark              | nothing                |
-| mid-sentence, image in the asset store        | `mediaInline` + `link` mark                              | nothing                |
-| mid-sentence, external image                  | one `text` node, `link` mark = **the outer** destination | the image URL          |
-| the image cannot be placed (no asset store)   | nothing — the label converted away                       | the image and the href |
+| Markdown                                      | ADF                                                      | Lost                     |
+| --------------------------------------------- | -------------------------------------------------------- | ------------------------ |
+| lone in a paragraph, external image           | `mediaSingle` → `media`(external) + `link` mark          | nothing                  |
+| lone in a paragraph, image in the asset store | `mediaSingle` → `media`(file) + `link` mark              | nothing                  |
+| mid-sentence, image in the asset store        | `mediaInline` + `link` mark                              | nothing                  |
+| mid-sentence, external image                  | one `text` node, `link` mark = **the outer** destination | the image URL            |
+| the image cannot be placed (no asset store)   | one `text` node, `link` mark = **the outer** destination | the picture              |
+| the image cannot be placed, and has no label  | nothing — the label converted away                       | the picture and the href |
 
-The last two rows are the lossy ones, and neither is silent:
+The last three rows are the lossy ones, and none is silent:
 
 - **mid-sentence external.** ADF has no inline external image at all
   (`mediaInline` addresses an uploaded attachment by id and has no
@@ -231,10 +232,36 @@ The last two rows are the lossy ones, and neither is silent:
   what leaves the document, and an `inline-image-degraded` diagnostic
   names both halves. The block form of the same picture loses nothing,
   so moving it onto its own line is the fix an author can apply.
-- **unplaceable image.** The image drops with an `unresolved-asset`
-  diagnostic, and the link had nothing else in its label, so an ADF link
-  mark has no node left to ride on. A `link-destination-dropped`
-  diagnostic names the href.
+- **unplaceable image.** ADF addresses an attachment by media id, so an
+  image the store cannot map has no node for the PICTURE — in a
+  paragraph as much as mid-sentence, because there is no block media to
+  promote to either (`WithPreserveLocalImages` is the opt-in that keeps
+  the path as external media instead). The degradation is the one the
+  mid-sentence external form already performs: the **label** stays, as a
+  link, and the **enclosing** destination wins the href when the image
+  sits in one. An `unresolved-asset` diagnostic names both halves — the
+  picture that will not be on the page, and the label that will. It is
+  the only loss here that is not permanent: upload the asset and the
+  next encode finds its id.
+
+  Emitting nothing instead is what this row used to say, and the cost
+  was out of all proportion to the picture. An image is very often the
+  ONLY child of its block, so the drop emptied the block: a paragraph, a
+  table cell, a list item came back blank, and a document that was one
+  image came back EMPTY — the diagnostic the only surviving trace of the
+  whole document. The label costs nothing to keep and stops the loss at
+  the picture.
+
+  The one thing the degradation cannot carry is the image title
+  (`![alt](path "caption")`): the block form spells it as a `caption`
+  child of `mediaSingle`, and an ADF `link` mark has no title attribute
+  to put it on.
+- **unplaceable image with no label.** An image with neither alt text
+  nor a destination to name it after (`![]()`) has no label to keep, so
+  it still converts away — and says nothing, because there is no asset
+  behind it to resolve later. Inside a link it is also the one markdown
+  form that empties a whole label, leaving an ADF link mark with no node
+  to ride on; a `link-destination-dropped` diagnostic names that href.
 
 ### Reading one back
 
