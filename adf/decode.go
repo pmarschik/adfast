@@ -417,7 +417,9 @@ var markDecoders = map[string]func(r *attrReader) Mark{
 	"strike":    func(*attrReader) Mark { return &Strike{} },
 	"code":      func(*attrReader) Mark { return &Code{} },
 	"underline": func(*attrReader) Mark { return &Underline{} },
-	"link":      func(r *attrReader) Mark { return &Link{Href: r.strPtr("href")} },
+	"link": func(r *attrReader) Mark {
+		return &Link{Href: r.strPtr("href"), Title: r.strPtr("title")}
+	},
 	"textColor": func(r *attrReader) Mark { return &TextColor{Color: r.str("color")} },
 	"backgroundColor": func(r *attrReader) Mark {
 		return &BackgroundColor{Color: r.str("color")}

@@ -34,8 +34,18 @@ type Underline struct {
 // Link is the ADF link mark. Href is a pointer because a link mark
 // without href is not a markdown link (while an empty-but-present href
 // keeps its mark, like remark's [x]()).
+//
+// Title is the optional "title" attribute of the schema's LinkAttributes
+// — the advisory text a markdown link spells after its destination,
+// [label](href "title"). It is a pointer for the same reason Href is:
+// absent and empty are different wire shapes, and only an absent one
+// writes no attribute at all. Markdown cannot spell an empty-but-present
+// title, so the conversion only ever produces nil or a non-empty string;
+// the pointer exists so ADF that arrives with `"title": ""` re-encodes
+// as it came.
 type Link struct {
 	Href  *string
+	Title *string
 	Extra map[string]any
 }
 
