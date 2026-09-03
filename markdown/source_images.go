@@ -76,7 +76,8 @@ func Images(src []byte) []Image { return NewSource(src).Images() }
 // checked against the one the parser produced, and a mismatch DROPS the
 // image rather than reporting a span that would splice into the wrong
 // place. Under-reporting is the safe direction for a rewriter; a wrong
-// offset is not.
+// offset is not. UnlocatedImages counts what was dropped, so a caller that
+// rewrites destinations can tell an empty view from an incomplete one.
 //
 // An image whose destination or title continues on the NEXT LINE is
 // reported like any other, inside a blockquote or a list item as well as at
@@ -94,24 +95,40 @@ func Images(src []byte) []Image { return NewSource(src).Images() }
 // `[i d]: …`, because CommonMark folds whitespace runs when it matches a
 // label against a definition. The span selects the label as WRITTEN, so an
 // edit replacing it replaces the fold as well.
+//
+// A TAB in the container prefix of such a continued line is not a limitation
+// here, for the reason Source.Links states in full: the block this view
+// resolves against is a paragraph, whose parser trims each line's leading
+// whitespace — the padding a partly consumed tab leaves included — before
+// this view sees a segment. Source.Definitions is the one view that keeps
+// the padding, and the one with the limitation.
 func (s *Source) Images() []Image {
 	if s.imagesDone {
 		return s.images
 	}
-	s.images, s.imagesDone = collectImages(s.doc, s.src), true
+	s.images, s.imagesUnlocated = collectImages(s.doc, s.src)
+	s.imagesDone = true
 	return s.images
 }
 
+// UnlocatedImages returns how many images of the source Images could NOT
+// resolve to a written extent, and therefore left out of its result. See
+// UnlocatedDefinitions for why the count is reported at all; no shape of
+// input is currently known to make this one nonzero.
+func (s *Source) UnlocatedImages() int {
+	s.Images()
+	return s.imagesUnlocated
+}
+
 // collectImages walks doc for images and resolves each to its written
-// extent.
+// extent. It reports the images it located and how many it did not.
 //
 // Unlike the block views this walk descends into inline subtrees, because
 // an image IS one. That is safe for the reason blockNodes documents in
 // reverse: a text directive's label is parsed against its own detached
 // source and its root is NOT attached to this tree, so an image inside one
 // is unreachable from here and can never contribute a foreign offset.
-func collectImages(doc gast.Node, src []byte) []Image {
-	var out []Image
+func collectImages(doc gast.Node, src []byte) (out []Image, unlocated int) {
 	nested := labelExtents{}
 	var walk func(gast.Node)
 	walk = func(n gast.Node) {
@@ -119,6 +136,8 @@ func collectImages(doc gast.Node, src []byte) []Image {
 			if img, ok := c.(*gast.Image); ok {
 				if got, ok := imageSpan(img, src, nested); ok {
 					out = append(out, got)
+				} else {
+					unlocated++
 				}
 			}
 			walk(c)
@@ -126,7 +145,7 @@ func collectImages(doc gast.Node, src []byte) []Image {
 	}
 	walk(doc)
 	slices.SortFunc(out, func(a, b Image) int { return a.Span.Start - b.Span.Start })
-	return out
+	return out, unlocated
 }
 
 // imageSpan resolves one image to its written extent. An image is a `[label]`
@@ -499,10 +518,24 @@ func scanClosure(src []byte, i int, opener, closer byte) (int, bool) {
 // a different construct — a wrong offset, which is the one outcome these
 // views must never produce.
 //
-// A prefix carrying a TAB is where the bridge stops: goldmark expands it to
-// spaces through the segment's padding, so the read bytes are not a
-// subsequence of the written ones and the comparison fails. The construct is
-// dropped, which is the safe direction.
+// This function reads a segment's Start and Stop and IGNORES its Padding,
+// which is the deliberate limit of the bridge and the one place a construct
+// is lost. Padding is how goldmark records a container prefix ending in a
+// TAB it only partly consumed: `>\t` at the start of a line takes ONE column
+// of the tab's expansion to the next tab stop and records the columns left
+// over as a count of spaces on the segment, spaces that stand for no byte of
+// the source. A value the parser read through such a segment therefore
+// contains bytes no span can address, and adding them here would be worse
+// than dropping the construct — it would make a span whose bytes differ from
+// the source it indexes compare EQUAL.
+//
+// Which view pays for that is measurable rather than a matter of taste, and
+// it is one: a paragraph's parser trims every line's leading whitespace,
+// padding included, when it closes, so the segments Links and Images resolve
+// against never carry any. A LinkReferenceDefinition keeps the paragraph's
+// lines as they stood BEFORE that trim, so its segments do — see
+// Source.Definitions, which names the two parts of a definition the padding
+// reaches and the one it does not.
 func bytesAsRead(src []byte, lines *text.Segments, sp Span) []byte {
 	if lines == nil || lines.Len() == 1 {
 		return src[sp.Start:sp.Stop]
