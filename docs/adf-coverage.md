@@ -252,10 +252,12 @@ The last three rows are the lossy ones, and none is silent:
   whole document. The label costs nothing to keep and stops the loss at
   the picture.
 
-  The one thing the degradation cannot carry is the image title
-  (`![alt](path "caption")`): the block form spells it as a `caption`
-  child of `mediaSingle`, and an ADF `link` mark has no title attribute
-  to put it on.
+  The image title (`![alt](path "caption")`) travels too, on the title
+  attribute of the link mark the label keeps — it follows whichever href
+  won, so an enclosing link contributes its own title rather than the
+  image's. The block form would have spelled the title as a `caption`
+  child of `mediaSingle`, which the degradation has no node for; the
+  mark's own attribute is where it lands instead.
 - **unplaceable image with no label.** An image with neither alt text
   nor a destination to name it after (`![]()`) has no label to keep, so
   it still converts away — and says nothing, because there is no asset
@@ -297,15 +299,79 @@ disagree, **the media node wins** — a picture with two different
 destinations has no markdown form (a link cannot nest), and the media
 node's is the placement adfast itself writes.
 
-**Only the href travels.** A `link` mark's other attributes (its title,
-or the id/collection a media link mark may carry) have no place in a
-markdown link, and the ordinary text-link projection drops them the same
-way.
+**On a media node, only the href travels.** A media `link` mark's other
+attributes — the id/collection it may carry, and its title — do not come
+back: the decode of this projection is written twice (dialect's decode
+hooks and `convert/normalize.go`'s hand-written mirror of them), and only
+the pair of them can bring an attribute back to
+`[![alt](url)](href "title")`. Writing a title on the encode side alone
+would be a loss dressed as a gain — it would sit in the payload with
+neither leg reading it — so `[![alt](url)](href "title")` still loses the
+OUTER title. The image's own title is unaffected: the block form spells
+that one as a `mediaSingle` caption child, a sibling node rather than an
+attribute on the mark. See the text-link title below for the projection
+that does carry one.
 
 **Still dropped in silence:** an `annotation` mark on the same node. It
 is the third member of the media mark union and has no markdown form at
 all, so a pulled inline comment anchor on a picture leaves without a
 diagnostic. `link` surviving does not fix that; it is a separate gap.
+
+## A link title: `title` on a text link mark
+
+A markdown link may spell advisory text after its destination —
+`[label](href "title")`, what an HTML `<a title="…">` shows on hover.
+**It survives both legs**, on the `title` attribute of the `link` mark:
+
+| Markdown                    | ADF `link` mark attrs                        |
+| --------------------------- | -------------------------------------------- |
+| `[spec](./spec.md "Title")` | `{"href": "./spec.md", "title": "Title"}`    |
+| `[spec](./spec.md)`         | `{"href": "./spec.md"}` — no title attribute |
+
+Absent rather than empty is the contract. Markdown has no syntax for an
+empty-but-present title, so a titleless link writes no attribute at all;
+otherwise every link adfast has ever produced would grow a `"title": ""`
+that no author asked for and that a remote read would hand straight back
+as content. ADF that arrives with `"title": ""` still re-encodes as it
+came, because the field is a pointer.
+
+All three reference spellings reach the same place — a definition's title
+(`[spec]: ./spec.md "Title"`) rides onto the inline form the trip
+produces — and so does a title on an inline-code label,
+``[`spec`](./spec.md "Title")``. The remaining limit is the media one
+above: `[![alt](url)](href "title")` loses the outer title.
+
+**The attribute is spelled `title`**, on three independent sources:
+
+- the pinned schema's `LinkAttributes`, `title?: string`
+  ([link.ts#L32](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/marks/link.ts#L32)),
+  whose serializer emits it from
+  `OPTIONAL_ATTRS = ['title', 'id', 'collection', 'occurrenceKey', '__confluenceMetadata']`;
+- the published JSON schema of the same package
+  (`@atlaskit/adf-schema@57.3.0`,
+  `dist/json-schema/v1/full.json`): `link_mark.attrs` has properties
+  `href`, `title`, `id`, `collection`, `occurrenceKey`, all `string`,
+  `required: ["href"]`, `additionalProperties: false`;
+- the [Jira ADF reference for `marks/link`](https://developer.atlassian.com/cloud/jira/platform/apis/document/marks/link/)
+  (200), which documents `attrs.title` as "the equivalent of the `title`
+  value for an HTML `<a>` element".
+
+**Whether a product keeps the title across a save: could NOT be
+established.** Jira documents the attribute outright, which is the
+strongest per-product documented evidence available for it. Confluence
+neither confirms nor denies: `confluence-schema.ts` lists mark _names_
+only, with no attribute constraints, and there is no enumerated
+Confluence ADF reference. And upstream contradicts itself for BOTH
+products — the modern ProseMirror `MarkSpec` factory in
+[next-schema/generated/markTypes.ts](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/next-schema/generated/markTypes.ts)
+declares the link mark's attrs as `{ href, __confluenceMetadata }`, so
+`title` is not in that whitelist and `Mark.fromJSON` would strip it
+wherever a product rehydrates ADF through the editor schema. No fixture
+here carries a link-mark title, and only a live probe could settle it,
+which the test suite must not do. **What this means for a caller:** if a
+product does strip the title on save, a local title becomes a difference
+no push can settle, and a diff-driven workflow should expect that rather
+than treat it as a bug in this projection.
 
 ## Historical documentation gaps (now empirically resolved)
 

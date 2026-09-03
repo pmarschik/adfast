@@ -44,10 +44,13 @@ func TestUnplaceableLoneImageDoesNotEmptyTheDocument(t *testing.T) {
 	if !strings.Contains(got, wantGood) {
 		t.Errorf("the resolvable image must still be block media\n  want %s\n  got  %s", wantGood, got)
 	}
-	// The unplaceable case: the picture is gone, the label is not.
-	wantDegraded := `{"type":"text","marks":[{"attrs":{"href":"assets/diagram.png"},"type":"link"}],"text":"diagram"}`
+	// The unplaceable case: the picture is gone, the label is not — and the
+	// image's title goes on the link mark's own title attribute, which is
+	// where the caption of a picture ADF cannot hold now lands.
+	wantDegraded := `{"type":"text","marks":[{"attrs":{"href":"assets/diagram.png","title":"a caption"},` +
+		`"type":"link"}],"text":"diagram"}`
 	if !strings.Contains(got, wantDegraded) {
-		t.Errorf("the unplaceable image must keep its label\n  want %s\n  got  %s", wantDegraded, got)
+		t.Errorf("the unplaceable image must keep its label and its title\n  want %s\n  got  %s", wantDegraded, got)
 	}
 }
 
@@ -216,6 +219,13 @@ func TestUnplaceableImageStillReportsUnresolvedAsset(t *testing.T) {
 
 // The degradation has to be a fixed point or the round-trip idempotence
 // invariant breaks, the same requirement the external inline form carries.
+//
+// The title travels now: the ADF link mark has a title attribute of its own
+// (adf.Link.Title), so the caption the block form would have spelled as a
+// mediaSingle caption child rides on the degraded link instead. The
+// fixpoint is the interesting half — the degraded form is itself a titled
+// link, so a second trip has to leave the title exactly where the first put
+// it rather than dropping or doubling it.
 func TestUnplaceableImageDegradationIsStable(t *testing.T) {
 	once := roundTrip(t, "![diagram](assets/diagram.png \"a caption\")\n")
 	twice := roundTrip(t, once)
@@ -223,7 +233,7 @@ func TestUnplaceableImageDegradationIsStable(t *testing.T) {
 	if once != twice {
 		t.Errorf("degradation is not idempotent:\n first: %q\nsecond: %q", once, twice)
 	}
-	if once != "[diagram](assets/diagram.png)\n" {
+	if once != "[diagram](assets/diagram.png \"a caption\")\n" {
 		t.Errorf("unexpected degraded form %q", once)
 	}
 }
