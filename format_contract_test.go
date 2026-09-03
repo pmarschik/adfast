@@ -446,15 +446,19 @@ func TestDirectiveLabelIndentStaysOutOfCode(t *testing.T) {
 		},
 		{
 			// Leaf labels read back through ast.PlainText over inline
-			// content, which resolves the escape; nothing to repair.
+			// content, so the leading run is never on the indent and
+			// there is no character reference to write. The '*' keeps
+			// its backslash because the label is a plain string and a
+			// bare '*' would come back as emphasis with no text —
+			// escapeDirectiveLabel writes it, not the indent repair.
 			name: "leaf label",
 			md:   "::media[    \\*]{url=\"x\"}",
-			want: "::media[    *]{url=\"x\"}\n",
+			want: "::media[    \\*]{url=\"x\"}\n",
 		},
 		{
 			name: "container label",
 			md:   ":::expand[    \\*]\nx\n:::",
-			want: ":::expand[    *]\nx\n:::\n",
+			want: ":::expand[    \\*]\nx\n:::\n",
 		},
 	}
 	for _, tt := range tests {
