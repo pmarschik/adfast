@@ -23,6 +23,7 @@ func (m *Underline) writeAttrs(attrs) map[string]any { return m.Extra }
 
 func (m *Link) writeAttrs(a attrs) map[string]any {
 	a.strPtr("href", m.Href)
+	a.strPtr("title", m.Title)
 	return m.Extra
 }
 
