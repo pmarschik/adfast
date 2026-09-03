@@ -66,8 +66,9 @@ func (ss Spans) Overlaps(s Span) bool {
 // Source is a Markdown source parsed once, with its byte positions kept.
 //
 // It is the one source-anchored surface in adfast: every view over a
-// document's byte layout — CodeSpans, InlineCodeSpans, Headings, Images,
-// Links, Definitions, Directives, ListItems, and TextMatches — is a method
+// document's byte layout — CodeSpans, InlineCodeSpans, HTMLSpans,
+// InlineHTMLSpans, Headings, Images, Links, Definitions, Directives,
+// ListItems, and TextMatches — is a method
 // here, computed from a SINGLE parse of a SINGLE buffer. Views therefore
 // cannot disagree
 // with each other, and Apply — the only sanctioned way to turn spans back
@@ -97,6 +98,10 @@ type Source struct {
 	code Spans
 	// inlineCode memoizes InlineCodeSpans.
 	inlineCode Spans
+	// html memoizes HTMLSpans.
+	html Spans
+	// inlineHTML memoizes InlineHTMLSpans.
+	inlineHTML Spans
 	// headings memoizes Headings.
 	headings []Heading
 	// images memoizes Images.
@@ -126,6 +131,10 @@ type Source struct {
 	codeDone bool
 	// inlineCodeDone guards inlineCode, for the same reason.
 	inlineCodeDone bool
+	// htmlDone guards html, for the same reason.
+	htmlDone bool
+	// inlineHTMLDone guards inlineHTML, for the same reason.
+	inlineHTMLDone bool
 	// headingsDone guards headings, for the same reason.
 	headingsDone bool
 	// imagesDone guards images, for the same reason.

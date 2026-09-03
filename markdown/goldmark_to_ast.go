@@ -379,7 +379,7 @@ func convertGoldmarkBlocks(parent gast.Node, src []byte, lc *liftCtx, depth int)
 		// no blank line between) merge into one node so the renderer keeps
 		// them adjacent, the way prettier preserves their source spacing.
 		if hb, ok := child.(*gast.HTMLBlock); ok {
-			start, end := htmlBlockSpan(hb, src)
+			start, end := htmlBlockSpan(hb)
 			if html, isHTML := n.(*ast.HTML); isHTML && prevHTMLEnd >= 0 && start >= prevHTMLEnd && len(nodes) > 0 {
 				if prev, prevOK := nodes[len(nodes)-1].(*ast.HTML); prevOK && !hasBlankLine(src[prevHTMLEnd:start]) {
 					prev.Value += "\n" + html.Value
@@ -397,8 +397,10 @@ func convertGoldmarkBlocks(parent gast.Node, src []byte, lc *liftCtx, depth int)
 }
 
 // htmlBlockSpan returns the source byte range covered by an HTML block's
-// lines (closure included).
-func htmlBlockSpan(n *gast.HTMLBlock, src []byte) (start, end int) {
+// lines (closure included), or (-1, -1) for a block that kept neither. It is
+// the shared anchor of the two things that need to know where an HTML block
+// is written: the merge of contiguous blocks above, and Source.HTMLSpans.
+func htmlBlockSpan(n *gast.HTMLBlock) (start, end int) {
 	start, end = -1, -1
 	if n.Lines().Len() > 0 {
 		start = n.Lines().At(0).Start
@@ -410,7 +412,6 @@ func htmlBlockSpan(n *gast.HTMLBlock, src []byte) (start, end int) {
 		}
 		end = n.ClosureLine.Stop
 	}
-	_ = src
 	return start, end
 }
 
