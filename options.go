@@ -264,7 +264,16 @@ func WithIncrementListMarkers() Option {
 
 // WithPreserveLocalImages keeps an unresolved document-relative image
 // reference (![alt](assets/x.png)) as external media carrying the path
-// instead of dropping it (the remark-reference default). Read by ToADF.
+// instead of dropping it (the remark-reference default).
+//
+// Read by every leg of the media projection, and they agree: ToADF
+// promotes the local image to external media, FromADF reads that media
+// back as a plain image, and ToMarkdown in the prettier-format mode
+// (WithPrettierFormat) projects the equivalent ::media directive to a
+// plain image without going through ADF at all. Off, all three keep the
+// ::media form instead, so a relative external url survives re-encode
+// losslessly.
+//
 // Use it for store-aware round-trips and diff normalization where a
 // not-yet-uploaded local image must survive so a later push upload can
 // resolve it; do NOT use it for the final Jira push encode, where an

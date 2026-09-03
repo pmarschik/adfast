@@ -7,6 +7,7 @@ import (
 	"github.com/pmarschik/adfast/adf"
 	"github.com/pmarschik/adfast/ast"
 	"github.com/pmarschik/adfast/extension"
+	"github.com/pmarschik/adfast/internal/mediaurl"
 )
 
 // This file implements the adf→ast path of the dialect kinds (the decode
@@ -639,14 +640,13 @@ func dimsMatchAsset(media *adf.Media, asset extension.MediaAsset) bool {
 // document-relative path (a local image reference not yet uploaded to
 // Jira — preserved so the round-trip and the push upload can still see it).
 func mediaAsImage(media *adf.Media, single *adf.MediaSingle, preserveLocal bool) ast.Node {
-	if media.Type != "external" || media.URL == "" {
+	if media.Type != "external" {
 		return nil
 	}
-	// A document-relative URL only round-trips to a plain image under
-	// WithPreserveLocalImages; otherwise it stays a ::media directive (the
-	// default, so a relative external URL survives re-encode losslessly).
-	isHTTP := strings.HasPrefix(media.URL, "http://") || strings.HasPrefix(media.URL, "https://")
-	if !isHTTP && !preserveLocal {
+	// mediaurl.ProjectsToImage owns the URL decision for every leg of the
+	// projection — an empty url, and a document-relative one outside
+	// WithPreserveLocalImages, stay a ::media directive here.
+	if !mediaurl.ProjectsToImage(media.URL, preserveLocal) {
 		return nil
 	}
 	if hasDimension(media, "width", media.Width) || hasDimension(media, "height", media.Height) {

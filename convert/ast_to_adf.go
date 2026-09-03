@@ -10,6 +10,7 @@ import (
 	"github.com/pmarschik/adfast/ast"
 	"github.com/pmarschik/adfast/dialect"
 	"github.com/pmarschik/adfast/extension"
+	"github.com/pmarschik/adfast/internal/mediaurl"
 )
 
 // ToADF converts an AST root node to an ADF document. This is the
@@ -908,7 +909,7 @@ func (c *astConverter) singleAttachmentImage(node *ast.Paragraph) (*ast.Image, s
 	if !ok {
 		return nil, "", false
 	}
-	if strings.HasPrefix(img.URL, "http://") || strings.HasPrefix(img.URL, "https://") {
+	if mediaurl.AbsoluteHTTP(img.URL) {
 		return nil, "", false
 	}
 	id, ok := c.resolveAssetID(img.URL)
@@ -1008,11 +1009,10 @@ func (c *astConverter) singleImageChild(node *ast.Paragraph) (url, alt string, o
 		return "", "", false
 	}
 	img, ok := node.Children[0].(*ast.Image)
-	if !ok || img.URL == "" {
+	if !ok {
 		return "", "", false
 	}
-	isHTTP := strings.HasPrefix(img.URL, "http://") || strings.HasPrefix(img.URL, "https://")
-	if !isHTTP && !c.preserveLocalImages {
+	if !mediaurl.ProjectsToImage(img.URL, c.preserveLocalImages) {
 		return "", "", false
 	}
 	return img.URL, ast.PlainText(img.Children), true
@@ -1146,7 +1146,7 @@ func (v *inlineFlattener) VisitImage(n *ast.Image) []adf.Node {
 			Marks:      mediaLinkMark(v.ctx),
 		}}
 	}
-	if strings.HasPrefix(n.URL, "http://") || strings.HasPrefix(n.URL, "https://") {
+	if mediaurl.AbsoluteHTTP(n.URL) {
 		return v.degradeInlineImage(n, alt)
 	}
 	return v.degradeUnplaceableImage(n, alt)

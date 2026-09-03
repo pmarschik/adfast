@@ -180,7 +180,17 @@ func WithIncrementListMarkers() Option {
 // WithPreserveLocalImages keeps a document-relative image reference
 // (![alt](assets/x.png)) as external media carrying the path when the
 // asset store cannot resolve it to an uploaded media id, instead of
-// dropping it (the remark-reference default). Use it for store-aware
+// dropping it (the remark-reference default).
+//
+// One option, three legs, one answer: ToADF's singleImageChild,
+// FromADF's decode of that media, and NormalizeFormat's own md→md
+// projection all put the URL question to mediaurl.ProjectsToImage. It
+// used to reach only the ADF legs — NormalizeFormat hardcoded an
+// absolute-http test — so the same document formatted and round-tripped
+// came out differently under the option and a caller could not tell
+// which leg had run.
+//
+// Use it for store-aware
 // round-trips and diff normalization where a not-yet-uploaded local image
 // must survive — a later push upload then resolves it to file media. Do
 // NOT use it for the final Jira push encode: an image left unresolved

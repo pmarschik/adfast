@@ -123,6 +123,18 @@ func parityAgreeing() []parityCase {
 		{"external media", "::media[alt]{type=external url=https://x/a.png}", nil},
 		{"external media with href", "::media[alt]{type=external url=https://x/a.png href=https://home/}", nil},
 		{"external media, relative url", "::media[alt]{type=external url=img/a.png}", nil},
+		// Reconciled drift, and the row that proves it: this used to sit
+		// in TestMediaProjectionLegsDivergeAsMeasured because
+		// WithPreserveLocalImages reached only the ADF leg — the format
+		// copy hardcoded an absolute-http test and the normalizer never
+		// received the flag, so the ADF leg rendered ![alt](img/a.png)
+		// and the format leg kept the directive. Both legs now ask
+		// mediaurl.ProjectsToImage.
+		{
+			"relative external media under WithPreserveLocalImages",
+			"::media[alt]{type=external url=img/a.png}",
+			[]Option{WithPreserveLocalImages()},
+		},
 		{"file media in the store", "::media[alt]{id=AID width=10 height=20}", assets},
 		{"file media with href", "::media[alt]{id=AID width=10 height=20 href=https://home/}", assets},
 		{"bordered media", "::media[alt]{type=external url=https://x/a.png borderColor=#000 borderSize=2}", nil},
@@ -239,18 +251,10 @@ func TestMediaProjectionLegsDivergeAsMeasured(t *testing.T) {
 			why:    "The same degradation, and again the enclosing destination wins the href.",
 		},
 		// --- drift: the format copy is missing a rule the ADF copy has ---
-		{
-			name:   "relative external media under WithPreserveLocalImages",
-			row:    "::media[alt]{type=external url=img/a.png}",
-			opts:   []Option{WithPreserveLocalImages()},
-			format: "::media[alt]{type=\"external\" url=\"img/a.png\"}" + good,
-			adf:    "![alt](img/a.png)" + good,
-			why: "dialect's mediaAsImage takes a preserveLocal parameter and lets a " +
-				"document-relative external url reach the plain image form under the " +
-				"opt-in; normalize.go's copy hardcodes an http(s) prefix test and the " +
-				"normalizer never receives the flag. Reconciling this means threading " +
-				"the option into the normalizer.",
-		},
+		//
+		// The WithPreserveLocalImages row that used to lead this group is
+		// reconciled and now lives in parityAgreeing; see the comment on
+		// it there.
 		{
 			name:   "file media addressed by path",
 			row:    "::media[alt]{path=assets/a.png}",
@@ -275,6 +279,84 @@ func TestMediaProjectionLegsDivergeAsMeasured(t *testing.T) {
 				t.Errorf("adf leg changed\n  in:   %q\n  got:  %q\n  want: %q\n  %s", md, got, c.adf, c.why)
 			}
 		})
+	}
+}
+
+// TestMediaFormatLegHonorsPreserveLocalImages pins the format leg's
+// exact bytes for a document-relative external media, with and without
+// WithPreserveLocalImages, in one document.
+//
+// The "with" case is a DEFECT PROOF: it fails on the pre-fix normalizer,
+// which hardcoded an absolute-http test and had no field for the option,
+// so the flag could not reach the decision at all and a caller could not
+// tell from the output which leg had run.
+//
+// The "without" case is a PRESERVED-BEHAVIOR PIN: it passes on the
+// pre-fix normalizer too. It is not evidence of a defect; it is the
+// guard that threading the option in did not turn the default on, since
+// the default is what keeps a relative external url lossless across
+// re-encode.
+func TestMediaFormatLegHonorsPreserveLocalImages(t *testing.T) {
+	t.Parallel()
+	const row = "::media[alt]{type=external url=img/a.png}"
+	good := "\n\n" + parityGoodImage + "\n\n" + parityGoodLink + "\n"
+	cases := []struct {
+		name string
+		want string
+		kind string
+		opts []Option
+	}{
+		{
+			name: "without the option the directive stays",
+			want: "::media[alt]{type=\"external\" url=\"img/a.png\"}" + good,
+			kind: "preserved-behavior PIN",
+			opts: nil,
+		},
+		{
+			name: "with the option the picture reaches image form",
+			want: "![alt](img/a.png)" + good,
+			kind: "defect proof",
+			opts: []Option{WithPreserveLocalImages()},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			md := parityDoc(row)
+			if got := parityFormatLeg(md, c.opts...); got != c.want {
+				t.Errorf("%s: format leg output changed\n  in:   %q\n  got:  %q\n  want: %q",
+					c.kind, md, got, c.want)
+			}
+		})
+	}
+}
+
+// TestMediaFormatLegKeepsThePathAttribute pins the ONE media asymmetry
+// between the legs that is not drift and must not be reconciled: for a
+// store-known asset the format leg emits the markdown-relative path=
+// where dialect's leaf prefers id= (mediaSourceAttrs). The format leg is
+// total — it may not delete an author's path and make the document
+// depend on a store lookup to say where the picture is — while the ADF
+// leg addresses the attachment by media id because that is what ADF
+// holds.
+//
+// This is a PRESERVED-BEHAVIOR PIN: it passes before and after the
+// preserveLocalImages fix, and exists so a later attempt to collapse the
+// two projections into one function fails loudly here.
+func TestMediaFormatLegKeepsThePathAttribute(t *testing.T) {
+	t.Parallel()
+	good := "\n\n" + parityGoodImage + "\n\n" + parityGoodLink + "\n"
+	// Richer than an image (a border), so the leaf form is what renders
+	// and its source attributes are visible.
+	row := "::media[alt]{id=AID width=10 height=20 borderColor=#000 borderSize=2}"
+	want := "::media[alt]{borderColor=\"#000\" borderSize=\"2\" path=\"assets/a.png\"}" + good
+	got := parityFormatLeg(parityDoc(row), parityAssetOpts()...)
+	if got != want {
+		t.Errorf("the format leg's path-over-id preference changed\n  in:   %q\n  got:  %q\n  want: %q",
+			row, got, want)
+	}
+	if strings.Contains(got, "id=") {
+		t.Errorf("the format leg emitted an id= it should have resolved to a path=: %q", got)
 	}
 }
 
