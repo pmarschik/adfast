@@ -65,13 +65,24 @@ func Links(src []byte) []Link { return NewSource(src).Links() }
 //   - An AUTOLINK, whether written `<https://x>` or linkified from a bare
 //     URL. goldmark makes a different node for it, and its destination IS its
 //     text, so there is nothing to rewrite separately.
-//   - A link reference DEFINITION, `[id]: x.md`. goldmark consumes it into
-//     its reference map rather than the tree, so no node carries its
-//     position. A caller rewriting paths has to find those for itself; this
-//     view reports the reference links that USE one, with a zero Dest.
+//   - A link reference DEFINITION, `[id]: x.md`. It is not a link: it is the
+//     block that declares one, and the destination written in it belongs to
+//     every reference link that pairs with its label rather than to any one
+//     of them. This view reports those USES, each with a zero Dest, and says
+//     nothing about where the destination they share is written.
 //   - An IMAGE. Images is that view, and the two are kept apart because a
 //     caller usually treats them differently — an image destination is an
 //     asset, a link destination is a document.
+//
+// A definition's POSITION is not the reason it is absent from this view, and
+// the record here once said it was. goldmark's paragraph transformer does
+// both: it registers a definition in the parse context's reference map AND
+// leaves a LinkReferenceDefinition node in the tree at the source position it
+// was written, inside a blockquote and inside a list item as well as at the
+// top level. Source.Definitions is the view over those nodes, and a caller
+// rewriting paths wants it and this one together — Definitions locates the
+// destination of each definition, Links locates the destination of each
+// inline link.
 //
 // A link is reported only when its written form can be resolved back to the
 // exact bytes goldmark read: the destination this view reports is checked
