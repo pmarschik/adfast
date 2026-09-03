@@ -11,6 +11,15 @@ import (
 // through a [label]: the bracket forms the renderer escapes, the
 // backslash that could eat the escape, and the constructs the label's
 // own inline parse could swallow.
+//
+// The mark probes are the general case the brackets and the backslash
+// are instances of. A label denotes a plain string, so every byte its
+// own inline parse reads as syntax has to be escaped: the parse leaves
+// a construct rather than text, and the label is read back through
+// ast.PlainText, which has no text for a construct's markers. Nothing
+// comes back. The plain probes at the end are the other half of the
+// same invariant — a label that needs no escape must still go out bare,
+// so an escaper that brackets every byte cannot pass this test either.
 var directiveLabelProbes = []string{
 	"Bracket [x]",
 	"a]b",
@@ -23,7 +32,46 @@ var directiveLabelProbes = []string{
 	`trailing\`,
 	"[x](https://example.com)",
 	"chars [x] back\\slash",
+	// Emphasis and strong: the parse leaves an Emphasis whose markers
+	// PlainText drops, so "a *starred* title" came back as "a starred
+	// title" and "__dunder__" as "dunder".
+	"a *starred* title",
+	"a _scored_ title",
+	"a **strong** title",
+	"__dunder__",
+	"a * lone star",
+	"snake_case_name",
+	// Code spans and strikethrough, the same way.
+	"a `code` title",
+	"a ``double`` title",
+	"lone ` tick",
+	"a ~~struck~~ title",
+	"a ~sub~ title",
+	// Raw HTML and autolinks: "an <html> title" lost the tag entirely
+	// and came back as "an  title".
+	"an <html> title",
+	"an <b>bold</b> title",
+	"a <https://example.com> autolink",
+	"a < less than",
+	// A character reference the parse decodes. A bare '&' that opens no
+	// reference reads back as itself, and must stay unescaped.
+	"an &amp; title",
+	"an &#65; title",
+	"a bare & title",
+	"an &notaref; title",
+	// A colon that could open a nested text directive, letter-led and
+	// digit-led, next to colons that cannot.
+	"a :status[x] title",
+	"a :0 title",
+	"ratio 1:2",
+	// The corpus title whose recorded remark spelling is itself lossy
+	// (see the re-pin in docs/design.md).
+	`With *chars* [x] back\slash`,
+	// The good cases: ordinary titles, which must round-trip without
+	// picking up an escape.
 	"plain",
+	"A Perfectly Ordinary Page Title",
+	"Release 1.2.3 (2026)",
 }
 
 // labelForm is one of the three directive shapes, each building a

@@ -382,39 +382,88 @@ func (c *inlineRenderContext) WriteTextDirective(name string, attrs map[string]s
 	c.r.writeTextDirectiveForm(c.b, name, attrs, children, c.st)
 }
 
-// escapeDirectiveLabel escapes a directive [label]: remark-stringify only
-// treats brackets as unsafe inside labels (markdown marks like * stay
-// verbatim, and are flattened away by ast.PlainText on re-parse anyway —
-// see the directive fixtures).
+// escapeDirectiveLabel escapes the plain-string label of a leaf or
+// container directive, so that the label the parse reads back is the
+// string that went in.
 //
-// A backslash is verbatim-safe only where it cannot start an escape
-// sequence. One that can is escaped here, a deliberate divergence:
-// remark writes "::media[\!0]" for the alt text "\!0", and re-parsing
-// that consumes the backslash, so the label is LOSSY rather than merely
-// unstable. A trailing backslash is escaped for the same reason — the
-// "]" this function's caller writes next would be the escaped byte, and
-// the label would never terminate.
+// The whole function exists because of what its callers hand it: the
+// label of these two forms is written from ast.PlainText over the label
+// content and read back the same way, so the label DENOTES a plain
+// string (a page title, a media alt, an expand title). Any byte the
+// label's own inline parse reads as syntax is therefore lossy, not
+// merely unstable — PlainText has no text for the construct's markers,
+// and they never come back. So this escaper is derived from the parse,
+// not from remark-stringify's unsafe list, and it diverges from remark
+// wherever remark's spelling would lose a character:
 //
-// A ':' that could open a nested text directive is escaped too, a second
-// deliberate divergence. Label content is parsed as inline markdown, so
-// ":0" inside a label becomes a text directive node, and the label is
-// read back from ast.PlainText, which has no text for it — the content
-// vanishes. Unlike the prose escaper (which only protects letter-led
-// names, for remark parity) this covers digit-led names as well: they
-// are what goldmark-directive parses, and inside a label the divergence
-// is lossy rather than cosmetic.
+//   - Brackets. Both are escaped: an unescaped ']' ends the label early
+//     and an unescaped '[' leaves goldmark-directive's bracket-balancing
+//     label scan unterminated.
+//
+//   - A backslash, where it could start an escape sequence. remark
+//     writes "::media[\!0]" for the alt text "\!0", and re-parsing that
+//     consumes the backslash. A trailing backslash is escaped for the
+//     same reason — the "]" the caller writes next would become the
+//     escaped byte, and the label would never terminate.
+//
+//   - A ':' that could open a nested text directive, which PlainText has
+//     no text for at all. Unlike the prose escaper (which only protects
+//     letter-led names, for remark parity) this covers digit-led names as
+//     well: they are what goldmark-directive parses.
+//
+//   - The markdown marks '*', '_', '`' and '~', plus the '<' that opens
+//     raw HTML or an autolink, and an '&' that opens a character
+//     reference the parse would decode. These are the same case as the
+//     backslash and the colon, measured the same way: the ADF title
+//     "a *starred* title" was written bare as ":::expand[a *starred*
+//     title]" and read back as "a starred title", and "an <html> title"
+//     came back as "an  title" — a page title that resolves against no
+//     page. (Found while probing a consumer that addresses a Confluence
+//     page by its title through the Include Page macro's unnamed
+//     parameter.) Measured over a 59-title battery round-tripped
+//     ADF -> markdown -> ADF, 17 titles came back changed without these
+//     escapes and 1 does with them. The three directive forms now agree:
+//     the text form's label goes through the inline escaper, which has
+//     always written these escapes (see writeEscapedByte).
+//
+// A mark that survives here reads back as a literal character, never as
+// emphasis: the label is a string, so re-emitting a mark AS a mark would
+// change what the directive means rather than preserve it.
+//
+// The '&' rule is keyed on the reference rather than on the byte because
+// only a reference the parse DECODES costs characters. A bare '&' reads
+// back as itself, and escaping it would be a divergence that buys
+// nothing.
+//
+// This costs byte-exactness with the reference corpus for one probe,
+// deliberately: remark writes a leaf and container label verbatim, so
+// its recorded spelling of the title "With *chars* [x] back\slash" is
+// itself lossy under the plain-string reading above. Lossless and
+// byte-exact are mutually exclusive there, and the round trip wins. See
+// the re-pin note in docs/design.md and TestDirectiveLabelRoundTrips.
+//
+// Trailing whitespace in a label is still lost: the label parse trims
+// it, so no backslash reaches it. That one needs the character reference
+// escapeLabelIndent writes for the leading case, and is tracked
+// separately.
 func escapeDirectiveLabel(s string) string {
-	if !strings.ContainsAny(s, `[]\:`) {
+	if !strings.ContainsAny(s, "[]\\:*_`~<&") {
 		return s
 	}
 	var sb strings.Builder
 	sb.Grow(len(s) + 4)
 	for i := range len(s) {
 		switch s[i] {
-		case '[', ']':
+		case '[', ']', '*', '_', '`', '~', '<':
 			sb.WriteByte('\\')
 		case '\\':
 			if i+1 == len(s) || isASCIIPunct(s[i+1]) {
+				sb.WriteByte('\\')
+			}
+		case '&':
+			// Only a reference the parse decodes costs characters; a bare
+			// '&' reads back as itself.
+			if startsCharacterReference(s, i) {
 				sb.WriteByte('\\')
 			}
 		case ':':

@@ -585,6 +585,53 @@ would only be a second one. A named regression test pins each of these:
   colon that cannot start a name, and a colon that follows another
   colon, still stay verbatim. See `markdown.writeColonEscapePrefix` and
   `flanking_directive_test.go`.
+- **A markdown mark in a leaf or container directive label is escaped.**
+  The two entries above are special cases of this one, and the general
+  rule is the same: the label of these two forms is written from
+  `ast.PlainText` over the label content and read back the same way, so
+  the label **denotes a plain string** — a page title, a media alt, an
+  expand title. Every byte the label's own inline parse reads as syntax
+  is therefore lossy rather than merely unstable, because `PlainText`
+  has no text for a construct's markers and they never come back. remark
+  writes label text verbatim, so an ADF expand title `a *starred* title`
+  went out as `:::expand[a *starred* title]` and came back as
+  `a starred title`; `an <html> title` came back as `an  title`, and
+  `an &amp; title` as `an & title` — a title that resolves against no
+  page. (Found while probing a consumer that addresses a Confluence page
+  by its title through the Include Page macro's unnamed parameter.)
+  Measured over a 59-title battery of ADF expand titles round-tripped
+  ADF → markdown → ADF, 17 came back changed; with the escape, 1 does.
+  So the escape set is derived from **what the label's parse consumes**,
+  not from remark-stringify's `unsafe` list: the marks `*`, `_`, `` ` ``
+  and `~`, the `<` that opens raw HTML or an autolink, and an `&` that
+  opens a character reference the parse would decode, alongside the
+  brackets, the backslash and the colon already listed. A bare `&` that
+  starts no reference reads back as itself and stays verbatim, which is
+  why the rule is the reference and not the byte. A mark that survives
+  here reads back as a **literal character**, never as emphasis, so
+  re-emitting one as a mark would change what the directive means rather
+  than preserve it — the text form needs no rule of its own because its
+  label goes through the inline escaper, which has always written these
+  escapes.
+
+  This is a re-pin rather than a widening, because a choice had to be
+  made. The corpus entry for the ADF title
+  `With *chars* [x] back\slash` recorded remark's
+  `:::expand[With *chars* \[x\] back\slash]`, and **that recorded output
+  is itself lossy under adfast's plain-string label reading**: it
+  re-parses to `With chars [x] back\slash`. Byte-exactness with the
+  reference and a label that survives its own round trip are therefore
+  mutually exclusive for that entry, and no escaping rule can be both.
+  adfast picks the round trip and gives up the byte, on the same ground
+  as the backslash and the colon above: a title the consumer cannot read
+  back is a broken document, and a spelling difference is not. The entry
+  in `testdata/directive_fixtures.json` now holds
+  `:::expand[With \*chars\* \[x\] back\slash]`. See
+  `markdown.escapeDirectiveLabel` and `TestDirectiveLabelRoundTrips`.
+  Trailing whitespace in such a label is still lost — the label parse
+  trims it, so no backslash reaches it and it needs the character
+  reference that `markdown.escapeLabelIndent` writes for the leading
+  case; that is the remaining 1 of the 59 and it is tracked separately.
 - **Two adjacent code spans are written as one.** Markdown cannot
   separate them. To the parser, the closing fence of the first span and
   the opening fence of the second are one backtick run, and no fence

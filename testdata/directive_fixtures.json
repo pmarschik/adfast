@@ -7586,7 +7586,7 @@
           }
         ]
       },
-      "md": ":::expand[With *chars* \\[x\\] back\\slash]\nbody\n:::\n"
+      "md": ":::expand[With \\*chars\\* \\[x\\] back\\slash]\nbody\n:::\n"
     },
     {
       "adf": {
