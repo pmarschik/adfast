@@ -891,3 +891,118 @@ func reparseShape(out string) string {
 		return fmt.Sprintf("%T", n)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Directive labels
+// ---------------------------------------------------------------------------
+
+// FIX: BOTH brackets of a text directive's [label] are escaped, in every
+// render mode — and a label that needs no escape still goes out bare
+// (the second half of the same test, so an escaper that brackets
+// everything cannot pass either).
+//
+// goldmark-directive's label scan counts brackets and honors the
+// backslash, so a nested pair has to go out with both brackets escaped
+// or the label never balances and the whole label is rejected. The
+// prettier path escaped only the closing one, because it drops the '['
+// escape in prose for corpus parity. Measured: the format of ":A[[]]0"
+// was ":A[[\]]0", whose re-parse threw the label away — the paragraph's
+// ADF text went from ":A[]0" to ":A[[]]0" — and formatting that again
+// wrote ":A{}[[]]0". A meaning-changing, non-idempotent format, found by
+// the format-contract fuzz target; ":A[[]]0" is committed as a seed.
+//
+// The two modes share one want column on purpose: a structural bracket
+// is not a markdown escape the style can drop, so the label's spelling
+// cannot depend on the mode.
+func TestRender_TextDirectiveLabelEscapesBothBrackets(t *testing.T) {
+	cases := []struct {
+		name  string
+		label string
+		want  string
+	}{
+		{
+			// The fuzz repro's label.
+			name:  "a nested bracket pair",
+			label: "[]",
+			want:  ":x[\\[\\]]0\n",
+		},
+		{
+			name:  "an opening bracket alone",
+			label: "a[b",
+			want:  ":x[a\\[b]0\n",
+		},
+		{
+			name:  "a closing bracket alone",
+			label: "a]b",
+			want:  ":x[a\\]b]0\n",
+		},
+		{
+			name:  "a nested pair around content",
+			label: "[nested [pair]]",
+			want:  ":x[\\[nested \\[pair\\]\\]]0\n",
+		},
+		{
+			// The good case: nothing here is structural, so nothing is
+			// escaped. Without this row a blanket escaper would pass.
+			name:  "a label that needs no escape",
+			label: "plain label",
+			want:  ":x[plain label]0\n",
+		},
+	}
+
+	modes := []struct {
+		name string
+		opts []RenderOption
+	}{
+		{name: "remark"},
+		{name: "prettier", opts: []RenderOption{WithPrettierText()}},
+	}
+
+	for _, tc := range cases {
+		for _, mode := range modes {
+			t.Run(tc.name+"/"+mode.name, func(t *testing.T) {
+				assertTextDirectiveLabel(t, tc.label, tc.want, mode.opts)
+			})
+		}
+	}
+}
+
+// assertTextDirectiveLabel renders a text directive carrying label, beside
+// a "0" that shows whether the label's terminator landed where the
+// renderer meant it to, and checks the whole round trip: the exact bytes,
+// that rendering them again is a fixed point, that they re-parse as the
+// same directive with the same label, and that the neighboring text
+// survived.
+func assertTextDirectiveLabel(t *testing.T, label, want string, opts []RenderOption) {
+	t.Helper()
+	root := &ast.Root{Children: []ast.Node{&ast.Paragraph{Children: []ast.Node{
+		&ast.TextDirective{Name: "x", Children: []ast.Node{&ast.Text{Value: label}}},
+		&ast.Text{Value: "0"},
+	}}}}
+	out := Render(root, opts...)
+	if out != want {
+		t.Fatalf("rendered %q, want %q", out, want)
+	}
+	if again := Render(Parse([]byte(out)), opts...); again != out {
+		t.Errorf("render is not a fixed point: %q then %q", out, again)
+	}
+	para, ok := ast.Children(Parse([]byte(out)))[0].(*ast.Paragraph)
+	if !ok {
+		t.Fatalf("%q does not re-parse as a paragraph", out)
+	}
+	kids := ast.Children(para)
+	if len(kids) != 2 {
+		t.Fatalf("%q re-parsed to %d inline nodes (%s), want the directive and the text beside it",
+			out, len(kids), reparseShape(out))
+	}
+	dir, ok := kids[0].(*ast.TextDirective)
+	if !ok {
+		t.Fatalf("%q does not re-parse as a text directive but as %s", out, reparseShape(out))
+	}
+	if got := ast.PlainText(dir.Children); got != label {
+		t.Errorf("the label %q rendered %q, which re-parses with the label %q", label, out, got)
+	}
+	if text, ok := kids[1].(*ast.Text); !ok || text.Value != "0" {
+		t.Errorf("the text beside the directive did not survive: %#v", kids[1])
+	}
+}

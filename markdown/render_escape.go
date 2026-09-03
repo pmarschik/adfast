@@ -100,11 +100,26 @@ func (r *mdRenderer) writeEscapedByte(sb *strings.Builder, s string, i int, next
 	if st.label && !r.cfg.prettierText && labelEscapes(s, i, nextLead, st) {
 		sb.WriteByte('\\')
 	}
-	// A ']' inside a directive [label] closes the label, so mdast-util-
-	// directive's unsafe set escapes it there — the leaf and container
-	// forms already do (see escapeDirectiveLabel); this covers the text
+	// BOTH brackets inside a directive [label] are structural, and both
+	// are escaped whatever else is on: goldmark-directive's label scan
+	// counts brackets and honors the backslash, so an unescaped ']'
+	// closes the label early and an unescaped '[' leaves the scan
+	// unbalanced — the whole label is rejected and the directive comes
+	// back bare. The leaf and container forms already escape both
+	// unconditionally (see escapeDirectiveLabel); this covers the text
 	// form, whose label is written through the inline path.
-	if ch == ']' && st.directiveLabel {
+	//
+	// It has to sit outside the escape gates below rather than in
+	// needsEscape, because neither gate tracks the label's terminator.
+	// The prettier path leaves a '[' bare in prose (corpus parity), and
+	// escaping is off entirely inside a link label — and a '[' the label
+	// scan needs is not a markdown escape but the label's own syntax. The
+	// prettier hole was measured: ":A[[]]0" formatted to ":A[[\]]0",
+	// whose re-parse dropped the label (the ADF text went from ":A[]0" to
+	// ":A[[]]0"), and a second pass then wrote ":A{}[[]]0". needsEscape
+	// skips a '[' in a directive label so the two rules cannot both fire
+	// and write two backslashes.
+	if (ch == '[' || ch == ']') && st.directiveLabel {
 		sb.WriteByte('\\')
 	}
 	if st.escape && r.needsEscape(s, i, nextLead, st, nodeAtLineStart) {
@@ -149,8 +164,11 @@ func (r *mdRenderer) escapesInlineMarker(s string, i int, nextLead byte, st *inl
 	case '[':
 		// remark escapes '[' in phrasing (link ambiguity: "[]()" text
 		// would re-parse as a link and vanish); prettier drops the escape
-		// again, matching the corpus.
-		return !r.cfg.prettierText
+		// again, matching the corpus. Inside a directive label the '['
+		// is escaped in both modes, by writeEscapedByte rather than
+		// here, so this rule stands down there to keep the two from
+		// writing a backslash each.
+		return !r.cfg.prettierText && !st.directiveLabel
 	case '(':
 		// remark escapes '(' after ']' (it would complete a link).
 		return !r.cfg.prettierText && st.hasPrev && st.prev == ']'
