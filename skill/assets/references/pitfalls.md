@@ -146,10 +146,28 @@ bundle is wire-safe, as is canonical `ToADF(FromMarkdown(md))` output over
 markdown that has no anchors and no table alignment, and without
 tightness preservation.
 
-For a lighter touch than the full formatter, `markdown.WrapProse(md,
-width)` rewraps only contiguous prose paragraphs to a width, operating
-line by line on the raw text; it leaves frontmatter, fenced code,
-headings, and everything else it does not wrap byte-for-byte untouched.
+## There is no raw-text prose rewrapper — wrap through the print width
+
+`markdown.WrapProse(md, width)` is **gone**. It rewrapped prose by
+scanning the rendered bytes line by line and guessing which lines were
+syntax, and the guess had no way to be right: a line ending can _be_
+content and a block opener can be a construct the scanner never heard
+of. It joined `break\` + newline + `line two` into `break\ line two`,
+destroying the hard break, and flattened `:::info` / `Inner prose.` /
+`:::` into the single paragraph `:::info Inner prose. :::`, destroying
+the container. Both outputs are well-formed Markdown that means
+something else, so nothing reported an error.
+
+Wrap through the width instead — `Pipeline.Format(md,
+WithPrintWidth(w))`, or the composition it stands for,
+`ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat(),
+WithPrintWidth(w))`. The renderer knows what every line is, so it cannot
+make that class of mistake, and it is a fixpoint on its own output.
+Three differences from the retired function are worth knowing: it
+reflows a long list item and indents the continuation under the marker
+(the old one left overlong items alone); it canonicalizes a table's
+delimiter row to the column widths; and `WithPrintWidth(0)` means _no
+wrapping_ rather than the old silent fallback to 80.
 
 ## `:fontSize` is retired — do not author it
 
