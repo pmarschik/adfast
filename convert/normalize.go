@@ -49,6 +49,7 @@ import (
 	"github.com/pmarschik/adfast/ast"
 	"github.com/pmarschik/adfast/dialect"
 	"github.com/pmarschik/adfast/extension"
+	"github.com/pmarschik/adfast/internal/mediaurl"
 )
 
 // Normalize returns the canonical form of the pivot AST rooted at n (see
@@ -108,6 +109,7 @@ func normalizeWith(n ast.Node, keepGenericDirectives bool, opts []Option) ast.No
 		decodeSL:              cfg.smartLinks,
 		diagnostics:           cfg.diagnostics,
 		codeLangs:             cfg.codeLanguages,
+		preserveLocalImages:   cfg.preserveLocalImages,
 		keepGenericDirectives: keepGenericDirectives,
 	}
 	root, ok := n.(*ast.Root)
@@ -125,6 +127,14 @@ type normalizer struct {
 	decodeSL    SmartLinks // render-side resolver (KeyFromURL)
 	diagnostics func(Diagnostic)
 	codeLangs   map[string]bool
+	// preserveLocalImages carries WithPreserveLocalImages, the SAME
+	// option the ADF leg reads through
+	// extension.DecodeContext.PreserveLocalImages. It reaches
+	// mediaAsImage's shared URL predicate so a document-relative
+	// external url projects to a plain image on this leg too; without it
+	// the option was honored on one leg and silently ignored on the
+	// other, and a caller had no way to tell which leg had run.
+	preserveLocalImages bool
 	// keepGenericDirectives selects the format leg (NormalizeFormat):
 	// the generic leaf, container and text directives survive the pass
 	// instead of dropping. Unexported on purpose — it is a property of
@@ -2027,7 +2037,7 @@ func (fn *normalizer) decodeMediaSingle(it encItem) ast.Node {
 		return fn.decodeCaptionedMedia(it)
 	}
 	m := it.media
-	if img := mediaAsImage(m); img != nil {
+	if img := fn.mediaAsImage(m); img != nil {
 		return img
 	}
 	if img := fn.fileMediaAsImage(m); img != nil {
@@ -2043,7 +2053,7 @@ func (fn *normalizer) decodeCaptionedMedia(it encItem) ast.Node {
 	m := it.media
 	inlines := regroupAtoms(it.caption)
 	if title, ok := plainCaptionLabel(inlines); ok {
-		if img := mediaAsImage(m); img != nil {
+		if img := fn.mediaAsImage(m); img != nil {
 			setImageTitle(img, title)
 			return img
 		}
@@ -2105,12 +2115,15 @@ func (m *fmtMedia) singleBlocksImage(defaultLayout string) bool {
 	return m.layout != nil && *m.layout != defaultLayout
 }
 
-// mediaAsImage mirrors dialect's mediaAsImage.
-func mediaAsImage(m *fmtMedia) ast.Node {
+// mediaAsImage mirrors dialect's mediaAsImage, the shared URL decision
+// included: both legs ask mediaurl.ProjectsToImage, so
+// WithPreserveLocalImages lets a document-relative external url reach
+// the plain image form here exactly as it does on the ADF leg.
+func (fn *normalizer) mediaAsImage(m *fmtMedia) ast.Node {
 	if m.mtype != "external" {
 		return nil
 	}
-	if !strings.HasPrefix(m.url, "http://") && !strings.HasPrefix(m.url, "https://") {
+	if !mediaurl.ProjectsToImage(m.url, fn.preserveLocalImages) {
 		return nil
 	}
 	if m.width != nil || m.height != nil || m.occurrenceKey != "" {

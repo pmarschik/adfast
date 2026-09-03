@@ -18,8 +18,8 @@ import (
 //
 // Options read: WithADFTransforms (applied to the document first),
 // WithExtensions, WithSmartLinks (KeyFromURL card labels), WithMediaAssets
-// or WithMediaAssetResolver, and WithDiagnostics (the raw-node projection
-// notice).
+// or WithMediaAssetResolver, WithPreserveLocalImages, and WithDiagnostics
+// (the raw-node projection notice).
 func FromADF(doc adf.Doc, opts ...Option) ast.Node {
 	o := newOptions(opts)
 	// Caller transforms first: they rewrite product-specific shapes into

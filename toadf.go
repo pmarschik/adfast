@@ -17,7 +17,8 @@ import (
 //
 // Options read: WithSmartLinks, WithCodeLanguages,
 // WithCanonicalCodeLanguages, WithUnsupportedKinds,
-// WithPreserveListTightness, WithImageDimsResolver, WithAssetIDResolver,
+// WithPreserveListTightness, WithPreserveLocalImages,
+// WithImageDimsResolver, WithAssetIDResolver,
 // WithExtensions, WithDocTransforms, and WithDiagnostics (colwidths-orphan,
 // decisions-orphan, unresolved-asset, unsupported-code-language,
 // unsupported-in-product, raw-node, depth-exceeded).
