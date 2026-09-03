@@ -67,8 +67,9 @@ func (ss Spans) Overlaps(s Span) bool {
 //
 // It is the one source-anchored surface in adfast: every view over a
 // document's byte layout — CodeSpans, InlineCodeSpans, Headings, Images,
-// Links, Directives, ListItems, and TextMatches — is a method here, computed
-// from a SINGLE parse of a SINGLE buffer. Views therefore cannot disagree
+// Links, Definitions, Directives, ListItems, and TextMatches — is a method
+// here, computed from a SINGLE parse of a SINGLE buffer. Views therefore
+// cannot disagree
 // with each other, and Apply — the only sanctioned way to turn spans back
 // into bytes — splices into the very buffer the spans were measured in.
 //
@@ -102,6 +103,8 @@ type Source struct {
 	images []Image
 	// links memoizes Links.
 	links []Link
+	// definitions memoizes Definitions.
+	definitions []Definition
 	// directives memoizes Directives.
 	directives []Directive
 	// listItems memoizes ListItems.
@@ -120,6 +123,8 @@ type Source struct {
 	imagesDone bool
 	// linksDone guards links, for the same reason.
 	linksDone bool
+	// definitionsDone guards definitions, for the same reason.
+	definitionsDone bool
 	// directivesDone guards directives, for the same reason.
 	directivesDone bool
 	// listItemsDone guards listItems, for the same reason.
