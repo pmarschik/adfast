@@ -111,6 +111,15 @@ type Source struct {
 	listItems []ListItem
 	// prose memoizes the runs of literal text TextMatches filters against.
 	prose Spans
+	// imagesUnlocated counts the image nodes Images could not resolve to a
+	// written extent, and backs UnlocatedImages.
+	imagesUnlocated int
+	// linksUnlocated counts the link nodes Links could not resolve, and
+	// backs UnlocatedLinks.
+	linksUnlocated int
+	// definitionsUnlocated counts the definition nodes Definitions could
+	// not resolve, and backs UnlocatedDefinitions.
+	definitionsUnlocated int
 	// same backs Verbatim.
 	same bool
 	// codeDone guards code, which is legitimately empty for most documents.

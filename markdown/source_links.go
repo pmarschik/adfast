@@ -91,7 +91,8 @@ func Links(src []byte) []Link { return NewSource(src).Links() }
 // against the one the parser produced, and a mismatch DROPS the link rather
 // than reporting a span that would splice into the wrong place.
 // Under-reporting is the safe direction for a rewriter; a wrong offset is
-// not.
+// not. UnlocatedLinks counts what was dropped, so a caller that rewrites
+// destinations can tell an empty view from an incomplete one.
 //
 // A link whose destination, title or reference LABEL continues on the NEXT
 // LINE is reported like any other, inside a blockquote or a list item as well
@@ -100,21 +101,39 @@ func Links(src []byte) []Link { return NewSource(src).Links() }
 // when it matches a label against a definition — and the span then ends at
 // that link's own closing `]`, never at a later bracket pair's. See
 // bracketedTail for why the second half of that sentence needs saying.
+//
+// A TAB in the container prefix of such a continued line is not a limitation
+// here, which is worth saying because it IS one for Definitions: the block
+// whose lines this view resolves against is a paragraph (or the text block a
+// tight list item turns one into), and its parser trims each line's leading
+// whitespace — the padding a partly consumed tab leaves included — before
+// this view ever sees a segment. See bytesAsRead for the mechanism and
+// Source.Definitions for the view that keeps the padding.
 func (s *Source) Links() []Link {
 	if s.linksDone {
 		return s.links
 	}
-	s.links, s.linksDone = collectLinks(s.doc, s.src), true
+	s.links, s.linksUnlocated = collectLinks(s.doc, s.src)
+	s.linksDone = true
 	return s.links
 }
 
+// UnlocatedLinks returns how many links of the source Links could NOT
+// resolve to a written extent, and therefore left out of its result. See
+// UnlocatedDefinitions for why the count is reported at all; no shape of
+// input is currently known to make this one nonzero.
+func (s *Source) UnlocatedLinks() int {
+	s.Links()
+	return s.linksUnlocated
+}
+
 // collectLinks walks doc for links and resolves each to its written extent.
+// It reports the links it located and how many it did not.
 //
 // Like collectImages this walk descends into inline subtrees, because a link
 // IS one, and it is safe for the same reason: a text directive's label is
 // parsed against its own detached source and its root is not attached here.
-func collectLinks(doc gast.Node, src []byte) []Link {
-	var out []Link
+func collectLinks(doc gast.Node, src []byte) (out []Link, unlocated int) {
 	nested := labelExtents{}
 	var walk func(gast.Node)
 	walk = func(n gast.Node) {
@@ -122,6 +141,8 @@ func collectLinks(doc gast.Node, src []byte) []Link {
 			if link, ok := c.(*gast.Link); ok {
 				if got, ok := linkSpan(link, src, nested); ok {
 					out = append(out, got)
+				} else {
+					unlocated++
 				}
 			}
 			walk(c)
@@ -129,7 +150,7 @@ func collectLinks(doc gast.Node, src []byte) []Link {
 	}
 	walk(doc)
 	slices.SortFunc(out, func(a, b Link) int { return a.Span.Start - b.Span.Start })
-	return out
+	return out, unlocated
 }
 
 // linkSpan resolves one link to its written extent. A link is a `[label]`

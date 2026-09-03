@@ -117,29 +117,60 @@ func Definitions(src []byte) []Definition { return NewSource(src).Definitions() 
 // extent that disagrees with the parser's own line extent for the definition
 // — DROPS the definition rather than reporting a span that would splice into
 // the wrong place. Under-reporting is the safe direction for a rewriter; a
-// wrong offset is not.
+// wrong offset is not. UnlocatedDefinitions counts what was dropped, so a
+// caller that rewrites definitions can tell an empty view from an incomplete
+// one instead of claiming a rewrite it did not make.
 //
-// The one shape known to be dropped is a definition whose container prefix
-// contains a TAB on a continued line, because goldmark expands the tab to
-// spaces before it reads the line and the written bytes therefore do not
-// compare equal.
+// The one shape known to be dropped is a definition whose LABEL or TITLE sits
+// on a continued line the block parser reached over a TAB — `> [a]: x.md`
+// followed by `>\t"t"`, or a label folded across `>\t`. This view is the only
+// one of the three with the problem, and PADDING is why: goldmark strips a
+// container prefix by expanding a tab it only partly consumes into a padding
+// count on the line's segment, and the definition node keeps the paragraph's
+// lines as they were BEFORE the paragraph parser trimmed that padding away.
+// The label and the title bytes the parser recorded therefore carry spaces
+// that stand for no byte of the source, so the written form cannot be
+// compared to them and the candidate fails. A DESTINATION on such a line is
+// unaffected, because the padding is leading whitespace the parser skips
+// before it reads one. Links and Images resolve against a paragraph's
+// trimmed lines and never meet a padded segment at all.
 func (s *Source) Definitions() []Definition {
 	if s.definitionsDone {
 		return s.definitions
 	}
-	s.definitions, s.definitionsDone = collectDefinitions(s.doc, s.src), true
+	s.definitions, s.definitionsUnlocated = collectDefinitions(s.doc, s.src)
+	s.definitionsDone = true
 	return s.definitions
 }
 
+// UnlocatedDefinitions returns how many link reference definitions of the
+// source Definitions could NOT resolve to a written extent, and therefore
+// left out of its result.
+//
+// The count exists because the drop is otherwise invisible. A consumer that
+// rewrites a destination iterates the view, and a definition missing from it
+// is one the pass silently leaves stale; with the count the pass can refuse
+// to report a complete rewrite, or fall back to leaving the file alone. Zero
+// is the answer for all but the shape Definitions documents.
+//
+// It is a COUNT and not the spans, because a definition that could not be
+// located has no trustworthy offsets to hand out — that is what being
+// unlocated means. Whoever needs to point at one has goldmark's own parse.
+func (s *Source) UnlocatedDefinitions() int {
+	s.Definitions()
+	return s.definitionsUnlocated
+}
+
 // collectDefinitions walks doc for link reference definitions and resolves
-// each to its written parts.
+// each to its written parts. It reports the definitions it located and how
+// many it did not — see UnlocatedDefinitions for why the second number is
+// part of the answer rather than a detail.
 //
 // The walk skips inline subtrees for the reason blockNodes documents — a text
 // directive's label is parsed against its own detached source, so an offset
 // found under one refers to no byte of this source — and a definition is a
 // block, so nothing is lost by not descending.
-func collectDefinitions(doc gast.Node, src []byte) []Definition {
-	var out []Definition
+func collectDefinitions(doc gast.Node, src []byte) (out []Definition, unlocated int) {
 	var walk func(gast.Node)
 	walk = func(n gast.Node) {
 		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
@@ -149,6 +180,8 @@ func collectDefinitions(doc gast.Node, src []byte) []Definition {
 			if def, ok := c.(*gast.LinkReferenceDefinition); ok {
 				if got, ok := definitionSpan(def, src); ok {
 					out = append(out, got)
+				} else {
+					unlocated++
 				}
 			}
 			walk(c)
@@ -156,7 +189,7 @@ func collectDefinitions(doc gast.Node, src []byte) []Definition {
 	}
 	walk(doc)
 	slices.SortFunc(out, func(a, b Definition) int { return a.Span.Start - b.Span.Start })
-	return out
+	return out, unlocated
 }
 
 // definitionSpan resolves one definition to its written parts.
