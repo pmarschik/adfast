@@ -101,11 +101,12 @@ func (s *Source) Links() []Link {
 // parsed against its own detached source and its root is not attached here.
 func collectLinks(doc gast.Node, src []byte) []Link {
 	var out []Link
+	nested := labelExtents{}
 	var walk func(gast.Node)
 	walk = func(n gast.Node) {
 		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 			if link, ok := c.(*gast.Link); ok {
-				if got, ok := linkSpan(link, src); ok {
+				if got, ok := linkSpan(link, src, nested); ok {
 					out = append(out, got)
 				}
 			}
@@ -120,10 +121,10 @@ func collectLinks(doc gast.Node, src []byte) []Link {
 // linkSpan resolves one link to its written extent. A link is a `[label]`
 // with nothing in front of it, so the resolver is the shared one — see
 // bracketedSpan.
-func linkSpan(link *gast.Link, src []byte) (Link, bool) {
+func linkSpan(link *gast.Link, src []byte, nested labelExtents) (Link, bool) {
 	whole, text, dest, ok := bracketedSpan(bracketed{
 		node: link, dest: link.Destination, ref: link.Reference, lead: 0,
-	}, src)
+	}, src, nested)
 	if !ok {
 		return Link{}, false
 	}

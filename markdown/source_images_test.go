@@ -178,6 +178,25 @@ var imageCases = []imageCase{{
 	src:  "![![in](a.png)](b.png)\n",
 	want: []string{"![![in](a.png)](b.png)|![in](a.png)|b.png", "![in](a.png)|in|a.png"},
 }, {
+	// The nested form writes the SAME destination as the outer one, so the
+	// destination check accepts either candidate closer, and a floor above
+	// the whole nested image is what picks the outer image's own.
+	name: "a nested image sharing the outer image's destination",
+	src:  "![![](a.png)](a.png)\n",
+	want: []string{"![![](a.png)](a.png)|![](a.png)|a.png", "![](a.png)||a.png"},
+}, {
+	name: "an opening bracket inside inline code in the alt text",
+	src:  "![a`[`b](x.png)\n",
+	want: []string{"![a`[`b](x.png)|a`[`b|x.png"},
+}, {
+	name: "an escaped opening bracket in the alt text",
+	src:  "![a\\[b](x.png)\n",
+	want: []string{"![a\\[b](x.png)|a\\[b|x.png"},
+}, {
+	name: "an opening bracket inside raw html in the alt text",
+	src:  "![a<i data-x=\"[\">b</i>](x.png)\n",
+	want: []string{"![a<i data-x=\"[\">b</i>](x.png)|a<i data-x=\"[\">b</i>|x.png"},
+}, {
 	name: "a destination on the line after its paren",
 	src:  "![a](\nx.png)\n",
 	want: []string{"![a](\nx.png)|a|x.png"},
