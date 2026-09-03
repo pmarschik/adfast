@@ -35,6 +35,8 @@ type Image struct {
 	// `]`, and is empty (Start == Stop) for `![](x.png)`. Inline markup
 	// inside the label is part of it verbatim: an alt is a run of inline
 	// content, not a string, so slicing it yields source rather than text.
+	// An alt may cross a line, and the span then covers the break and any
+	// container prefix after it, exactly as Span does.
 	Alt Span
 	// Dest covers the destination as written, with any wrapping angle
 	// brackets OUTSIDE it, so replacing it keeps a `<…>` wrapper intact and
@@ -86,11 +88,12 @@ func Images(src []byte) []Image { return NewSource(src).Images() }
 // prefix together with the line break that precedes it, and the line the
 // image began on keeps the prefix it already had.
 //
-// The shape still known to be dropped is a REFERENCE image whose label
-// crosses a line (`![a][i\nd]` against `[i d]: …`), because the parser
-// matched it on a normalized label and the written bytes therefore do not
-// compare equal. That drop does not depend on the container: it is the same
-// in a blockquote, in a list item, and at the top level.
+// A REFERENCE image whose LABEL crosses a line is reported too, and its span
+// covers the break and the container prefix after it by the same rule:
+// `![a][i\nd]`, `> ![a][i\n> d]` and `- ![a][i\n  d]` all pair with
+// `[i d]: …`, because CommonMark folds whitespace runs when it matches a
+// label against a definition. The span selects the label as WRITTEN, so an
+// edit replacing it replaces the fold as well.
 func (s *Source) Images() []Image {
 	if s.imagesDone {
 		return s.images
@@ -304,8 +307,24 @@ func (e labelExtents) stop(n gast.Node, src []byte) (int, bool) {
 //
 // Which of the four written forms to expect is not guessed: goldmark
 // records it on the node. An inline image or link has no Reference; a
-// reference one has one, and its Value is the raw label bytes the parser
-// matched, which is what makes a reference form checkable at all.
+// reference one has one, and its Value is the label bytes the parser READ,
+// which is what makes a reference form checkable at all.
+//
+// Read, not written, is the load-bearing word, and the label is where the two
+// diverge: a reference label may legally contain a newline, because CommonMark
+// folds whitespace runs when it matches a label against a definition, and the
+// bytes the parser read across that break are the line's content with its
+// container prefix — a blockquote's `>`, a list item's indent, a paragraph
+// continuation's leading spaces — already stripped. So every comparison here
+// goes through bytesAsRead rather than slicing the source directly.
+//
+// Comparing the written bytes instead does not merely under-report. It rejects
+// the label's own closer, and the caller's scan then walks on to the next `]`
+// in the source, where a LATER bracket pair whose written bytes happen to
+// equal the read label satisfies the check — and the form is reported ending
+// inside a construct that is not it. `[][i\n d][i\nd]` against `[I d]: 0` is
+// that document: both labels read as `i\nd`, so the empty-label link would be
+// reported as covering the second link as well.
 func bracketedTail(
 	b bracketed, src []byte, labelStart, k int, lines *text.Segments,
 ) (Span, int, bool) {
@@ -315,7 +334,7 @@ func bracketedTail(
 	// A shortcut (`![alt]`) and a collapsed (`![alt][]`) reference both key
 	// off the label itself, so the label is what proves the candidate.
 	if b.ref.Type != gast.ReferenceLinkFull &&
-		!bytes.Equal(src[labelStart:k], b.ref.Value) {
+		!bytes.Equal(bytesAsRead(src, lines, Span{Start: labelStart, Stop: k}), b.ref.Value) {
 		return Span{}, 0, false
 	}
 	if b.ref.Type == gast.ReferenceLinkShortcut {
@@ -330,7 +349,7 @@ func bracketedTail(
 	}
 	// A full reference (`![alt][id]`) keys off the second bracket pair.
 	if b.ref.Type == gast.ReferenceLinkFull &&
-		!bytes.Equal(src[k+2:end-1], b.ref.Value) {
+		!bytes.Equal(bytesAsRead(src, lines, Span{Start: k + 2, Stop: end - 1}), b.ref.Value) {
 		return Span{}, 0, false
 	}
 	return Span{}, end, true
@@ -460,6 +479,43 @@ func scanClosure(src []byte, i int, opener, closer byte) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+// bytesAsRead returns the bytes sp covers as goldmark READ them: the span's
+// source bytes with the container prefix between two of the block's lines
+// removed. lines is the block's content segments, one per line, each starting
+// where the block parser stopped stripping that line's prefix.
+//
+// This is the bridge every span check in these views crosses. A written form
+// may cross a line — a reference LABEL may (CommonMark folds whitespace runs
+// when it matches a label), and so may a destination or a title continued
+// after its opener — and the bytes between the two halves are prefix the block
+// parser stripped before the inline or definition parser ever saw the content.
+// A span reports what was WRITTEN, prefix included, because that is what an
+// edit has to replace; the comparison that VALIDATES the span has to be
+// against what was READ, because that is all the parser recorded. Comparing
+// written bytes to a read value rejects a correct span, and a resolver that
+// keeps searching after a false rejection can accept a lookalike belonging to
+// a different construct — a wrong offset, which is the one outcome these
+// views must never produce.
+//
+// A prefix carrying a TAB is where the bridge stops: goldmark expands it to
+// spaces through the segment's padding, so the read bytes are not a
+// subsequence of the written ones and the comparison fails. The construct is
+// dropped, which is the safe direction.
+func bytesAsRead(src []byte, lines *text.Segments, sp Span) []byte {
+	if lines == nil || lines.Len() == 1 {
+		return src[sp.Start:sp.Stop]
+	}
+	out := make([]byte, 0, sp.Len())
+	for i := range lines.Len() {
+		s := lines.At(i)
+		lo, hi := max(sp.Start, s.Start), min(sp.Stop, s.Stop)
+		if lo < hi {
+			out = append(out, src[lo:hi]...)
+		}
+	}
+	return out
 }
 
 // skipMarkdownSpaces returns the first offset at or after i that is not

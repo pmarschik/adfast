@@ -246,16 +246,16 @@ var imageCases = []imageCase{{
 	src:  "![a](\n>x.png)\n",
 	want: nil,
 }, {
-	// The remaining documented drop, and it is not about the container:
-	// the parser matched a normalized label, so the written bytes of a
-	// reference label that crosses a line never compare equal.
-	name: "a reference label crossing a line is dropped in a blockquote",
+	// A reference label may cross a line, because CommonMark folds
+	// whitespace runs when it matches a label, and the span keeps the
+	// prefix that sits in the fold — the rule a split tail already follows.
+	name: "a reference label crossing a line in a blockquote",
 	src:  "> ![a][i\n> d]\n\n[i d]: x.png\n",
-	want: nil,
+	want: []string{"![a][i\n> d]|a|-"},
 }, {
-	name: "a reference label crossing a line is dropped in a list item too",
+	name: "a reference label crossing a line in a list item too",
 	src:  "- ![a][i\n  d]\n\n[i d]: x.png\n",
-	want: nil,
+	want: []string{"![a][i\n  d]|a|-"},
 }, {
 	name: "an image with no trailing newline",
 	src:  "![a](x.png)",
