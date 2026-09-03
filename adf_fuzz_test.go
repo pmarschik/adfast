@@ -551,8 +551,10 @@ var zeroStartMarkerRe = regexp.MustCompile(`^[ \t]+(?:(?:0|[2-9]\d*|1\d+)[.)]([ 
 // hasLazyChainContinuation reports render shapes that lazily continue the
 // previous paragraph line on re-parse: an indented continuation after a
 // same-line marker chain, or an indented zero-start ordered marker after a
-// content line. remark renders the identical bytes for both (see the ewyh
-// bead probes).
+// content line. remark renders the identical bytes for both (measured
+// against remark-stringify), so neither shape is a renderer bug — see
+// skipRenderedStructureClasses, which carries the probe input for the
+// marker-chain case.
 func hasLazyChainContinuation(md string) bool {
 	lines := strings.Split(md, "\n")
 	for i := 0; i+1 < len(lines); i++ {
@@ -571,7 +573,7 @@ func hasLazyChainContinuation(md string) bool {
 		// Walk the paragraph continuation lines that follow the marker
 		// chain: any line shallower than the chain's content column lazily
 		// continues the deeper paragraph on re-parse; remark renders the
-		// same bytes (see the ewyh bead probes).
+		// same bytes (measured against remark-stringify).
 		for j := i + 1; j < len(lines); j++ {
 			cont := lines[j]
 			trimmed := strings.TrimLeft(cont, " \t")
@@ -618,7 +620,8 @@ var indentedEmptyQuoteRe = regexp.MustCompile(`^[ \t]+(?:> ?)+$|^[ \t]*(?:(?:[-*
 // hasListNestedEmptyQuoteLine reports an empty quote line inside a list
 // item. goldmark ends the item there and re-opens the rest of the quote at
 // top level, while remark (CommonMark-correct) keeps one quote — a known
-// goldmark divergence tracked on the ewyh bead.
+// goldmark parser divergence, not a renderer bug
+// (probe: "- > -\n  >\n  > 0").
 func hasListNestedEmptyQuoteLine(md string) bool {
 	for line := range strings.SplitSeq(md, "\n") {
 		if indentedEmptyQuoteRe.MatchString(line) {
@@ -872,8 +875,9 @@ func skipRenderedClasses(first string) (reason string, skip bool) {
 func skipRenderedStructureClasses(first string) (reason string, skip bool) {
 	// An empty nested list rendered directly under an item's text line
 	// forms a setext underline ("- 0\n  -" re-parses as "- ## 0").
-	// remark renders the identical shape and is equally unstable (see
-	// the ewyh bead probes), so the input class is out of scope.
+	// remark renders the identical shape and is equally unstable
+	// (measured against remark-stringify), so the input class is out of
+	// scope.
 	if setextAmbiguousLineRe.MatchString(first) {
 		return "setext-forming empty nested list; remark is equally unstable", true
 	}
@@ -886,13 +890,13 @@ func skipRenderedStructureClasses(first string) (reason string, skip bool) {
 	// An item continuation line after a same-line marker chain
 	// ("- - 0\n  0") lazily continues the deeper paragraph on
 	// re-parse; remark renders the identical shape and is equally
-	// unstable (see the ewyh bead probes).
+	// unstable (measured against remark-stringify).
 	if hasLazyChainContinuation(first) {
 		return "continuation after marker chain; remark is equally unstable", true
 	}
 	// Adjacent empty blockquotes ("- >\n  >") merge into one quote on
 	// re-parse; remark renders the identical bytes and is equally
-	// unstable (see the ewyh bead probes).
+	// unstable (measured against remark-stringify).
 	if hasAdjacentEmptyQuotes(first) {
 		return "adjacent empty blockquotes; remark is equally unstable", true
 	}
@@ -904,8 +908,8 @@ func skipRenderedStructureClasses(first string) (reason string, skip bool) {
 	}
 	// goldmark splits a quote at an empty quote line nested in a list
 	// item ("- > -\n  >\n  > 0" re-parses the tail as a top-level
-	// quote); remark keeps one quote. Known goldmark parser divergence
-	// (ewyh bead), out of scope for the renderer.
+	// quote); remark keeps one quote. A known goldmark parser
+	// divergence, out of scope for the renderer.
 	if hasListNestedEmptyQuoteLine(first) {
 		return "empty quote line in list item; goldmark parser divergence", true
 	}

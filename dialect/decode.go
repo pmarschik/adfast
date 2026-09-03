@@ -808,9 +808,9 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 // ::jql[<query>] node when its shape is fully expressible: a jira/jql
 // datasource with cloudId+jql parameters and at most one table view with
 // plain column keys (the documented ADF shape — implemented from the
-// Atlassian schema; verify against a real datasource card, see the azek
-// bead). Richer shapes fall back to ::linkCard (decodeBlockCard runs
-// after this hook).
+// Atlassian schema, and not yet verified against a datasource card
+// captured from a live instance). Richer shapes fall back to ::linkCard
+// (decodeBlockCard runs after this hook).
 func decodeDatasource(n adf.Node, _ extension.DecodeContext) (ast.Node, bool) {
 	card, ok := n.(*adf.BlockCard)
 	if !ok {
