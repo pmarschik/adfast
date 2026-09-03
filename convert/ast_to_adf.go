@@ -173,7 +173,12 @@ func listItemContentMessage(kind string) string {
 // ---------------------------------------------------------------------------
 
 type markCtx struct {
-	link        string
+	link string
+	// linkTitle is the advisory title the enclosing link spelled after its
+	// destination, [label](href "title"). It travels with link because the
+	// ADF link mark has a title attribute of its own, so the whole markdown
+	// link fits the mark and nothing is left behind (see linkTitleAttr).
+	linkTitle   string
 	textColor   string
 	bgColor     string
 	subsup      string // "sub" | "sup" | ""
@@ -216,12 +221,28 @@ func (*astConverter) buildMarks(ctx markCtx) []adf.Mark {
 		marks = append(marks, &adf.Annotation{ID: a.ID, AnnotationType: a.AnnotationType})
 	}
 	if ctx.hasLink {
-		marks = append(marks, &adf.Link{Href: new(ctx.link)})
+		marks = append(marks, &adf.Link{Href: new(ctx.link), Title: linkTitleAttr(ctx.linkTitle)})
 	}
 	if len(marks) == 0 {
 		return nil
 	}
 	return marks
+}
+
+// linkTitleAttr answers the title attribute an ADF link mark publishes
+// with: the title the markdown link spelled, and nil when it spelled
+// none.
+//
+// Absent rather than empty is the point. A markdown link has no syntax
+// for an empty-but-present title, so a titleless link must write no
+// attribute at all — otherwise every link mark adfast has ever produced
+// would grow a "title": "" that no product asked for and that a remote
+// read would hand back as content.
+func linkTitleAttr(title string) *string {
+	if title == "" {
+		return nil
+	}
+	return new(title)
 }
 
 // ---------------------------------------------------------------------------
@@ -681,6 +702,16 @@ func (c *astConverter) loneImageMedia(node *ast.Paragraph) (adf.Node, bool) {
 // An empty destination ("[![alt](img)]()") adds no mark: there is nothing
 // to click and nothing to lose, and a link mark without an href is not a
 // shape any product accepts.
+//
+// The TITLE the enclosing link spelled does NOT ride along, unlike the
+// one on a text link mark (see linkTitleAttr). The schema would hold it
+// — LinkAttributes is the same type on a media node — but the media
+// projection is written twice, in dialect's decode hooks and again in
+// normalize.go's mirror of them, and only the pair of them can bring an
+// attribute back to "[![alt](img)](href \"title\")". Writing it here
+// alone would put a title into the ADF payload that neither decode
+// reads, which is a loss dressed as a gain. Recorded as a remaining
+// limit in docs/adf-coverage.md instead.
 func withMediaLink(n adf.Node, href string) adf.Node {
 	if href == "" {
 		return n
@@ -1060,7 +1091,7 @@ func (v *inlineFlattener) VisitInlineCode(n *ast.InlineCode) []adf.Node {
 	// Code mark is exclusive in ADF — drop strong/em/strike
 	marks := []adf.Mark{&adf.Code{}}
 	if v.ctx.hasLink {
-		marks = append(marks, &adf.Link{Href: new(v.ctx.link)})
+		marks = append(marks, &adf.Link{Href: new(v.ctx.link), Title: linkTitleAttr(v.ctx.linkTitle)})
 	}
 	return []adf.Node{&adf.Text{Text: n.Value, Marks: marks}}
 }
@@ -1139,6 +1170,14 @@ func (v *inlineFlattener) VisitImage(n *ast.Image) []adf.Node {
 // degradeInlineImage's reason: it is the one the reader means to click,
 // and one text node carries one link mark.
 //
+// The TITLE follows the href that won, because the two are one markdown
+// link: a bare unplaceable image degrades to its own destination and its
+// own title ("![alt](p \"cap\")" → "[alt](p \"cap\")", which is where
+// the caption of a picture ADF cannot hold goes), and inside a link the
+// enclosing link's title travels with the enclosing href. Keeping the
+// image's title against the enclosing destination would attach a caption
+// to a link it was never written for.
+//
 // An image with neither a destination nor alt text ("![]()") has no
 // label to keep and still emits nothing. Nor is it reported: there is no
 // asset behind it to resolve later, the same silence reportEmptiedLink
@@ -1148,9 +1187,9 @@ func (v *inlineFlattener) degradeUnplaceableImage(n *ast.Image, alt string) []ad
 	if label == "" {
 		return nil
 	}
-	href := n.URL
+	href, title := n.URL, n.Title
 	if v.ctx.hasLink && v.ctx.link != "" {
-		href = v.ctx.link
+		href, title = v.ctx.link, v.ctx.linkTitle
 	}
 	if v.c.diagnostics != nil && n.URL != "" {
 		v.c.diagnostics(Diagnostic{
@@ -1160,7 +1199,7 @@ func (v *inlineFlattener) degradeUnplaceableImage(n *ast.Image, alt string) []ad
 	}
 	text := &adf.Text{Text: label}
 	if href != "" {
-		text.Marks = []adf.Mark{&adf.Link{Href: new(href)}}
+		text.Marks = []adf.Mark{&adf.Link{Href: new(href), Title: linkTitleAttr(title)}}
 	}
 	return []adf.Node{text}
 }
@@ -1205,6 +1244,11 @@ func imageLabel(url, alt string) string {
 // nothing to click and nothing to lose, and a link mark without an href
 // is not a shape any product accepts. Text keeps an empty link mark for
 // remark parity (see buildMarks); media has no such reason to.
+//
+// The link's TITLE stays behind here too, for withMediaLink's reason:
+// the media projection's decode is mirrored across dialect and
+// normalize.go, so an attribute this side writes alone would never come
+// back.
 func mediaLinkMark(ctx markCtx) []adf.Mark {
 	if !ctx.hasLink || ctx.link == "" {
 		return nil
@@ -1222,13 +1266,15 @@ func mediaLinkMark(ctx markCtx) []adf.Mark {
 // to click; the image URL is what leaves the document instead. Only one
 // of the two can survive: the degraded form is one text node with one
 // link mark, and ADF has no inline external image to hold the other.
+// The title travels with the href that won, for the reason
+// degradeUnplaceableImage gives.
 func (v *inlineFlattener) degradeInlineImage(n *ast.Image, alt string) []adf.Node {
 	label := imageLabel(n.URL, alt)
-	href := n.URL
+	href, title := n.URL, n.Title
 	message := "inline image " + n.URL +
 		" rewritten as a link: ADF has no inline image for an external URL"
 	if v.ctx.hasLink && v.ctx.link != "" {
-		href = v.ctx.link
+		href, title = v.ctx.link, v.ctx.linkTitle
 		message = "inline image " + n.URL + " inside a link: the link to " + v.ctx.link +
 			" is kept and the image URL is dropped — ADF has no inline image for an external URL"
 	}
@@ -1237,7 +1283,7 @@ func (v *inlineFlattener) degradeInlineImage(n *ast.Image, alt string) []adf.Nod
 	}
 	return []adf.Node{&adf.Text{
 		Text:  label,
-		Marks: []adf.Mark{&adf.Link{Href: new(href)}},
+		Marks: []adf.Mark{&adf.Link{Href: new(href), Title: linkTitleAttr(title)}},
 	}}
 }
 
@@ -1386,6 +1432,7 @@ func (c *astConverter) flattenLink(node *ast.Link, ctx markCtx) []adf.Node {
 	}
 	next := ctx
 	next.link = href
+	next.linkTitle = node.Title
 	next.hasLink = true
 	out := c.flattenChildren(node.Children, next)
 	if len(out) == 0 {

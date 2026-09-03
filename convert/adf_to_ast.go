@@ -914,9 +914,12 @@ func (c *adfRowConverter) convertCell(cell adf.Node) (mdCell *ast.TableCell, col
 // original mark values for the DecodeTextMark hook dispatch (nil marks
 // are synthesized from the extracted value at dispatch time).
 type flatInline struct {
-	directive     ast.Node
-	text          string
-	href          string
+	directive ast.Node
+	text      string
+	href      string
+	// linkTitle is the link mark's title attribute, the advisory text a
+	// markdown link spells after its destination.
+	linkTitle     string
 	textColor     string
 	bgColor       string
 	subsup        string
@@ -1300,6 +1303,9 @@ func convertTextInline(node *adf.Text) flatInline {
 	if linkMark, ok := adf.FindMark[*adf.Link](marks); ok && linkMark.Href != nil {
 		item.isLink = true
 		item.href = *linkMark.Href
+		if linkMark.Title != nil {
+			item.linkTitle = *linkMark.Title
+		}
 	}
 	if m, ok := adf.FindMark[*adf.TextColor](marks); ok {
 		item.textColor = m.Color
@@ -1441,6 +1447,7 @@ func inlineLeafNode(item flatInline, rc renderCtx) ast.Node {
 	if item.isLink {
 		node = &ast.Link{
 			URL:        item.href,
+			Title:      item.linkTitle,
 			InlineCard: item.isInlineCard,
 			Children:   []ast.Node{node},
 		}
