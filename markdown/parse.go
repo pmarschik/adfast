@@ -116,8 +116,26 @@ func WithGenericDirectives() ParseOption {
 // source-independent Markdown AST, and the registered extension kinds
 // (the dialect set by default, plus WithExtensions) promote their
 // directive names into typed nodes. The source is expected to use \n
-// line endings (the adfast facade normalizes CR/CRLF before splitting
-// frontmatter).
+// line endings.
+//
+// Parse is NOT FRONTMATTER AWARE and never produces an ast.Frontmatter
+// node. Leading document metadata is a caller-defined convention, so the
+// split lives one layer up, in the root adfast facade's
+// FrontmatterProvider (see adfast.WithFrontmatterProvider), which also
+// normalizes CR/CRLF and peels a byte order mark before this parse sees
+// the source. Handed a document that opens a YAML frontmatter fence,
+// Parse applies plain CommonMark and reads the metadata as content:
+// "---\nstatus: Open\n---\nBody.\n" lifts to a thematicBreak, a setext
+// heading ("status: Open") and a paragraph, so Render(Parse(src))
+// rewrites the metadata block as prose instead of reproducing it.
+//
+// For Markdown→Markdown over documents that may carry metadata, use the
+// facade pair adfast.ToMarkdown(adfast.FromMarkdown(md)) instead: the
+// same two-call shape with no ADF vocabulary, and plain ToMarkdown is a
+// pure projection that calls this Render with the same defaults, so the
+// only differences are the metadata split and the byte-order-mark and
+// line-ending normalization. adfast.Pipeline.Format wires the same two
+// halves for the prettier md→md mode.
 func Parse(source []byte, opts ...ParseOption) ast.Node {
 	cfg := parseConfig{}
 	for _, o := range opts {

@@ -76,6 +76,14 @@ const ByteOrderMark = "\ufeff"
 // A root with ast.Root.ByteOrderMark set re-emits the leading byte order
 // mark the source opened with; nothing else in the tree carries it.
 //
+// Render writes a block-position ast.Frontmatter verbatim, but Parse never
+// produces one, so the pair is NOT a round trip over a document with
+// leading metadata: Render(Parse(src)) flattens a YAML frontmatter block
+// into a thematicBreak plus a setext heading (see Parse, which owns the
+// measurement). The metadata split belongs to the root facade's
+// FrontmatterProvider one layer up; adfast.ToMarkdown(adfast.FromMarkdown(md))
+// performs it and hands this Render the ast.Frontmatter node to re-emit.
+//
 // It panics on one thing only: a directive node carrying a name the
 // dialect cannot spell, which no parse produces and which cannot be
 // written without destroying the node. See mustSpellDirectiveName.

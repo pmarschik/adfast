@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/pmarschik/adfast/convert"
+	"github.com/pmarschik/adfast/markdown"
 )
 
 func TestWithFrontmatterProvider_HTMLCommentHeaders(t *testing.T) {
@@ -163,6 +164,46 @@ func TestFormat_RenderOnly_MalformedFrontmatter(t *testing.T) {
 		renderAlone := ToMarkdown(FromMarkdown(md), WithPrettierFormat(), WithPrintWidth(80))
 		if bothHalves != renderAlone {
 			t.Errorf("format not render-only for %q:\nboth halves: %q\nrender alone: %q", md, bothHalves, renderAlone)
+		}
+	}
+}
+
+// TestFacadePairIsTheFrontmatterAwareEntry pins the redirect that
+// markdown.Parse's and markdown.Render's doc comments now make: the bare
+// pair rewrites a metadata block as prose, the facade pair keeps it
+// verbatim, and on a document without metadata the two are byte-identical,
+// so the redirect costs a caller nothing but the import.
+//
+// This is a PRESERVED-BEHAVIOR PIN, not a regression test: both halves
+// already behaved this way. It guards the doc comments' concrete claims.
+func TestFacadePairIsTheFrontmatterAwareEntry(t *testing.T) {
+	const withFront = "---\nstatus: Open\n---\nBody.\n"
+
+	if got, want := markdown.Render(markdown.Parse([]byte(withFront))), "---\n\n## status: Open\n\nBody.\n"; got != want {
+		t.Errorf("bare pair over %q = %q, want %q", withFront, got, want)
+	}
+	if got, want := ToMarkdown(FromMarkdown(withFront)), "---\nstatus: Open\n---\n\nBody.\n"; got != want {
+		t.Errorf("facade pair over %q = %q, want %q", withFront, got, want)
+	}
+
+	// Drop-in on documents the bare pair already handles: plain ToMarkdown
+	// is a pure projection onto markdown.Render with the same defaults.
+	for _, md := range []string{
+		"# Heading\n\nSome *text* with `code`.\n",
+		"- a\n- b\n\n1. x\n1. y\n",
+		"| a | b |\n| - | - |\n| 1 | 2 |\n",
+		":::info\nPanel body.\n:::\n",
+		"> quote\n>\n> more\n",
+		"```go\nfmt.Println()\n```\n",
+		"A [link][ref].\n\n[ref]: https://example.com\n",
+		"Para with a very long line that should be wrapped at the eighty column mark by both of the two render paths under test here.\n",
+		"---\n\nthematic break above.\n",
+		"Text with a hard break  \nsecond line.\n",
+	} {
+		bare := markdown.Render(markdown.Parse([]byte(md)))
+		facade := ToMarkdown(FromMarkdown(md))
+		if bare != facade {
+			t.Errorf("pairs diverge on %q:\nbare   %q\nfacade %q", md, bare, facade)
 		}
 	}
 }
