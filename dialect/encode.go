@@ -197,20 +197,27 @@ func (n *JQL) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 	return []adf.Node{&adf.BlockCard{URL: n.Attrs["url"], Datasource: ds}}
 }
 
-// EncodeADF implements extension.Node.
+// EncodeADF implements extension.Node, converting the directive back to
+// its ADF blockCard. A label that resolves to no URL has no card shape
+// to become (see ResolveCardURL), so the LABEL DEGRADES to a paragraph
+// rather than vanishing with the card; convert reports it as
+// CodeSmartLinkDegraded. A label with no text leaves nothing to keep and
+// drops.
 func (n *LinkCard) EncodeADF(ctx extension.EncodeContext) []adf.Node {
-	url := ctx.SmartLinkURL(ast.PlainText(n.Children))
-	if url == "" {
-		return nil
+	url, label, ok := ResolveCardURL(n, ctx.SmartLinkURL)
+	if !ok {
+		return degradedCardLabel(label)
 	}
 	return []adf.Node{&adf.BlockCard{URL: url}}
 }
 
-// EncodeADF implements extension.Node.
+// EncodeADF implements extension.Node, converting the directive back to
+// its ADF embedCard. It degrades exactly like LinkCard.EncodeADF above
+// when the label resolves to no URL.
 func (n *LinkEmbed) EncodeADF(ctx extension.EncodeContext) []adf.Node {
-	url := ctx.SmartLinkURL(ast.PlainText(n.Children))
-	if url == "" {
-		return nil
+	url, label, ok := ResolveCardURL(n, ctx.SmartLinkURL)
+	if !ok {
+		return degradedCardLabel(label)
 	}
 	layout := n.Attrs["layout"]
 	if layout == "" {
@@ -223,6 +230,19 @@ func (n *LinkEmbed) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 		}
 	}
 	return []adf.Node{card}
+}
+
+// degradedCardLabel is the shared fallback of the two smart-link
+// encoders: the label the author wrote survives as a paragraph, and only
+// a label with no text at all drops. label is ResolveCardURL's trimmed
+// text, so the paragraph is plain text — a card label is a URL or a
+// smart-link key, and spelling it identically here and in the prettier
+// formatter's mirror is what keeps the two paths from diverging.
+func degradedCardLabel(label string) []adf.Node {
+	if label == "" {
+		return nil
+	}
+	return []adf.Node{&adf.Paragraph{Content: []adf.Node{&adf.Text{Text: label}}}}
 }
 
 // EncodeADF implements extension.Node, emitting the ColwidthsHint

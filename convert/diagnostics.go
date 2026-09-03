@@ -203,6 +203,24 @@ const (
 	// One diagnostic fires per degraded directive. Emitted by ToADF and
 	// by Normalize (the prettier formatter).
 	CodeJQLDegraded = "jql-degraded"
+	// CodeSmartLinkDegraded reports a ::linkCard or ::linkEmbed directive
+	// that could not become its ADF card because the label resolved to no
+	// URL — a label with no text, or a SmartLinks resolver that maps the
+	// key to the empty string. ADF addresses both blockCard and embedCard
+	// by url and neither has a URL-less variant, so the LABEL DEGRADES TO
+	// A PLAIN PARAGRAPH: the text the author wrote stays in the document
+	// and only the "render this as a card" intent is lost. The md → ADF →
+	// md round trip therefore returns that text, not the directive.
+	//
+	// A directive whose label has NO text ("::linkCard[]") has nothing to
+	// keep, so it drops outright — the one case where the diagnostic is
+	// the only trace left, and the reason it fires even when nothing is
+	// salvageable. The message says which of the two happened, and which
+	// of the two directives it was.
+	//
+	// One diagnostic fires per degraded directive. Emitted by ToADF and
+	// by Normalize (the prettier formatter).
+	CodeSmartLinkDegraded = "smartlink-degraded"
 
 	// CodeUnknownNode re-exports adf.CodeUnknownNode: an ADF node type
 	// the typed model does not know, kept losslessly as a RawNode.
@@ -233,4 +251,17 @@ func jqlDegradedMessage(query string) string {
 		return why + "; the directive carries no query either, so it drops entirely"
 	}
 	return fmt.Sprintf("%s; query %q kept as plain text (live table lost)", why, query)
+}
+
+// smartLinkDegradedMessage is the shared message for
+// CodeSmartLinkDegraded, emitted identically by ToADF and by Normalize.
+// It names the directive and its label, so a reader can find the line the
+// report is about, and says which of the two outcomes happened — a label
+// with no text has nothing to keep.
+func smartLinkDegradedMessage(kind, label string) string {
+	why := fmt.Sprintf("::%s needs a label that resolves to a URL to become an ADF card", kind)
+	if label == "" {
+		return why + "; the directive carries no label text either, so it drops entirely"
+	}
+	return fmt.Sprintf("%s; label %q kept as plain text (card lost)", why, label)
 }

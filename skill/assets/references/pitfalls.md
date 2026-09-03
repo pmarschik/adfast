@@ -114,6 +114,15 @@ vocabulary:
   A directive with an empty query has no text to keep and drops outright
   — the message says which of the two happened. One per directive,
   naming the query. Emitted on encode and by the prettier formatter.
+- `smartlink-degraded` — a `::linkCard` or `::linkEmbed` whose label
+  resolved to no URL: a label with no text, or a `SmartLinks` resolver
+  that maps the key to the empty string. ADF addresses both blockCard and
+  embedCard by `url` and neither has a URL-less variant, so the LABEL is
+  kept as a plain paragraph and only the card intent is lost; the round
+  trip therefore returns that text, not the directive. A label with no
+  text has nothing to keep and drops outright — the message says which of
+  the two happened, and which directive it was. One per directive.
+  Emitted on encode and by the prettier formatter.
 - `before-encode-failed` — a `BeforeEncode` hook error (e.g. a failed
   asset upload) downgraded to a diagnostic by the infallible
   `Pipeline.MarkdownToADF` (`Pipeline.MarkdownToADFAll` returns it).
