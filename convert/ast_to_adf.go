@@ -584,6 +584,13 @@ func (*astBlockVisitor) VisitFrontmatter(*ast.Frontmatter) []adf.Node {
 // custom) encode themselves; other unknown kinds degrade through the
 // fallback.
 func (v *astBlockVisitor) VisitExtension(n ast.Node) []adf.Node {
+	if jql, isJQL := n.(*dialect.JQL); isJQL && !jql.EncodesAsDatasource() && v.c.diagnostics != nil {
+		// The card shape needs cloudId+datasource; without them
+		// EncodeADF keeps the query as a paragraph (or drops an empty
+		// one). Report it here — EncodeADF has no sink (see the fontSize
+		// note in inlineFlattener.VisitExtension).
+		v.c.diagnostics(Diagnostic{Code: CodeJQLDegraded, Message: jqlDegradedMessage(jql.Query())})
+	}
 	if ext, ok := n.(extension.Node); ok {
 		// Extension kinds encode themselves.
 		return ext.EncodeADF(&blockEncodeContext{c: v.c})

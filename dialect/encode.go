@@ -165,17 +165,22 @@ func mediaSingleFromAttrs(attrs map[string]string, media *adf.Media) *adf.MediaS
 
 // EncodeADF implements extension.Node, converting the directive back to
 // its JQL-datasource blockCard (see decodeDatasource for the shape).
-func (n *JQL) EncodeADF(_ extension.EncodeContext) []adf.Node {
+// A directive missing cloudId or datasource has no card shape to become
+// (see EncodesAsDatasource), so the QUERY DEGRADES to a paragraph rather
+// than vanishing with the card; convert reports it as
+// CodeJQLDegraded. An empty query leaves nothing to keep and drops.
+func (n *JQL) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 	jql := ast.PlainText(n.Children)
-	id := n.Attrs["datasource"]
-	cloudID := n.Attrs["cloudId"]
-	if jql == "" || id == "" || cloudID == "" {
-		return nil
+	if !n.EncodesAsDatasource() {
+		if jql == "" {
+			return nil
+		}
+		return []adf.Node{&adf.Paragraph{Content: ctx.EncodeInlines(n.Children)}}
 	}
 	ds := map[string]any{
-		"id": id,
+		"id": n.Attrs["datasource"],
 		"parameters": map[string]any{
-			"cloudId": cloudID,
+			"cloudId": n.Attrs["cloudId"],
 			"jql":     jql,
 		},
 	}

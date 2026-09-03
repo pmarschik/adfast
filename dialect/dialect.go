@@ -41,6 +41,14 @@
 //     ADF mark, so its EncodeADF unwraps to the inline text and the core
 //     decode dissolves any legacy fontSize mark to bare text — both with
 //     a convert.CodeFontSizeDropped diagnostic.
+//   - ::jql needs cloudId+datasource to reach an ADF datasource card
+//     (JQL.EncodesAsDatasource): ADF addresses the datasource by those
+//     two and has no bare-query variant. Without them its EncodeADF
+//     DEGRADES the query to a paragraph rather than dropping the
+//     directive, and convert reports a convert.CodeJQLDegraded
+//     diagnostic — EncodeADF has no sink of its own, so the same
+//     predicate gates the encode, the diagnostic, and the prettier
+//     formatter's mirror of the encode.
 //   - the block-mark wrappers (:::center/:::end, :::indent, :::breakout,
 //     :::dataConsumer, :::fragment) decode from ADF block MARKS:
 //     convert's block-mark wrapping constructs them around the marked
@@ -230,6 +238,26 @@ func (n *JQL) SetChildNodes(kids []ast.Node) { n.Children = kids }
 
 // Query returns the JQL query (the label's plain text).
 func (n *JQL) Query() string { return ast.PlainText(n.Children) }
+
+// EncodesAsDatasource reports whether the directive carries everything
+// an ADF JQL-datasource blockCard needs: a non-empty query plus both of
+// the attributes ADF addresses the datasource by — cloudId
+// (parameters.cloudId) and datasource (datasource.id).
+//
+// When it is false there is no card to build: ADF has no bare-query
+// variant and adfast cannot invent a cloud id, so the query degrades to
+// a plain paragraph and a convert.CodeJQLDegraded diagnostic reports the
+// loss of the live-table intent. EncodeADF, the prettier formatter's
+// mirror of it, and that diagnostic all gate on this one predicate, so
+// the three cannot disagree about which directives degrade.
+//
+// It reads Attrs, the raw directive payload, rather than the typed
+// fields: a caller that builds a JQL by hand sets whichever of the two
+// it knows about, and the encode path has always addressed the card
+// through Attrs.
+func (n *JQL) EncodesAsDatasource() bool {
+	return n.Query() != "" && n.Attrs["cloudId"] != "" && n.Attrs["datasource"] != ""
+}
 
 // newJQL builds a JQL from its raw directive payload.
 func newJQL(attrs map[string]string, children []ast.Node) *JQL {
