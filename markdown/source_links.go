@@ -24,7 +24,9 @@ type Link struct {
 	// not a string, so slicing it yields source rather than text. An IMAGE
 	// written inside link text is part of it too, and is reported separately
 	// by Images — its Span then lies inside this Text, which is the one case
-	// in which a span from this view overlaps one from that view.
+	// in which a span from this view overlaps one from that view. Link text
+	// may cross a line, and the span then covers the break and any container
+	// prefix after it, exactly as Span does.
 	Text Span
 	// Dest covers the destination as written, with any wrapping angle
 	// brackets OUTSIDE it, so replacing it keeps a `<…>` wrapper intact and
@@ -91,12 +93,13 @@ func Links(src []byte) []Link { return NewSource(src).Links() }
 // Under-reporting is the safe direction for a rewriter; a wrong offset is
 // not.
 //
-// A link whose destination or title continues on the NEXT LINE is reported
-// like any other, inside a blockquote or a list item as well as at the top
-// level, with the same container-prefix rule Images documents. The one shape
-// still known to be dropped is the same one too: a REFERENCE link whose label
-// crosses a line, which the parser matched on a normalized label, so the
-// written bytes do not compare equal.
+// A link whose destination, title or reference LABEL continues on the NEXT
+// LINE is reported like any other, inside a blockquote or a list item as well
+// as at the top level, with the same container-prefix rule Images documents.
+// A label that crosses a line is legal — CommonMark folds whitespace runs
+// when it matches a label against a definition — and the span then ends at
+// that link's own closing `]`, never at a later bracket pair's. See
+// bracketedTail for why the second half of that sentence needs saying.
 func (s *Source) Links() []Link {
 	if s.linksDone {
 		return s.links

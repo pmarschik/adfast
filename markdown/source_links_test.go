@@ -293,12 +293,36 @@ var linkCases = []linkCase{{
 	src:  "> [a](x.md\n> \"t\") tail\n",
 	want: []string{"[a](x.md\n> \"t\")|a|x.md"},
 }, {
-	// The same documented drop the image view has: the parser matched a
-	// normalized label, so a reference label that crosses a line never
-	// compares equal to its written bytes.
-	name: "a reference label crossing a line is dropped",
+	// A reference label may cross a line, because CommonMark folds
+	// whitespace runs when it matches a label. The span covers the fold and
+	// the quoted line's prefix, the way a split tail does.
+	name: "a reference label crossing a blockquote line",
 	src:  "> [a][i\n> d]\n\n[i d]: x.md\n",
-	want: nil,
+	want: []string{"[a][i\n> d]|a|-"},
+}, {
+	name: "a reference label crossing a list item line",
+	src:  "- [a][i\n  d]\n\n[i d]: x.md\n",
+	want: []string{"[a][i\n  d]|a|-"},
+}, {
+	name: "a shortcut reference label crossing a line",
+	src:  "[i\nd]\n\n[i d]: x.md\n",
+	want: []string{"[i\nd]|i\nd|-"},
+}, {
+	name: "a collapsed reference label crossing a line",
+	src:  "[i\nd][]\n\n[i d]: x.md\n",
+	want: []string{"[i\nd][]|i\nd|-"},
+}, {
+	// The regression this file exists to hold. Both labels READ as `i\nd`:
+	// the parser sees the paragraph with its continuation indent stripped,
+	// so the space written before the first `d` is not in the bytes it
+	// recorded. A resolver comparing WRITTEN bytes to that value rejects the
+	// empty-label link's own closer at offset 1, walks on to the next `]`,
+	// and accepts the SECOND link's bracket pair — reporting the first link
+	// as `[][i\n d][i\nd]`, a span whose tail belongs to another link and
+	// whose Text starts at a `]`. Each link must cover its own extent only.
+	name: "a folded label does not swallow the next bracket pair",
+	src:  "[][i\n d][i\nd]\n\n[a][I d]\n\n[I d]:0",
+	want: []string{"[][i\n d]||-", "[i\nd]|i\nd|-", "[a][I d]|a|-"},
 }, {
 	name: "a link with no trailing newline",
 	src:  "[a](x.md)",
@@ -323,6 +347,102 @@ func TestLinks_Coverage(t *testing.T) {
 				t.Errorf("Links(%q)\n got %q\nwant %q", c.src, linkTexts(c.src, got), c.want)
 			}
 		})
+	}
+}
+
+// foldedLabelSrc is the document that made the folded-label resolution
+// measurable. Two reference labels are written differently — `i\n d` and
+// `i\nd` — and READ identically, because a paragraph's continuation line
+// arrives with its leading whitespace already stripped; a third reference on
+// one line is the control that must not move. `[I d]` pairs with all three,
+// since matching a label folds its whitespace and ignores its case.
+const foldedLabelSrc = "[][i\n d][i\nd]\n\n[a][I d]\n\n[I d]:0"
+
+// TestLinks_FoldedLabelsStopAtTheirOwnCloser pins each link of
+// foldedLabelSrc to its own written extent, and pins the property that makes
+// the extent matter: the spans of two links never overlap.
+//
+// Overlap is the failure this test exists for, not a stylistic wish. A
+// resolution that compares a label's WRITTEN bytes against the value the
+// parser READ rejects the first link's own closer and then accepts the second
+// link's bracket pair, reporting the first link as covering both — so a
+// caller rewriting the first link's span would overwrite the second link. A
+// wrong offset is the one answer this view must never give; dropping the link
+// would have been acceptable, reporting someone else's bytes is not.
+func TestLinks_FoldedLabelsStopAtTheirOwnCloser(t *testing.T) {
+	t.Parallel()
+	want := []struct{ span, text string }{
+		{span: "[][i\n d]", text: ""},
+		{span: "[i\nd]", text: "i\nd"},
+		{span: "[a][I d]", text: "a"},
+	}
+	got := markdown.Links([]byte(foldedLabelSrc))
+	if len(got) != len(want) {
+		t.Fatalf("Links(%q) = %d links, want %d: %q",
+			foldedLabelSrc, len(got), len(want), linkTexts(foldedLabelSrc, got))
+	}
+	for i, w := range want {
+		l := got[i]
+		if s := foldedLabelSrc[l.Span.Start:l.Span.Stop]; s != w.span {
+			t.Errorf("link %d span %v slices to %q, want %q", i, l.Span, s, w.span)
+		}
+		if s := foldedLabelSrc[l.Text.Start:l.Text.Stop]; s != w.text {
+			t.Errorf("link %d text %v slices to %q, want %q", i, l.Text, s, w.text)
+		}
+		if i > 0 && l.Span.Start < got[i-1].Span.Stop {
+			t.Errorf("link %d span %v overlaps link %d span %v — an edit to one "+
+				"would rewrite the other", i, l.Span, i-1, got[i-1].Span)
+		}
+	}
+}
+
+// TestLinks_FoldedLabelPinsAreOffByOneSensitive proves the pins above can
+// fail, the way TestDefinitions_PinsAreOffByOneSensitive does: every non-empty
+// span is nudged one byte in each direction and must then slice to something
+// OTHER than the expectation. Without this, a span assertion could pass
+// against an implementation that is uniformly off by one.
+//
+// The empty Text of the first link is excluded, because an empty span slices
+// to "" at every offset. Its position is pinned by its neighbors instead: it
+// must sit between the `[` and the `]` that are the whole of that label.
+func TestLinks_FoldedLabelPinsAreOffByOneSensitive(t *testing.T) {
+	t.Parallel()
+	got := markdown.Links([]byte(foldedLabelSrc))
+	if len(got) != 3 {
+		t.Fatalf("Links = %d links, want 3", len(got))
+	}
+	checked := 0
+	for i, l := range got {
+		for _, p := range []struct {
+			name string
+			span markdown.Span
+		}{{"Span", l.Span}, {"Text", l.Text}} {
+			if p.span.Len() == 0 {
+				continue
+			}
+			want := foldedLabelSrc[p.span.Start:p.span.Stop]
+			for _, by := range []int{-1, 1} {
+				start, stop := p.span.Start+by, p.span.Stop+by
+				if start < 0 || stop > len(foldedLabelSrc) {
+					continue
+				}
+				if s := foldedLabelSrc[start:stop]; s == want {
+					t.Errorf("link %d %s shifted by %+d still slices to %q — "+
+						"the pin is blind to an off-by-one", i, p.name, by, s)
+				}
+				checked++
+			}
+		}
+	}
+	// A guard on the guard: a loop that checked nothing would pass. Five
+	// non-empty spans give two nudges each, less the one that would run off
+	// the front of the document — the first link starts at offset 0.
+	if checked != 9 {
+		t.Fatalf("checked %d shifted spans, want 9", checked)
+	}
+	if empty := got[0].Text; foldedLabelSrc[empty.Start-1] != '[' ||
+		foldedLabelSrc[empty.Stop] != ']' {
+		t.Errorf("the empty text %v does not sit between its brackets", empty)
 	}
 }
 

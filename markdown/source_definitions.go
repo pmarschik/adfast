@@ -234,7 +234,7 @@ func definitionLabel(
 		return Span{}, 0, false
 	}
 	label := Span{Start: pos + 1, Stop: closer - 1}
-	if !bytes.Equal(definitionText(src, lines, label), def.Label) {
+	if !bytes.Equal(bytesAsRead(src, lines, label), def.Label) {
 		return Span{}, 0, false
 	}
 	// CommonMark allows no space between the label and its colon.
@@ -255,7 +255,7 @@ func definitionDest(
 ) (Span, int, bool) {
 	i := skipMarkdownSpaces(src, from, lines)
 	dest, next, ok := scanLinkDestination(src, i)
-	if !ok || !bytes.Equal(definitionText(src, lines, dest), def.Destination) {
+	if !ok || !bytes.Equal(bytesAsRead(src, lines, dest), def.Destination) {
 		return Span{}, 0, false
 	}
 	return dest, next, true
@@ -285,39 +285,8 @@ func definitionTitle(
 		return Span{}, from, len(def.Title) == 0
 	}
 	title := Span{Start: i + 1, Stop: end - 1}
-	if !bytes.Equal(definitionText(src, lines, title), def.Title) {
+	if !bytes.Equal(bytesAsRead(src, lines, title), def.Title) {
 		return Span{}, from, len(def.Title) == 0
 	}
 	return title, end, true
-}
-
-// definitionText returns the bytes sp covers as goldmark READ them: the
-// span's source bytes with the container prefix between two of the
-// definition's lines removed.
-//
-// A part of a definition may cross a line — a label may (CommonMark folds
-// whitespace when it matches one), and so may a title — and inside a
-// blockquote or a list item the bytes between the two halves are prefix the
-// block parser stripped before the definition was read. The span reports what
-// was WRITTEN, prefix included, because that is what an edit has to replace;
-// the comparison that validates the span has to be against what was READ.
-// This is the bridge between the two.
-//
-// A prefix carrying a TAB is where the bridge stops: goldmark expands it to
-// spaces through the segment's padding, so the read bytes are not a
-// subsequence of the written ones and the comparison fails. The definition is
-// dropped, which is the safe direction.
-func definitionText(src []byte, lines *text.Segments, sp Span) []byte {
-	if lines == nil || lines.Len() == 1 {
-		return src[sp.Start:sp.Stop]
-	}
-	out := make([]byte, 0, sp.Len())
-	for i := range lines.Len() {
-		s := lines.At(i)
-		lo, hi := max(sp.Start, s.Start), min(sp.Stop, s.Stop)
-		if lo < hi {
-			out = append(out, src[lo:hi]...)
-		}
-	}
-	return out
 }
