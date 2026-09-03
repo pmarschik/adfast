@@ -274,20 +274,58 @@ func scanDirectiveName(src []byte, i int) int {
 	return end
 }
 
+// directiveLabelNestingMax is the directive package's cap on nested bracket
+// pairs inside a label, which it takes from micromark. A deeper nest
+// invalidates the label there, so it invalidates it here too.
+const directiveLabelNestingMax = 32
+
 // scanDirectiveLabel returns the offset one past a complete `[label]`
-// starting at src[i]. The label ends at the first `]` on the same line.
+// starting at src[i].
+//
+// It mirrors the directive package's own scanDirectiveLabel, which follows
+// micromark's factoryLabel: a `]` closes the label only at bracket balance
+// zero, a `[` opens a nested pair, more than directiveLabelNestingMax of
+// them invalidate the label, and a backslash escapes `[`, `]` or `\` so an
+// escaped bracket neither opens nor closes. Reading the label as balanced
+// brackets is right HERE and wrong for a CommonMark link (see
+// bracketedSpan), because this grammar is the one the directive parser
+// spells out rather than CommonMark's bracket matching.
+//
+// The scan stops at a line ending, as the parser's does: an unbalanced `[`
+// ends the attempt at the end of the line instead of running on to find a
+// `]` that belongs to some later line.
 func scanDirectiveLabel(src []byte, i int) (next int, ok bool) {
 	if i >= len(src) || src[i] != '[' {
 		return i, false
 	}
-	j := i + 1
-	for j < len(src) && src[j] != ']' && src[j] != '\n' && src[j] != '\r' {
-		j++
+	balance := 0
+	for j := i + 1; j < len(src) && src[j] != '\n' && src[j] != '\r'; j++ {
+		switch src[j] {
+		case '\\':
+			// Only a bracket or a backslash is escapable, so anything else
+			// leaves the backslash as ordinary data.
+			if j+1 < len(src) && isDirectiveLabelEscapable(src[j+1]) {
+				j++
+			}
+		case '[':
+			balance++
+			if balance > directiveLabelNestingMax {
+				return i, false
+			}
+		case ']':
+			if balance == 0 {
+				return j + 1, true
+			}
+			balance--
+		}
 	}
-	if j >= len(src) || src[j] != ']' {
-		return i, false
-	}
-	return j + 1, true
+	return i, false
+}
+
+// isDirectiveLabelEscapable reports whether a backslash inside a directive
+// label escapes c. Mirrors the directive package's own predicate.
+func isDirectiveLabelEscapable(c byte) bool {
+	return c == '[' || c == ']' || c == '\\'
 }
 
 // scanAttrSpans reads the `{…}` block opening at src[open] into one Attr per
