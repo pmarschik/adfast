@@ -62,6 +62,7 @@ package dialect
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/pmarschik/adfast/ast"
 	"github.com/pmarschik/adfast/extension"
@@ -325,6 +326,38 @@ func newLinkEmbed(attrs map[string]string, children []ast.Node) *LinkEmbed {
 		Attrs:    attrs,
 		Children: children,
 	}
+}
+
+// SmartLinkCard is what ::linkCard and ::linkEmbed have in common: a
+// label that resolves to the URL their ADF card (blockCard, embedCard)
+// addresses. Kind names the directive, Target carries the label.
+type SmartLinkCard interface {
+	ast.Node
+	Target() string
+}
+
+// ResolveCardURL resolves a smart-link directive's label to the URL its
+// ADF card addresses. resolve is the SmartLinks-aware resolver —
+// extension.EncodeContext.SmartLinkURL, or the prettier formatter's
+// mirror of it — which expands a bare key and passes a full URL through.
+//
+// ok is false when the label resolves to no URL at all: a label with no
+// text, or a resolver that maps the key to the empty string. There is
+// then no card to build, because ADF addresses both blockCard and
+// embedCard by url and neither has a URL-less variant. The directive
+// must not vanish with the card, so the LABEL DEGRADES TO A PLAIN
+// PARAGRAPH and a convert.CodeSmartLinkDegraded diagnostic reports the
+// lost card. label is the trimmed label text that survives, and it is
+// empty in the one case where nothing is salvageable and the directive
+// still drops.
+//
+// EncodeADF for both directives, the prettier formatter's mirror of
+// them, and that diagnostic all read this one function, so the sites
+// cannot disagree about which directives degrade or about what is kept.
+func ResolveCardURL(n SmartLinkCard, resolve func(string) string) (url, label string, ok bool) {
+	target := n.Target()
+	url = resolve(target)
+	return url, strings.TrimSpace(target), url != ""
 }
 
 // Colwidths is ::colwidths[79,320] ⇄ colwidth attrs on the FOLLOWING

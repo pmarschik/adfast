@@ -591,6 +591,18 @@ func (v *astBlockVisitor) VisitExtension(n ast.Node) []adf.Node {
 		// note in inlineFlattener.VisitExtension).
 		v.c.diagnostics(Diagnostic{Code: CodeJQLDegraded, Message: jqlDegradedMessage(jql.Query())})
 	}
+	if card, isCard := n.(dialect.SmartLinkCard); isCard && v.c.diagnostics != nil {
+		// Both cards are addressed by url; without one EncodeADF keeps
+		// the label as a paragraph (or drops a label with no text).
+		// Report it here for the same reason as the ::jql case above —
+		// EncodeADF has no sink.
+		if _, label, ok := dialect.ResolveCardURL(card, v.c.smartLinkURL); !ok {
+			v.c.diagnostics(Diagnostic{
+				Code:    CodeSmartLinkDegraded,
+				Message: smartLinkDegradedMessage(card.Kind(), label),
+			})
+		}
+	}
 	if ext, ok := n.(extension.Node); ok {
 		// Extension kinds encode themselves.
 		return ext.EncodeADF(&blockEncodeContext{c: v.c})

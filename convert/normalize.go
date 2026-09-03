@@ -1846,18 +1846,20 @@ func (fn *normalizer) blockCardFallback(url string) ast.Node {
 	return &dialect.LinkCard{Children: []ast.Node{&ast.Text{Value: fn.smartLinkLabel(url)}}}
 }
 
+// normalizeLinkCard mirrors LinkCard.EncodeADF ∘ decodeBlockCard.
 func (fn *normalizer) normalizeLinkCard(v *dialect.LinkCard) ast.Node {
-	url := fn.smartLinkURL(ast.PlainText(v.Children))
-	if url == "" {
-		return nil
+	url, label, ok := dialect.ResolveCardURL(v, fn.smartLinkURL)
+	if !ok {
+		return fn.degradedCardLabel(v.Kind(), label)
 	}
 	return &dialect.LinkCard{Children: []ast.Node{&ast.Text{Value: fn.smartLinkLabel(url)}}}
 }
 
+// normalizeLinkEmbed mirrors LinkEmbed.EncodeADF ∘ decodeEmbedCard.
 func (fn *normalizer) normalizeLinkEmbed(v *dialect.LinkEmbed) ast.Node {
-	url := fn.smartLinkURL(ast.PlainText(v.Children))
-	if url == "" {
-		return nil
+	url, label, ok := dialect.ResolveCardURL(v, fn.smartLinkURL)
+	if !ok {
+		return fn.degradedCardLabel(v.Kind(), label)
 	}
 	layout := v.Attrs["layout"]
 	if layout == "" {
@@ -1873,6 +1875,18 @@ func (fn *normalizer) normalizeLinkEmbed(v *dialect.LinkEmbed) ast.Node {
 		Attrs:    attrs,
 		Children: []ast.Node{&ast.Text{Value: fn.smartLinkLabel(url)}},
 	}
+}
+
+// degradedCardLabel mirrors dialect's degradedCardLabel: a smart-link
+// label that resolves to no URL survives as a paragraph, so the formatter
+// rewrites the directive to that prose rather than erasing the line. A
+// label with no text has nothing to keep and drops.
+func (fn *normalizer) degradedCardLabel(kind, label string) ast.Node {
+	fn.diag(CodeSmartLinkDegraded, smartLinkDegradedMessage(kind, label))
+	if label == "" {
+		return nil
+	}
+	return &ast.Paragraph{Children: []ast.Node{&ast.Text{Value: label}}}
 }
 
 // parseFloatAttr mirrors dialect's floatAttr (0 when absent/invalid).
