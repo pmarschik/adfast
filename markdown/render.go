@@ -128,8 +128,10 @@ func (r *mdRenderer) render(root ast.Node) string {
 
 // breakSafeBullet flips a '-' bullet to '*' when any item starts with a
 // thematic break ("- ---" would re-parse as one long thematic break);
-// remark flips the whole list the same way (see the "* ___" probes in the
-// ewyh bead).
+// remark flips the whole list the same way. Pinned in
+// testdata/directive_fixtures.json, whose remark-generated "* ___" entry
+// round-trips to "* ---": the '*' bullet is kept, not normalized back
+// to '-'.
 func breakSafeBullet(bullet string, node *ast.List) string {
 	if bullet != "-" || node.Ordered {
 		return bullet

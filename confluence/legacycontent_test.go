@@ -25,12 +25,13 @@ func legacyExt(t *testing.T, parametersJSON string) *adf.Extension {
 	}
 }
 
-// TestExpandLegacyContentBlockquoteInListItem is the bead's regression
-// fixture: a blockquote Confluence rewrote into a legacy-content wrapper
-// because listItem's content model cannot hold one. The expansion must
-// give back exactly the document a direct submission of the same
-// Markdown would have produced — the acceptance criterion for the read
-// to settle a comparison against a push.
+// TestExpandLegacyContentBlockquoteInListItem is the regression fixture
+// for the case that motivated ExpandLegacyContent: a blockquote
+// Confluence rewrote into a legacy-content wrapper because listItem's
+// content model cannot hold one. The expansion must give back exactly
+// the document a direct submission of the same Markdown would have
+// produced — the acceptance criterion for the read to settle a
+// comparison against a push.
 func TestExpandLegacyContentBlockquoteInListItem(t *testing.T) {
 	md := "- Item text\n\n  > Quoted text\n"
 	want := adfToMD(t, mdToADF(t, md))

@@ -46,7 +46,7 @@ func TestImageAltWithDirectiveColonSurvivesADF(t *testing.T) {
 	}
 }
 
-// This pins the actual bug the bead measured: a full md→ADF→md round trip
+// This pins the bug as originally reported: a full md→ADF→md round trip
 // (not the pure formatter above) truncates the alt at the colon, because
 // building the ADF loses the ":view" half and the markdown that comes back
 // out of that ADF only ever had "Over" to work with. A block-position image

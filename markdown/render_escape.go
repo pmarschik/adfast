@@ -480,8 +480,10 @@ func (r *mdRenderer) escapesColon(s string, i int, nextLead byte, st *inlineCont
 	return escapes || atBreak
 }
 
-// labelEscapes reports whether s[i] needs a backslash inside a link label
-// (remark's label safety set; see the label probes on the ewyh bead).
+// labelEscapes reports whether s[i] needs a backslash inside a link
+// label: remark's restricted label safety set, measured against
+// remark-stringify. The call site in writeEscapedByte spells out which
+// of the prose rules the set drops.
 func labelEscapes(s string, i int, nextLead byte, st *inlineContext) bool {
 	switch s[i] {
 	case '[', ']', '*', '_', '~', '\x60', '<':
