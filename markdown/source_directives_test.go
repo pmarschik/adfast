@@ -121,6 +121,63 @@ var directiveCases = []directiveCase{{
 	src:  "::x[label]\n",
 	want: []string{"2:x|::x[label]|-"},
 }, {
+	// The label rows below all locate the SAME attribute block. The block is
+	// found by re-walking the prefix the directive parser walked, so a label
+	// the walk misreads shifts the block off the end of the directive and
+	// the spans are dropped altogether. This row is the plain form the other
+	// rows are measured against: no nesting, no escape.
+	name: "a plain label with an attribute block",
+	src:  "::note[plain]{c=red}\n",
+	want: []string{"2:note|::note[plain]{c=red}|{c=red}"},
+}, {
+	// A whole written form may stand inside a label, so the label ends at
+	// the `]` that MATCHES its `[` and not at the first one on the line.
+	name: "a label holding a nested written form",
+	src:  "::note[[lab](x.md)]{c=red}\n",
+	want: []string{"2:note|::note[[lab](x.md)]{c=red}|{c=red}"},
+}, {
+	name: "a label holding a nested bracket pair",
+	src:  "::note[a[b]c]{c=red}\n",
+	want: []string{"2:note|::note[a[b]c]{c=red}|{c=red}"},
+}, {
+	// A backslash escapes a bracket, so the escaped `]` closes nothing.
+	name: "a label holding an escaped bracket",
+	src:  "::note[a\\]b]{c=red}\n",
+	want: []string{"2:note|::note[a\\]b]{c=red}|{c=red}"},
+}, {
+	// A backslash escapes a backslash too, so the `]` after one is the
+	// label's own closer rather than an escaped bracket.
+	name: "a label holding an escaped backslash",
+	src:  "::note[a\\\\]{c=red}\n",
+	want: []string{"2:note|::note[a\\\\]{c=red}|{c=red}"},
+}, {
+	// The parser caps a label at 32 nested pairs and this is the deepest
+	// label it still accepts, which is the deepest one to locate a block
+	// past. A 33rd pair invalidates the label, and with it the directive.
+	name: "a label nested as deep as the parser allows",
+	src: "::note[" + strings.Repeat("[", 32) + strings.Repeat("]", 32) +
+		"]{c=red}\n",
+	want: []string{"2:note|::note[" + strings.Repeat("[", 32) +
+		strings.Repeat("]", 32) + "]{c=red}|{c=red}"},
+}, {
+	// An unclosed `[` ends the label attempt at the end of the LINE, never
+	// at a `]` written on a later one — the same bound the parser's own scan
+	// has, which is why the parser reports no directive here at all.
+	//
+	// This row and the next one hold whether or not the scan keeps that
+	// bound: the parser's verdict already rules the whole line out, and a
+	// block that ended past the directive's own extent would be refused
+	// anyway. They pin the agreement, not the bound.
+	name: "a label with an unclosed bracket is not a label",
+	src:  "::note[unbal[\nx]{c=red}\n",
+	want: nil,
+}, {
+	// One pair closes inside the label and the outer `[` is left unclosed,
+	// so there is no `]` at balance zero and the whole line is prose.
+	name: "a label whose own bracket stays unclosed is not a label",
+	src:  "::note[a[b]{c=red}\n",
+	want: nil,
+}, {
 	// A malformed block is not an attribute block at all: the parser leaves
 	// the text as prose, so there is no directive to report.
 	name: "an unterminated attribute block is not a directive",
@@ -251,6 +308,12 @@ func TestDirectives_AttrSpans(t *testing.T) {
 		{"leaf with a label", "::n[lbl]%s\n"},
 		{"leaf in a blockquote", "> ::n%s\n"},
 		{"leaf in a list item", "- ::n%s\n"},
+		// A label that holds a bracket pair or an escaped bracket ends past
+		// the first `]` on the line, so every span inside the block shifts
+		// when the label is measured to the wrong closer.
+		{"leaf labeled with a nested written form", "::n[[lab](x.md)]%s\n"},
+		{"leaf labeled with a nested bracket pair", "::n[a[b]c]%s\n"},
+		{"leaf labeled with an escaped bracket", "::n[a\\]b]%s\n"},
 	}
 	for _, c := range attrCases {
 		for _, f := range forms {
