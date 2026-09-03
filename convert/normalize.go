@@ -1802,12 +1802,17 @@ func (fn *normalizer) smartLinkLabel(url string) string {
 // ::linkCard fallback for shapes the datasource decode rejects).
 func (fn *normalizer) normalizeJQL(v *dialect.JQL) ast.Node {
 	jql := ast.PlainText(v.Children)
-	id := v.Attrs["datasource"]
-	cloudID := v.Attrs["cloudId"]
-	if jql == "" || id == "" || cloudID == "" {
-		return nil
+	if !v.EncodesAsDatasource() {
+		// Mirror EncodeADF's degradation: the query survives as a
+		// paragraph, so the formatter must rewrite the directive to that
+		// prose rather than erase the line.
+		fn.diag(CodeJQLDegraded, jqlDegradedMessage(jql))
+		if jql == "" {
+			return nil
+		}
+		return &ast.Paragraph{Children: []ast.Node{&ast.Text{Value: jql}}}
 	}
-	attrs := map[string]string{"cloudId": cloudID, "datasource": id}
+	attrs := map[string]string{"cloudId": v.Attrs["cloudId"], "datasource": v.Attrs["datasource"]}
 	if v.Attrs["url"] != "" {
 		attrs["url"] = v.Attrs["url"]
 	}

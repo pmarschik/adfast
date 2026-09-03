@@ -1,6 +1,10 @@
 package convert
 
-import "github.com/pmarschik/adfast/adf"
+import (
+	"fmt"
+
+	"github.com/pmarschik/adfast/adf"
+)
 
 // Diagnostic codes: every code a Diagnostic emitted anywhere in the
 // pipeline can carry, collected here (next to the Diagnostic type's
@@ -181,6 +185,24 @@ const (
 	// preserved; only the size annotation is lost. Emitted by ToADF,
 	// Normalize (the prettier formatter), and FromADF.
 	CodeFontSizeDropped = "fontsize-dropped"
+	// CodeJQLDegraded reports a ::jql directive that could not become a
+	// JQL-datasource blockCard because the directive did not carry both
+	// of the attributes ADF addresses the datasource by: cloudId
+	// (parameters.cloudId) and datasource (datasource.id). ADF has no
+	// bare-query card, and adfast cannot invent a cloud id, so the
+	// QUERY DEGRADES TO A PLAIN PARAGRAPH: the query text stays in the
+	// document and only the "render this as a live table" intent is
+	// lost. The md → ADF → md round trip therefore returns the prose,
+	// not the directive.
+	//
+	// A directive with an EMPTY query ("::jql[]") has no text to keep,
+	// so it drops outright — the one case where the diagnostic is the
+	// only trace left, and the reason it fires even when nothing is
+	// salvageable. The message says which of the two happened.
+	//
+	// One diagnostic fires per degraded directive. Emitted by ToADF and
+	// by Normalize (the prettier formatter).
+	CodeJQLDegraded = "jql-degraded"
 
 	// CodeUnknownNode re-exports adf.CodeUnknownNode: an ADF node type
 	// the typed model does not know, kept losslessly as a RawNode.
@@ -200,3 +222,15 @@ const (
 // fontSizeDroppedMessage is the shared message for CodeFontSizeDropped,
 // emitted identically on every path that retires a fontSize construct.
 const fontSizeDroppedMessage = "fontSize dropped: no Atlassian product supports it (text kept, size lost)"
+
+// jqlDegradedMessage is the shared message for CodeJQLDegraded, emitted
+// identically by ToADF and by Normalize. It names the query, so a reader
+// can find the directive the report is about, and says which of the two
+// outcomes happened — an empty query has no text to keep.
+func jqlDegradedMessage(query string) string {
+	const why = "::jql needs both cloudId and datasource to become an ADF datasource card"
+	if query == "" {
+		return why + "; the directive carries no query either, so it drops entirely"
+	}
+	return fmt.Sprintf("%s; query %q kept as plain text (live table lost)", why, query)
+}

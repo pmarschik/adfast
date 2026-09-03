@@ -106,6 +106,14 @@ vocabulary:
   produces it. Emitted on encode (`:fontSize[text]{size}` unwraps to its
   text) and on decode (a legacy `fontSize` ADF mark becomes bare text).
   Text kept, size lost.
+- `jql-degraded` — a `::jql` directive that did not carry both `cloudId`
+  and `datasource`, the two attributes ADF addresses a datasource card
+  by. There is no bare-query card and adfast cannot invent a cloud id, so
+  the QUERY is kept as a plain paragraph and only the live-table intent
+  is lost; the round trip therefore returns the prose, not the directive.
+  A directive with an empty query has no text to keep and drops outright
+  — the message says which of the two happened. One per directive,
+  naming the query. Emitted on encode and by the prettier formatter.
 - `before-encode-failed` — a `BeforeEncode` hook error (e.g. a failed
   asset upload) downgraded to a diagnostic by the infallible
   `Pipeline.MarkdownToADF` (`Pipeline.MarkdownToADFAll` returns it).
