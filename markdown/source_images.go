@@ -109,11 +109,12 @@ func (s *Source) Images() []Image {
 // is unreachable from here and can never contribute a foreign offset.
 func collectImages(doc gast.Node, src []byte) []Image {
 	var out []Image
+	nested := labelExtents{}
 	var walk func(gast.Node)
 	walk = func(n gast.Node) {
 		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
 			if img, ok := c.(*gast.Image); ok {
-				if got, ok := imageSpan(img, src); ok {
+				if got, ok := imageSpan(img, src, nested); ok {
 					out = append(out, got)
 				}
 			}
@@ -127,10 +128,10 @@ func collectImages(doc gast.Node, src []byte) []Image {
 
 // imageSpan resolves one image to its written extent. An image is a `[label]`
 // behind a `!`, so the resolver is the shared one — see bracketedSpan.
-func imageSpan(img *gast.Image, src []byte) (Image, bool) {
+func imageSpan(img *gast.Image, src []byte, nested labelExtents) (Image, bool) {
 	whole, alt, dest, ok := bracketedSpan(bracketed{
 		node: img, dest: img.Destination, ref: img.Reference, lead: 1,
-	}, src)
+	}, src, nested)
 	if !ok {
 		return Image{}, false
 	}
@@ -180,12 +181,24 @@ type bracketed struct {
 //
 // The label's closing `]` is the one ambiguity, because a `]` can appear
 // inside the label — escaped, inside inline code, inside a nested bracket
-// pair, inside raw HTML. Two facts resolve it together: the label's parsed
-// children give a FLOOR below which the closer cannot be, and a candidate
-// closer is only accepted when the tail after it parses back to the
-// destination the parser recorded. A wrong candidate therefore fails
-// rather than producing a plausible-looking wrong span.
-func bracketedSpan(b bracketed, src []byte) (whole, label, dest Span, ok bool) {
+// pair, inside raw HTML, inside the destination of a written form nested in
+// the label. Two facts resolve it together: the label's parsed children give a
+// FLOOR below which the closer cannot be, and a candidate closer is only
+// accepted when the tail after it parses back to the destination the parser
+// recorded. A wrong candidate therefore fails rather than producing a
+// plausible-looking wrong span.
+//
+// The floor is what carries a nested written form, and the destination check
+// cannot stand in for it. CommonMark lets a bracket pair stand in link text —
+// an IMAGE written inside link text is one — so a label can hold a whole
+// written form, tail included, before its own closer; and when the nested
+// destination is BYTE-EQUAL to the outer one, as a thumbnail linking to its
+// own file writes it, the check passes on the nested closer and reports the
+// outer form ending inside itself. A floor above the nested form is what
+// leaves the label's own closer as the first candidate.
+func bracketedSpan(
+	b bracketed, src []byte, nested labelExtents,
+) (whole, label, dest Span, ok bool) {
 	pos := b.node.Pos()
 	open := pos + b.lead
 	if pos < 0 || open >= len(src) || src[open] != '[' {
@@ -195,7 +208,7 @@ func bracketedSpan(b bracketed, src []byte) (whole, label, dest Span, ok bool) {
 		return Span{}, Span{}, Span{}, false
 	}
 	labelStart, lines := open+1, enclosingLines(b.node)
-	for k := labelFloor(b.node, labelStart); k < len(src); k++ {
+	for k := labelFloor(b.node, src, labelStart, nested); k < len(src); k++ {
 		if src[k] != ']' {
 			continue
 		}
@@ -217,24 +230,72 @@ func bracketedSpan(b bracketed, src []byte) (whole, label, dest Span, ok bool) {
 // node kind that carries no segments (an autolink) leaves the floor lower
 // than it could be, which costs a few rejected candidates and no accuracy —
 // bracketedTail is what decides.
-func labelFloor(n gast.Node, labelStart int) int {
+//
+// A child that is itself an image or a link claims more than its own label:
+// it claims its whole written form, which this resolver measures for it. That
+// is the one kind of child whose extent is not on the node, and taking it from
+// the same resolver keeps the two answers consistent — the floor is one past
+// the very span the view goes on to report for the nested form. It is also the
+// only way past a nested DESTINATION or TITLE, where CommonMark does not
+// require a bracket to balance (`[![](a[.png)](x.md)`); no reading of the
+// label as brackets can know those bytes are a path. A nested form this
+// resolver DROPS claims nothing, since its extent is unknown, and the floor is
+// then what it was before.
+func labelFloor(n gast.Node, src []byte, labelStart int, nested labelExtents) int {
 	floor := labelStart
 	var walk func(gast.Node)
 	walk = func(n gast.Node) {
-		switch t := n.(type) {
-		case *gast.Text:
-			floor = max(floor, t.Segment.Stop)
-		case *gast.RawHTML:
-			if t.Segments != nil && t.Segments.Len() > 0 {
-				floor = max(floor, t.Segments.At(t.Segments.Len()-1).Stop)
-			}
-		}
 		for c := n.FirstChild(); c != nil; c = c.NextSibling() {
+			switch t := c.(type) {
+			case *gast.Text:
+				floor = max(floor, t.Segment.Stop)
+			case *gast.RawHTML:
+				if t.Segments != nil && t.Segments.Len() > 0 {
+					floor = max(floor, t.Segments.At(t.Segments.Len()-1).Stop)
+				}
+			case *gast.Image, *gast.Link:
+				if stop, ok := nested.stop(c, src); ok {
+					floor = max(floor, stop)
+					continue
+				}
+			}
 			walk(c)
 		}
 	}
 	walk(n)
 	return floor
+}
+
+// labelExtents remembers where a written form nested in a label ends, so that
+// a chain of forms nested one inside the next is measured ONCE for the whole
+// walk instead of once for every ancestor that needs its extent. The value is
+// the offset one past the written form, and zero when the resolver dropped it:
+// no written form can end at offset zero, so the two answers stay distinct.
+//
+// Without it a document of forms nested n deep would cost n measurements per
+// form and n² for the walk, which is a cost an author of a document does not
+// control — the nesting is the input.
+type labelExtents map[gast.Node]int
+
+// stop measures the nested written form at n and reports the offset one past
+// it, or false when the resolver drops it. Both answers are remembered.
+func (e labelExtents) stop(n gast.Node, src []byte) (int, bool) {
+	if stop, seen := e[n]; seen {
+		return stop, stop != 0
+	}
+	stop := 0
+	switch t := n.(type) {
+	case *gast.Image:
+		if got, ok := imageSpan(t, src, e); ok {
+			stop = got.Span.Stop
+		}
+	case *gast.Link:
+		if got, ok := linkSpan(t, src, e); ok {
+			stop = got.Span.Stop
+		}
+	}
+	e[n] = stop
+	return stop, stop != 0
 }
 
 // bracketedTail reads what follows a candidate closing `]` at k and reports

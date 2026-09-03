@@ -1,6 +1,7 @@
 package markdown_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -87,6 +88,27 @@ var linkCases = []linkCase{{
 	name: "an escaped closing bracket in the link text",
 	src:  "[a\\]b](x.md)\n",
 	want: []string{"[a\\]b](x.md)|a\\]b|x.md"},
+}, {
+	// An OPENING bracket the label never closes. Each of the three below is
+	// content of a parsed child, so the floor is already past it.
+	name: "an opening bracket inside inline code in the link text",
+	src:  "[a`[`b](x.md)\n",
+	want: []string{"[a`[`b](x.md)|a`[`b|x.md"},
+}, {
+	name: "an escaped opening bracket in the link text",
+	src:  "[a\\[b](x.md)\n",
+	want: []string{"[a\\[b](x.md)|a\\[b|x.md"},
+}, {
+	name: "an opening bracket inside raw html in the link text",
+	src:  "[a<i data-x=\"[\">b</i>](x.md)\n",
+	want: []string{"[a<i data-x=\"[\">b</i>](x.md)|a<i data-x=\"[\">b</i>|x.md"},
+}, {
+	// An autolink carries its URL off the node instead of in a child, so it
+	// contributes nothing to the floor and its brackets are read as source.
+	// The label's closer is still the first `]` whose tail checks out.
+	name: "an opening bracket inside an autolink in the link text",
+	src:  "[<https://x/a[b>](y.md)\n",
+	want: []string{"[<https://x/a[b>](y.md)|<https://x/a[b>|y.md"},
 }, {
 	// The whole tail lives inside inline code in the label, so only the
 	// destination check can tell the two candidate closers apart.
@@ -194,6 +216,48 @@ var linkCases = []linkCase{{
 	name: "an image in the link text",
 	src:  "[![in](a.png)](b.md)\n",
 	want: []string{"[![in](a.png)](b.md)|![in](a.png)|b.md"},
+}, {
+	// A thumbnail that links to its own file, which writes the SAME
+	// destination twice. The destination check cannot tell the nested closer
+	// from the label's own here, because the two candidate tails parse back
+	// to byte-equal destinations; only a floor above the whole nested image
+	// can.
+	name: "an image in the link text sharing the link's destination",
+	src:  "[![](./img/shot.png)](./img/shot.png)\n",
+	want: []string{
+		"[![](./img/shot.png)](./img/shot.png)|![](./img/shot.png)|./img/shot.png",
+	},
+}, {
+	// The same collision with alt text, which is where the nested label's
+	// own content raises the floor and the nested TAIL is all that is left
+	// to get past.
+	name: "an image with alt text sharing the link's destination",
+	src:  "[![alt](x.png)](x.png)\n",
+	want: []string{"[![alt](x.png)](x.png)|![alt](x.png)|x.png"},
+}, {
+	name: "an image in an image in the link text all sharing one destination",
+	src:  "[![![](a.png)](a.png)](a.png)\n",
+	want: []string{"[![![](a.png)](a.png)](a.png)|![![](a.png)](a.png)|a.png"},
+}, {
+	// A nested DESTINATION may hold a bracket nothing balances, which is
+	// legal because a destination is a path and not inline content. Taking
+	// the floor from the nested image's own resolved span is what gets past
+	// it; reading the label as brackets never could.
+	name: "a nested image destination holding an unbalanced bracket",
+	src:  "[![](a[.png)](x.md)\n",
+	want: []string{"[![](a[.png)](x.md)|![](a[.png)|x.md"},
+}, {
+	name: "a nested image title holding an unbalanced bracket",
+	src:  "[![](a.png \"t[\")](b.md)\n",
+	want: []string{"[![](a.png \"t[\")](b.md)|![](a.png \"t[\")|b.md"},
+}, {
+	// Both at once: the destination that is shared with the outer form, so
+	// the destination check cannot decide, holds the bracket that no reading
+	// of the label could balance. One floor above the nested form's whole
+	// written extent answers both.
+	name: "a shared destination holding an unbalanced bracket",
+	src:  "[![](a[.png)](a[.png)\n",
+	want: []string{"[![](a[.png)](a[.png)|![](a[.png)|a[.png"},
 }, {
 	name: "a destination on the line after its paren",
 	src:  "[a](\nx.md)\n",
@@ -409,6 +473,78 @@ func TestLinks_RewriteDestinationsInOneParse(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 	const want = "[a](new/one.md)\n\n```\n[x](old/skip.md)\n```\n\n[b](<new/two a.md>) [c][id]\n\n[id]: old/three.md\n"
+	if string(got) != want {
+		t.Errorf("Apply =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// TestLinks_SelfLinkingThumbnailSpans pins the exact offsets of the shape
+// that used to collide: a thumbnail linking to its own file writes one
+// destination twice, so the link and the image each resolved to the SAME
+// bytes and the link's span stopped inside itself. The two good cases in the
+// same document — a plain link and a link whose text holds an ordinary nested
+// bracket pair — are there to prove the raised floor moved nothing else.
+func TestLinks_SelfLinkingThumbnailSpans(t *testing.T) {
+	t.Parallel()
+	const src = "[![](./img/shot.png)](./img/shot.png) [ok](y.md) [a[b]c](z.md)\n"
+	s := markdown.NewSource([]byte(src))
+
+	wantLinks := []markdown.Link{
+		{
+			Span: markdown.Span{Start: 0, Stop: 37}, Text: markdown.Span{Start: 1, Stop: 20},
+			Dest: markdown.Span{Start: 22, Stop: 36},
+		},
+		{
+			Span: markdown.Span{Start: 38, Stop: 48}, Text: markdown.Span{Start: 39, Stop: 41},
+			Dest: markdown.Span{Start: 43, Stop: 47},
+		},
+		{
+			Span: markdown.Span{Start: 49, Stop: 62}, Text: markdown.Span{Start: 50, Stop: 55},
+			Dest: markdown.Span{Start: 57, Stop: 61},
+		},
+	}
+	if got := s.Links(); !slices.Equal(got, wantLinks) {
+		t.Errorf("Links =\n %v\nwant\n %v", got, wantLinks)
+	}
+	wantImages := []markdown.Image{
+		{
+			Span: markdown.Span{Start: 1, Stop: 20}, Alt: markdown.Span{Start: 3, Stop: 3},
+			Dest: markdown.Span{Start: 5, Stop: 19},
+		},
+	}
+	if got := s.Images(); !slices.Equal(got, wantImages) {
+		t.Errorf("Images =\n %v\nwant\n %v", got, wantImages)
+	}
+}
+
+// TestLinks_SelfLinkingThumbnailEditsAreDisjoint is what the fix buys a
+// consumer that rewrites destinations when a file moves. The link and the
+// image write two separate destinations, so the two edits claim disjoint
+// bytes and Apply rewrites both in one pass — where before the two views
+// reported one destination twice and Apply had to refuse the pair.
+func TestLinks_SelfLinkingThumbnailEditsAreDisjoint(t *testing.T) {
+	t.Parallel()
+	const src = "See [![](./img/shot.png)](./img/shot.png) here.\n"
+	s := markdown.NewSource([]byte(src))
+
+	var edits []markdown.Edit
+	for _, l := range s.Links() {
+		edits = append(edits, markdown.Edit{Span: l.Dest, Text: "./pics/shot.png"})
+	}
+	for _, im := range s.Images() {
+		edits = append(edits, markdown.Edit{Span: im.Dest, Text: "./pics/shot.png"})
+	}
+	if len(edits) != 2 {
+		t.Fatalf("built %d edits, want 2", len(edits))
+	}
+	if edits[0].Span.Overlaps(edits[1].Span) {
+		t.Fatalf("the link dest %v still overlaps the image dest %v", edits[0].Span, edits[1].Span)
+	}
+	got, err := s.Apply(edits...)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	const want = "See [![](./pics/shot.png)](./pics/shot.png) here.\n"
 	if string(got) != want {
 		t.Errorf("Apply =\n%q\nwant\n%q", got, want)
 	}
