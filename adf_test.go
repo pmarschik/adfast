@@ -473,6 +473,50 @@ func TestAdfToMarkdown_CodeMarkInference(t *testing.T) {
 			t.Errorf("got %q, want containing `a`**b**", md)
 		}
 	})
+
+	// An explicit break stops the forward inference. A wrapper cannot stay
+	// open across a break — the break carries no marks, so the grouping
+	// closes every one of them at it — which means a mark inferred past a
+	// break is a mark that has to be taken apart again on the way out, and
+	// the taken-apart output no longer encodes to the ADF the inference
+	// produced: the render was two renders away from a fixpoint. A code
+	// span never spanned a line break either, so there was no evidence for
+	// the wide reading in the first place.
+	//
+	// Both halves are asserted, so a fix that stops too early fails too:
+	// the text before the break must still join the run, and the text
+	// after it must stay out.
+	t.Run("the run stops at an explicit break", func(t *testing.T) {
+		for _, tt := range []struct {
+			name string
+			mark adf.Mark
+			want string
+		}{
+			{"strong", &adf.Strong{}, "**a `b` c**\\\nd\n"},
+			{"em", &adf.Em{}, "_a `b` c_\\\nd\n"},
+			{"strike", &adf.Strike{}, "~~a `b` c~~\\\nd\n"},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				input := doc(p(
+					txt("a ", tt.mark),
+					txt("b", &adf.Code{}),
+					txt(" c"),
+					&adf.HardBreak{},
+					txt("d"),
+				))
+				md := adfToMD(input)
+				if md != tt.want {
+					t.Errorf("got %q, want %q", md, tt.want)
+				}
+				// The render has to be a fixpoint, which is what the
+				// unbounded run cost: re-encoding the split output gave
+				// back different ADF, and the next render moved again.
+				if twice := adfToMD(mdToADF(md)); twice != md {
+					t.Errorf("not a fixpoint:\n once:  %q\n twice: %q", md, twice)
+				}
+			})
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

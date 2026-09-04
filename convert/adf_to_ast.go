@@ -964,11 +964,12 @@ func convertAdfInlines(nodes []adf.Node, rc renderCtx) []ast.Node {
 // context the mark hooks need.
 func flatInlineSpanOps(rc renderCtx) spanOps[flatInline] {
 	return spanOps[flatInline]{
-		strong: func(i *flatInline) bool { return i.strong },
-		em:     func(i *flatInline) bool { return i.em },
-		strike: func(i *flatInline) bool { return i.strike },
-		isCode: func(i *flatInline) bool { return i.isCode },
-		text:   func(i *flatInline) string { return i.text },
+		strong:  func(i *flatInline) bool { return i.strong },
+		em:      func(i *flatInline) bool { return i.em },
+		strike:  func(i *flatInline) bool { return i.strike },
+		isCode:  func(i *flatInline) bool { return i.isCode },
+		isBreak: func(i *flatInline) bool { return i.isBreak },
+		text:    func(i *flatInline) string { return i.text },
 		set: func(i *flatInline, mark spanMark) {
 			switch mark {
 			case spanStrong:
