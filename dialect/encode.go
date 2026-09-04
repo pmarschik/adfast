@@ -209,13 +209,25 @@ func mediaSingleFromAttrs(attrs map[string]string, media *adf.Media) *adf.MediaS
 // (see EncodesAsDatasource), so the QUERY DEGRADES to a paragraph rather
 // than vanishing with the card; convert reports it as
 // CodeJQLDegraded. An empty query leaves nothing to keep and drops.
-func (n *JQL) EncodeADF(ctx extension.EncodeContext) []adf.Node {
+//
+// The degraded paragraph carries the query as FLAT TEXT, through the same
+// degradedCardLabel every other card in this file degrades through. A JQL
+// query is a query string and not prose: the datasource branch below puts
+// ast.PlainText and nothing else into parameters.jql, so a label written
+// "project = **INFRA**" already reaches the remote as "project = INFRA"
+// whenever the card is complete. Encoding the degraded leg through
+// EncodeInlines instead made the same label mean two different things
+// depending on whether the attributes happened to be present, and it left
+// the marks somewhere no query could use them. Measured against the
+// formatter, which mirrors this method (convert's normalizeJQL) and has
+// always written the flat text: "::jql[project = **INFRA**]" encoded to a
+// paragraph with a strong mark, the formatter rewrote the line to
+// "project = INFRA", and that document encoded to a paragraph WITHOUT the
+// mark — so formatting a document changed the ADF a push would send.
+func (n *JQL) EncodeADF(_ extension.EncodeContext) []adf.Node {
 	jql := ast.PlainText(n.Children)
 	if !n.EncodesAsDatasource() {
-		if jql == "" {
-			return nil
-		}
-		return []adf.Node{&adf.Paragraph{Content: ctx.EncodeInlines(n.Children)}}
+		return degradedCardLabel(jql)
 	}
 	ds := map[string]any{
 		"id": n.Attrs["datasource"],
