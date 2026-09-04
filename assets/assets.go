@@ -39,6 +39,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	_ "golang.org/x/image/bmp"  // dimension probing
 	_ "golang.org/x/image/tiff" // dimension probing
@@ -116,6 +117,27 @@ type Store interface {
 	// path; ok is false for unreadable files and non-image formats. How
 	// reference paths map to physical files is the store's concern.
 	Dims(path string) (width, height int, ok bool)
+	// Report runs fn with the store answering about media WITHOUT
+	// repairing the folder it answers for. Resolution is not otherwise a
+	// passive read — a store that keeps friendly files beside the
+	// documents creates the one it is asked about (see FSStore.Resolve)
+	// — so a caller that only reports on a document, and must leave the
+	// working tree exactly as it found it, asks inside Report:
+	//
+	//	var asset convert.MediaAsset
+	//	store.Report(func() { asset, ok = store.Resolve(id) })
+	//
+	// Report answers the same paths and dimensions it would answer
+	// outside, taking them from the content-addressed blobs when the
+	// friendly file is absent, so a report is not degraded by being
+	// read-only — a quiet report that says the wrong thing would be
+	// worse than the file it avoids writing.
+	//
+	// It is about repair, not about writes in general: Add, Put and
+	// Associate still write, because a caller that calls them is not
+	// reporting. Report is scoped to fn (nesting and concurrent use are
+	// safe), and every wrapper forwards it to what it wraps.
+	Report(fn func())
 }
 
 // FSStore is the filesystem Store for one assets folder. All markdown
@@ -140,6 +162,10 @@ type FSStore struct {
 	// storeSubdir is the content-addressed blob directory, relative to
 	// blobParent. Defaults to "assets/.store"; override with WithStoreDir.
 	storeSubdir string
+	// reports counts the Report calls in flight on this instance — see
+	// Report. A count rather than a flag because report scopes nest, and
+	// atomic because concurrent readers of one instance are supported.
+	reports atomic.Int64
 }
 
 // Option configures an FSStore at construction.
@@ -277,9 +303,15 @@ func (s *FSStore) refToFull(path string) (string, error) {
 // elsewhere) is rejected, so reference paths can never exfiltrate
 // content from outside the store. It returns the physical path to read
 // plus its FileInfo (for size checks before reading).
+// While reporting, a friendly file this folder does not have is read
+// from its blob instead (see readableBlob), so a read-only caller sees
+// the content a repairing one would have created.
 func (s *FSStore) resolveReadable(full string) (string, fs.FileInfo, error) {
 	fi, err := os.Lstat(full)
 	if err != nil {
+		if s.reporting() {
+			return s.readableBlob(full, err)
+		}
 		return "", nil, err
 	}
 	if fi.Mode().IsRegular() {
@@ -308,6 +340,69 @@ func (s *FSStore) resolveReadable(full string) (string, fs.FileInfo, error) {
 		return "", nil, fmt.Errorf("asset %q is not a regular file", full)
 	}
 	return resolved, target, nil
+}
+
+// readableBlob answers a path-keyed read (content, dimensions, the
+// content hash behind a name) while reporting, for a friendly file this
+// folder does not hold: the blob of the record carrying that name. It
+// keeps a report honest about a document whose assets folder somebody
+// cleaned — the same bytes a repairing run would have put back, without
+// putting them back. The blob comes from securePath, so the read stays
+// inside the store exactly like the vetted symlink path below.
+//
+// A name is only unique within one folder, so a split layout can record
+// the same friendly name for two different contents in two folders. It
+// refuses that case with the absence it was called for: which content
+// the missing file stood for is unknowable, and answering with either
+// one would be a coin toss reported as fact.
+func (s *FSStore) readableBlob(full string, absent error) (string, fs.FileInfo, error) {
+	name := filepath.Base(full)
+	var found string
+	var info fs.FileInfo
+	for hash, record := range s.recordsOnDisk() {
+		if record.Name != name {
+			continue
+		}
+		blob, err := s.securePath(true, hash+filepath.Ext(name))
+		if err != nil {
+			continue
+		}
+		fi, err := os.Stat(blob)
+		if err != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		if found != "" {
+			return "", nil, absent
+		}
+		found, info = blob, fi
+	}
+	if found == "" {
+		return "", nil, absent
+	}
+	return found, info, nil
+}
+
+// recordsOnDisk reads the vetted index straight from the file, without
+// taking the index lock. The report-mode fallback uses it because it
+// hangs off dimsAt, which a mutation holding the lock also reaches (Add
+// → mustAsset → dimsAt): locking that deep in a read path would
+// deadlock the write that got there. Only committed state is visible,
+// since saveIndex replaces the file atomically.
+func (s *FSStore) recordsOnDisk() map[string]assetRecord {
+	raw, err := os.ReadFile(s.indexPath())
+	if err != nil {
+		return nil
+	}
+	var idx index
+	if json.Unmarshal(raw, &idx) != nil {
+		return nil
+	}
+	for hash, disk := range idx.Assets {
+		if !validRecord(hash, disk) {
+			delete(idx.Assets, hash)
+		}
+	}
+	return idx.Assets
 }
 
 // readRef loads the bytes behind a reference path with full validation:
@@ -395,23 +490,82 @@ func (s *FSStore) recordFor(mediaID string) (string, assetRecord, bool) {
 	return "", assetRecord{}, false
 }
 
+// Report implements Store: it suppresses the friendly-file repair for
+// the duration of fn, on this instance only.
+func (s *FSStore) Report(fn func()) {
+	s.reports.Add(1)
+	defer s.reports.Add(-1)
+	fn()
+}
+
+// reporting reports whether a Report scope is open on this instance.
+func (s *FSStore) reporting() bool { return s.reports.Load() > 0 }
+
+// Report implements Store for a scoped view: the scope narrows media
+// ids, not how the store answers about them.
+//
+// This forwarding, and layeredStore's, live beside the mode they
+// forward rather than with the rest of their own type's methods, so
+// that the whole of the report mechanism reads in one place — its
+// correctness is that EVERY wrapper passes it down, which is a claim
+// about the set, not about any one wrapper.
+func (s *scopedStore) Report(fn func()) { s.inner.Report(fn) }
+
+// Report implements Store for a stack: fn runs with every layer in
+// report mode, since a read may be answered by any of them.
+func (l layeredStore) Report(fn func()) {
+	if len(l) == 0 {
+		fn()
+		return
+	}
+	l[0].Report(func() { l[1:].Report(fn) })
+}
+
 // assetOf is the render asset for a recorded blob, materializing the
-// friendly file from the blob store when this folder has none yet.
+// friendly file from the blob store when this folder has none yet —
+// except inside Report, which answers from the blob instead of
+// creating anything.
 func (s *FSStore) assetOf(hash, name string) (convert.MediaAsset, bool) {
 	full, err := s.securePath(false, name)
 	if err != nil {
 		return convert.MediaAsset{}, false
 	}
+	probe := full
 	if _, err := os.Stat(full); err != nil {
-		if !s.materialize(hash, name) {
+		if !s.reporting() {
+			if !s.materialize(hash, name) {
+				return convert.MediaAsset{}, false
+			}
+		} else if probe, err = s.reportableBlob(hash, name, full); err != nil {
 			return convert.MediaAsset{}, false
 		}
 	}
 	asset := convert.MediaAsset{Path: s.refPath(name)}
-	if w, h, ok := s.dimsAt(full); ok {
+	if w, h, ok := s.dimsAt(probe); ok {
 		asset.Width, asset.Height = w, h
 	}
 	return asset, true
+}
+
+// reportableBlob is the blob to answer about while reporting, for a
+// record whose friendly file is not usable. It mirrors materialize's
+// refusals exactly, so a report says what a non-report run would:
+// nothing is answered for a record with no blob, and nothing for an
+// occupied friendly path — materialize declines to write over or
+// through whatever sits there, and the store does not claim a path it
+// would not have made.
+func (s *FSStore) reportableBlob(hash, name, full string) (string, error) {
+	if _, err := os.Lstat(full); err == nil {
+		return "", fmt.Errorf("asset %q: friendly path occupied", full)
+	}
+	blob, err := s.securePath(true, hash+filepath.Ext(name))
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(blob); err != nil {
+		return "", err
+	}
+	return blob, nil
 }
 
 // Lookup implements Store. FSStore maps the path by content: the
