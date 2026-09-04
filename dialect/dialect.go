@@ -184,9 +184,18 @@ func (n *Media) ChildNodes() []ast.Node { return n.Children }
 // SetChildNodes implements ast.Parent.
 func (n *Media) SetChildNodes(kids []ast.Node) { n.Children = kids }
 
-// newMedia builds a Media from its raw directive payload, binding the
+// NewMedia builds a Media from its raw directive payload, binding the
 // documented attributes into the typed fields.
-func newMedia(attrs map[string]string, children []ast.Node) *Media {
+//
+// It is exported because the media projection runs on two legs and each
+// one has to build this node: dialect's decode hooks (adf→md) and
+// convert's normalizer (the md→md formatter, which performs the same
+// projection over its own media shape without going through ADF). The
+// binding used to be written out field for field in both places, so a
+// new attribute on Media needed two edits and the compiler named
+// neither. One constructor makes it one edit, checked by the compiler
+// rather than by a test.
+func NewMedia(attrs map[string]string, children []ast.Node) *Media {
 	return &Media{
 		MediaType:     attrs["type"],
 		URL:           attrs["url"],

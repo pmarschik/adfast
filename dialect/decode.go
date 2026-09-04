@@ -247,7 +247,7 @@ func promoteExpand(d *ast.ContainerDirective) extension.Node {
 }
 
 func promoteMedia(d *ast.LeafDirective) extension.Node {
-	m := newMedia(d.Attrs, d.Children)
+	m := NewMedia(d.Attrs, d.Children)
 	m.BlockSpacing = d.BlockSpacing
 	return m
 }
@@ -801,7 +801,7 @@ func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx ex
 	if media.Alt != "" {
 		children = []ast.Node{&ast.Text{Value: media.Alt}}
 	}
-	return newMedia(attrs, children)
+	return NewMedia(attrs, children)
 }
 
 // decodeDatasource converts a JQL-datasource blockCard to a

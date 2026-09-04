@@ -2134,6 +2134,29 @@ func (m *fmtMedia) singleBlocksImage(defaultLayout string) bool {
 	return m.layout != nil && *m.layout != defaultLayout
 }
 
+// blocksImage mirrors dialect's mediaBlocksImage: the half the file and
+// the external image paths share — an occurrence key, a non-empty
+// collection, a border, or a wrapper richer than the given default
+// layout. Each path adds its own type-specific checks on top.
+//
+// It exists as one predicate for the reason dialect factored its own
+// out: these three checks used to be restated inside mediaAsImage AND
+// inside fileMediaAsImage, so the projection's blocking rule lived in
+// three places across the two legs and a change to it had to find all
+// three.
+func (m *fmtMedia) blocksImage(defaultLayout string) bool {
+	if m.occurrenceKey != "" {
+		return true
+	}
+	if m.collection != nil && *m.collection != "" {
+		return true
+	}
+	if m.hasBorder {
+		return true
+	}
+	return m.singleBlocksImage(defaultLayout)
+}
+
 // mediaAsImage mirrors dialect's mediaAsImage, the shared URL decision
 // included: both legs ask mediaurl.ProjectsToImage, so
 // WithPreserveLocalImages lets a document-relative external url reach
@@ -2145,16 +2168,10 @@ func (fn *normalizer) mediaAsImage(m *fmtMedia) ast.Node {
 	if !mediaurl.ProjectsToImage(m.url, fn.preserveLocalImages) {
 		return nil
 	}
-	if m.width != nil || m.height != nil || m.occurrenceKey != "" {
+	if m.width != nil || m.height != nil {
 		return nil
 	}
-	if m.collection != nil && *m.collection != "" {
-		return nil
-	}
-	if m.hasBorder {
-		return nil
-	}
-	if m.singleBlocksImage("center") {
+	if m.blocksImage("center") {
 		return nil
 	}
 	return imageParagraph(m.url, m.alt, m.href)
@@ -2174,16 +2191,7 @@ func (fn *normalizer) fileMediaAsImage(m *fmtMedia) ast.Node {
 		float64(asset.Width) != *m.width || float64(asset.Height) != *m.height {
 		return nil
 	}
-	if m.collection != nil && *m.collection != "" {
-		return nil
-	}
-	if m.occurrenceKey != "" {
-		return nil
-	}
-	if m.hasBorder {
-		return nil
-	}
-	if m.singleBlocksImage("align-start") {
+	if m.blocksImage("align-start") {
 		return nil
 	}
 	return imageParagraph(asset.Path, m.alt, m.href)
@@ -2317,6 +2325,12 @@ func mediaSourceAttrs(m *fmtMedia, om mediaOmissions, attrs map[string]string) {
 
 // mediaLeafNode mirrors dialect's mediaLeafNode: the canonical ::media
 // payload re-derived from the media shape.
+//
+// The typed fields are bound by dialect.NewMedia, the same constructor
+// dialect's own copy of the projection ends in. This half used to be a
+// hand-written copy of it, field for field, so a new attribute on
+// dialect.Media had to be added in two places and the compiler named
+// neither.
 func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	om := fn.mediaOmissionsOf(m)
 	attrs := map[string]string{}
@@ -2329,20 +2343,5 @@ func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	if m.alt != "" {
 		children = []ast.Node{&ast.Text{Value: m.alt}}
 	}
-	return &dialect.Media{
-		MediaType:     attrs["type"],
-		URL:           attrs["url"],
-		Collection:    attrs["collection"],
-		Path:          attrs["path"],
-		Layout:        attrs["layout"],
-		ID:            attrs["id"],
-		OccurrenceKey: attrs["occurrenceKey"],
-		WidthType:     attrs["widthType"],
-		Width:         parseFloatAttr(attrs, "width"),
-		Height:        parseFloatAttr(attrs, "height"),
-		LayoutWidth:   parseFloatAttr(attrs, "layoutWidth"),
-		Group:         attrs["group"] == "true",
-		Attrs:         attrs,
-		Children:      children,
-	}
+	return dialect.NewMedia(attrs, children)
 }
