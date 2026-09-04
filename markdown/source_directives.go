@@ -102,6 +102,33 @@ type Directive struct {
 	// An unclosed container — what the buffer looks like while the block
 	// is still being typed — has no closing fence at all. Its Stop is the
 	// end of the enclosing container, or the end of the source.
+	//
+	// FOR A TEXT DIRECTIVE THE SPAN CAN COVER LESS THAN A READER WOULD CALL
+	// THE DIRECTIVE, and that is the parser's verdict rather than a
+	// shortcoming of this view. A leaf and a container are invalidated
+	// outright by a label they cannot parse; the text form instead FALLS
+	// BACK to a bare `:name` and leaves the rest as prose. Measured on
+	// `x :note[unbal[ y]{c=red} z`:
+	//
+	//	one Directive:  Name ":note", Span {2 7}, Attrs nil
+	//
+	// The bracket-balancing label scan never terminates, so `[unbal[ y]`
+	// is not a label, and `{c=red}` — which sits exactly where an
+	// attribute block would — is PROSE. The same input written as
+	// `::leaf[unbal[ y]{c=red}` or `:::cont[unbal[ y]{c=red}` yields NO
+	// directive at all.
+	//
+	// Two consequences for a consumer. One that highlights or replaces
+	// this span will visibly leave the label bytes standing in the
+	// document, so a replacement has to be written to read correctly with
+	// them still there. And one that reasons "nil Attrs means no attribute
+	// block is written" will be wrong about what the reader sees: the
+	// braces are on the page, they are simply not attributes.
+	//
+	// A caller that genuinely needs the reader's extent rather than the
+	// parser's does not have it here, and widening this span would break
+	// the contract the whole view rests on — that these are the same
+	// verdicts the conversion path reaches.
 	Span Span
 	// AttrsSpan covers the `{…}` attribute block WITH ITS BRACES, so a
 	// caller can replace the block wholesale or insert an attribute just

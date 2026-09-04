@@ -365,12 +365,26 @@ func TestDirectives_AttrsStayTheParsersVerdict(t *testing.T) {
 
 // TestDirectives_ContractHolds pins document order and the containment of
 // every attribute span in the block, and of the block in the directive.
+//
+// The last directive of the source is the shape that spends a trap this
+// check used to carry: a TEXT directive whose label cannot be parsed reports
+// a zero AttrsSpan, and the containment comparison was written unguarded, so
+// `0 < Span.Start` false-fired on a directive that reports nothing to
+// locate. Every case in the table before it had a written block, which is
+// the only reason the trap had not gone off. The antecedent is Attrs, not
+// the span — see the guarded form below and FuzzSourceDirectiveSpans, which
+// guards the same check the same way.
+//
+// With the unguarded comparison restored and this source in place:
+//
+//	--- FAIL: TestDirectives_ContractHolds (0.00s)
+//	    directive 3 attrs {0 0} are not inside its span {54 59}
 func TestDirectives_ContractHolds(t *testing.T) {
 	t.Parallel()
-	src := ":::info{#a}\n::media{#b}\n\ntext :status{#c} tail\n:::\n"
+	src := ":::info{#a}\n::media{#b}\n\ntext :status{#c} tail\n:::\n\nx :note[unbal[ y]{c=red} z\n"
 	ds := markdown.Directives([]byte(src))
-	if len(ds) != 3 {
-		t.Fatalf("got %d directives, want 3: %q", len(ds), directiveTexts(src, ds))
+	if len(ds) != 4 {
+		t.Fatalf("got %d directives, want 4: %q", len(ds), directiveTexts(src, ds))
 	}
 	prev := 0
 	for i, d := range ds {
@@ -384,7 +398,9 @@ func TestDirectives_ContractHolds(t *testing.T) {
 		if src[d.Span.Start] != ':' {
 			t.Errorf("directive %d starts at %q, want ':'", i, src[d.Span.Start])
 		}
-		if d.AttrsSpan.Start < d.Span.Start || d.AttrsSpan.Stop > d.Span.Stop {
+		// A directive with no recorded attributes locates no block, and its
+		// zero AttrsSpan is not a position to compare against the span.
+		if d.Attrs != nil && (d.AttrsSpan.Start < d.Span.Start || d.AttrsSpan.Stop > d.Span.Stop) {
 			t.Errorf("directive %d attrs %v are not inside its span %v", i, d.AttrsSpan, d.Span)
 		}
 		for _, a := range d.AttrSpans {
@@ -392,6 +408,63 @@ func TestDirectives_ContractHolds(t *testing.T) {
 				t.Errorf("directive %d attr %v is not inside the braces %v", i, a.Span, d.AttrsSpan)
 			}
 		}
+	}
+}
+
+// TestDirectives_TextDirectiveFallbackSpansTheNameOnly pins the case
+// Directive.Span's godoc now documents, so the documented claim cannot drift
+// from the parser.
+//
+// A leaf and a container are invalidated outright by a label they cannot
+// parse; a TEXT directive instead falls back to a bare `:name` and leaves the
+// rest as prose. The trap for a consumer is that the span covers less than a
+// reader would call the directive, and that the `{c=red}` still on the page
+// is prose rather than attributes — so nil Attrs does not mean no braces are
+// written.
+//
+// The two invalidated forms are in the same table, because "less than the
+// reader sees" and "nothing at all" are the two answers this grammar gives
+// and a change that merged them would pass a test carrying only one.
+func TestDirectives_TextDirectiveFallbackSpansTheNameOnly(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name string
+		src  string
+		want int
+	}{
+		{"text form falls back to the bare name", "x :note[unbal[ y]{c=red} z\n", 1},
+		{"leaf form is invalidated outright", "::leaf[unbal[ y]{c=red}\n", 0},
+		{"container form is invalidated outright", ":::cont[unbal[ y]{c=red}\nbody\n:::\n", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ds := markdown.Directives([]byte(tc.src))
+			if len(ds) != tc.want {
+				t.Fatalf("got %d directives, want %d: %q", len(ds), tc.want, directiveTexts(tc.src, ds))
+			}
+			if tc.want == 0 {
+				return
+			}
+			d := ds[0]
+			if d.Name != "note" || d.Level != markdown.DirectiveText {
+				t.Errorf("got name %q level %v, want \"note\" and the text level", d.Name, d.Level)
+			}
+			if got := tc.src[d.Span.Start:d.Span.Stop]; got != ":note" {
+				t.Errorf("span covers %q, want the bare %q", got, ":note")
+			}
+			if d.Attrs != nil {
+				t.Errorf("Attrs = %v, want nil: the braces on the page are prose", d.Attrs)
+			}
+			if d.AttrsSpan != (markdown.Span{}) {
+				t.Errorf("AttrsSpan = %v, want the zero span", d.AttrsSpan)
+			}
+			// The label bytes and the brace run are still in the document,
+			// which is the half of the contract a replace-by-span consumer
+			// has to plan for.
+			if rest := tc.src[d.Span.Stop:]; rest != "[unbal[ y]{c=red} z\n" {
+				t.Errorf("the bytes after the span are %q, want the label and braces left standing", rest)
+			}
+		})
 	}
 }
 
