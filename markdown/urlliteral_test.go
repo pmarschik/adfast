@@ -78,18 +78,64 @@ var urlLiteralHostCases = []urlLiteralHostCase{{
 	raw:  "",
 	text: "",
 }, {
-	// PRESERVED BEHAVIOR PIN, and the other side of the same coin. The TLD
-	// class is ASCII too, so a non-ASCII letter inside a host ends the
-	// literal early: the reference links "https://ex.coſ/x" WHOLE (measured),
-	// this stops at "ex.co", exactly where goldmark's `[a-z]+` stopped. That
-	// is the host/path character-class divergence — an ACCEPTED literal's
-	// extent — and widening the class here would change extents across the
-	// corpus rather than change a rejected literal's verdict. Written down so
-	// the truncation reads as known rather than as the fix missing a case.
-	name: "a long-s TLD keeps goldmark's extent",
+	// THE OTHER SIDE OF THE SAME COIN, and the one shape in this file where
+	// the WRONG href went out rather than none: goldmark's ASCII TLD class
+	// ended an ACCEPTED literal early, so "https://ex.coſ/x" linked as
+	// "https://ex.co". Both halves of the reference run it to the end of the
+	// word — the tokenizer with a Unicode domain, the transform with an ASCII
+	// host and a permissive path — so urlLiteralHostRune widens the shared
+	// TLD class and both columns now hold the whole address. Measured:
+	//
+	//	"See https://ex.coſ/x end"  ->  "See <https://ex.coſ/x> end"
+	//	"a [ https://ex.coſ/x b"    ->  "a \\[ <https://ex.coſ/x> b"
+	name: "a non-ASCII TLD no longer truncates the literal",
 	src:  "https://ex.coſ/x",
-	raw:  "https://ex.co",
-	text: "https://ex.co",
+	raw:  "https://ex.coſ/x",
+	text: "https://ex.coſ/x",
+}, {
+	// The same widening, with the non-ASCII letter LAST and no path, and
+	// with a Latin-1 letter rather than a long s — the class is a script
+	// negation, not a spot fix for U+017F.
+	name: "a non-ASCII TLD with no path",
+	src:  "https://ex.coſ",
+	raw:  "https://ex.coſ",
+	text: "https://ex.coſ",
+}, {
+	name: "an accented TLD letter",
+	src:  "https://ex.comé/x",
+	raw:  "https://ex.comé/x",
+	text: "https://ex.comé/x",
+}, {
+	// NON-ASCII PUNCTUATION IS STILL NOT A HOST CHARACTER, and the class
+	// must not swallow it: micromark's domain stops at `\p{P}`/`\p{S}`, so
+	// the host is "ex.com" on both sides. That the literal ENDS here is the
+	// path gap, not the host rule — the reference then hands "—x" to its
+	// path, which runs to whitespace, and links the whole thing (measured:
+	// "See https://ex.com—x end" comes back "See <https://ex.com—x> end").
+	// Exactly the "https://ex.com~foo" row below, in the non-ASCII half.
+	name: "an em dash ends the host, and the path gap ends the literal",
+	src:  "https://ex.com—x",
+	raw:  "https://ex.com",
+	text: "https://ex.com",
+}, {
+	// The same for a currency sign, which is `\p{S}` rather than `\p{P}`:
+	// both branches of micromark's unicodePunctuation `/\p{P}|\p{S}/u` are
+	// out of the host class, so neither is a spot exclusion.
+	name: "a currency sign ends the host",
+	src:  "https://ex.com€x",
+	raw:  "https://ex.com",
+	text: "https://ex.com",
+}, {
+	// PRESERVED BEHAVIOR PIN, the remaining gap: a host whose FIRST segment
+	// is non-ASCII. The reference's raw-source tokenizer links this whole
+	// and its decoded-text transform rejects it outright (measured:
+	// "a [ https://例.com/x b" comes back unlinked), so closing it means
+	// widening the RAW pattern alone — a change to a rejected literal's
+	// verdict, not to this one's extent.
+	name: "a non-ASCII first host segment is not a host",
+	src:  "https://例.com/x",
+	raw:  "",
+	text: "",
 }, {
 	// THE NEGATIVES, which is what keeps the widening from being "anything
 	// after ://". The reference rejects each of these, measured.
