@@ -34,21 +34,28 @@ package convert
 // beside the row under test, so a change that "fixes" one media shape by
 // over-normalizing the plain ones fails here too.
 //
-// Three facts about the mirror, measured while writing this file, that
-// the reader of either copy cannot see from one side alone:
+// Facts about the mirror, measured while writing this file, that the
+// reader of either copy cannot see from one side alone:
 //
-//   - mediaBlocksImage has NO counterpart here. dialect factors the
-//     three checks the file and external image paths share
-//     (occurrenceKey, non-empty collection, border) into it; normalize.go
-//     restates all three inside mediaAsImage AND inside fileMediaAsImage,
-//     so that predicate lives in three places, not two.
-//   - normalize.go's mediaLeafNode ends in a hand-written copy of
-//     dialect's newMedia constructor, field for field, because newMedia is
-//     unexported. A new field on dialect.Media has to be added twice.
 //   - singleBlocksImage differs, and must: dialect also tests
 //     adf.HasExtra for a layout or width whose JSON value is not the type
 //     the field holds. A directive attribute is always a string, so the
 //     fmtMedia side has nothing to test.
+//   - the leaf CONSTRUCTOR is no longer doubled. normalize.go's
+//     mediaLeafNode used to end in a hand-written copy of dialect's
+//     unexported newMedia, field for field, so a new attribute on
+//     dialect.Media needed two edits and the compiler named neither;
+//     both copies now call dialect.NewMedia.
+//   - the blocking predicate the file and external image paths share
+//     (occurrenceKey, non-empty collection, border) used to be restated
+//     inside mediaAsImage AND inside fileMediaAsImage here, so it lived
+//     in three places against dialect's one. normalize.go now factors it
+//     into fmtMedia.blocksImage, the counterpart of dialect's
+//     mediaBlocksImage. The two are still separate functions: they read
+//     different types (adf.Media + adf.MediaSingle against fmtMedia),
+//     and the only shape both could call is one taking the four answers
+//     as booleans — which would move the actual checks back out to the
+//     call sites and lose exactly what factoring them in bought.
 
 import (
 	"strings"
