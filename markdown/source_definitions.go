@@ -332,6 +332,64 @@ func definitionTitle(
 	return title, end, true
 }
 
+// definitionTitleOutsideItsLines reports whether the title the parser
+// recorded for def was read from a line def's own extent does NOT cover — a
+// title that, by CommonMark, is no title at all.
+//
+// The shape is `[a]: x.md` followed by `"t" tail`. CommonMark 0.31.2 ends a
+// definition after "an optional link title, which if it is present must be
+// separated from the link destination by spaces or tabs. No further character
+// may occur." — so `"t" tail` cannot be this definition's title, and the
+// spec's own example for it (`[foo]: /url` then `"title" ok`) keeps the
+// second line as a paragraph while the definition resolves with NO title;
+// checked against the reference implementation (commonmark.js 0.31.2), which
+// renders `<p>&quot;title&quot; ok</p>` and `<a href="/url">foo</a>` with no
+// title attribute. goldmark v1.8.5 agrees about the extent — it stops the
+// definition at the destination and leaves the line in the paragraph — but
+// still constructs the node WITH the title it scanned off that line
+// (parser/link_ref.go: the branch that returns `startLine, endLine` after
+// PeekLine finds the line non-blank). The recorded title and the recorded
+// extent therefore contradict each other.
+//
+// A consumer that copies the title unchecked writes a title the author never
+// wrote, and the excluded line is still a paragraph, so the same text lands
+// in the document twice. Here the answer has to be REJECTION rather than the
+// discount the span view applies to padding: there is no span the title could
+// have, which is exactly why Definitions drops the whole definition and
+// counts it.
+//
+// This walks the definition with the span resolver's own helpers up to the
+// end of the destination and then asks one question: does anything at all
+// follow inside the definition's extent? A written title always does — it is
+// the last thing in the extent, the transformer having trimmed the trailing
+// whitespace off the last line. So nothing following means nothing was
+// written, and a recorded title then came from beyond the definition.
+//
+// The bias is deliberately conservative: every step that cannot be resolved
+// answers false and keeps the recorded title, because dropping a title on a
+// shape this resolver merely fails to understand would lose content the
+// author did write. Only a definition walked all the way to a destination
+// that ENDS it loses its title.
+func definitionTitleOutsideItsLines(def *gast.LinkReferenceDefinition, src []byte) bool {
+	if len(def.Title) == 0 {
+		return false
+	}
+	lines := def.Lines()
+	pos, stop, ok := definitionExtent(lines, len(src))
+	if !ok || pos != def.Pos() || src[pos] != '[' {
+		return false
+	}
+	_, next, ok := definitionLabel(def, src, lines, pos)
+	if !ok {
+		return false
+	}
+	_, next, ok = definitionDest(def, src, lines, next)
+	if !ok {
+		return false
+	}
+	return skipMarkdownSpaces(src, next, lines) >= stop
+}
+
 // matchesAsRead reports whether the bytes sp covers are the value the parser
 // recorded for that part of the definition — exactly, or once the spaces at
 // the start of each line are discounted on both sides.

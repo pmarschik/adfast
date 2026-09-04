@@ -544,10 +544,21 @@ func convertStructuredBlock(node gast.Node, src []byte, lc *liftCtx, depth int) 
 		// identifier the uses pair on); the destination and title carry
 		// CommonMark escapes the same way an inline link's do, so they
 		// decode here like convertLinkInline's.
+		//
+		// The TITLE is the one recorded value that has to be checked
+		// before it is copied: goldmark v1.8.5 hands out a title it read
+		// from a line it then left OUT of the definition — see
+		// definitionTitleOutsideItsLines — and copying that one invents a
+		// title the author never wrote AND duplicates the line, which
+		// stays a paragraph.
+		title := n.Title
+		if definitionTitleOutsideItsLines(n, src) {
+			title = nil
+		}
 		return &ast.Definition{
 			Label: string(n.Label),
 			URL:   decodeMarkdownEscapes(string(n.Destination), ""),
-			Title: decodeMarkdownEscapes(string(n.Title), ""),
+			Title: decodeMarkdownEscapes(string(title), ""),
 		}, true
 	}
 	return nil, false
