@@ -244,6 +244,14 @@ The last three rows are the lossy ones, and none is silent:
   the only loss here that is not permanent: upload the asset and the
   next encode finds its id.
 
+  The `::media[alt]{path=…}` spelling of the same reference — what a
+  pulled document writes for a downloaded attachment — takes a different
+  loss and reports the same code. The directive is explicit and carries
+  the alt text and the caption, so the media node ships; but `path` is a
+  lookup key, not an ADF field, so with nothing behind it the node is
+  written with an EMPTY id and the path is gone. A path spelled beside an
+  explicit `id` is not reported: the id still addresses the attachment.
+
   Emitting nothing instead is what this row used to say, and the cost
   was out of all proportion to the picture. An image is very often the
   ONLY child of its block, so the drop emptied the block: a paragraph, a

@@ -59,11 +59,12 @@ vocabulary:
   opening bytes are kept as body rather than silently dropped.
 - `span-marker-invalid` — a table span marker (`>`/`^`) whose merge
   cannot apply; kept as literal cell text.
-- `unresolved-asset` — an `![alt](assets/…)` reference the asset store
-  could not map to a media id. The picture leaves the document and the
-  label stays, as a link, so the block the image sat in is never
-  emptied. It is the one loss an upload undoes: the next encode finds
-  the id.
+- `unresolved-asset` — an asset reference the store could not map to a
+  media id. For `![alt](assets/…)` the picture leaves the document and
+  the label stays, as a link, so the block the image sat in is never
+  emptied. For `::media[alt]{path=…}` the node ships but with an empty
+  id, and the path itself does not travel in ADF. It is the one loss an
+  upload undoes: the next encode finds the id.
 - `inline-image-degraded` — an inline `![alt](https://…)` rewritten as a
   link, because ADF has no inline image that can carry an external URL.
   The content stays visible and the round trip is stable; only the

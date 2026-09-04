@@ -49,6 +49,12 @@
 //     diagnostic — EncodeADF has no sink of its own, so the same
 //     predicate gates the encode, the diagnostic, and the prettier
 //     formatter's mirror of the encode.
+//   - ::media and :::media addressed by `path` spend that path on
+//     encode: ADF names an attachment by media id and has no path field,
+//     so the store lookup either produces an id or the media node ships
+//     without one (UnresolvedMediaPath). Same reason as ::jql — EncodeADF
+//     has no sink — so the predicate gates the encode's recovery and
+//     convert reports a convert.CodeUnresolvedAsset from it.
 //   - the block-mark wrappers (:::center/:::end, :::indent, :::breakout,
 //     :::dataConsumer, :::fragment) decode from ADF block MARKS:
 //     convert's block-mark wrapping constructs them around the marked
@@ -66,6 +72,7 @@ import (
 
 	"github.com/pmarschik/adfast/ast"
 	"github.com/pmarschik/adfast/extension"
+	"github.com/pmarschik/adfast/internal/mediasrc"
 )
 
 // ---------------------------------------------------------------------------
@@ -212,6 +219,48 @@ func NewMedia(attrs map[string]string, children []ast.Node) *Media {
 		Attrs:         attrs,
 		Children:      children,
 	}
+}
+
+// UnresolvedMediaPath answers the markdown-relative path a media
+// directive names that the asset store cannot turn into a media id.
+//
+// ADF addresses an attachment by media id and has no field for a path,
+// so `path` on a ::media or :::media directive is not an attribute that
+// travels — it is a lookup key, spent on encode (see the recovery in
+// mediaFromAttrs). An id the store does not know still addresses the
+// attachment; a path it does not know addresses nothing, and encode
+// emits a media node with an EMPTY id. So the path does not survive the
+// ADF leg in any form, and the loss is worth a word to the author.
+//
+// EncodeADF has no diagnostics sink, so this predicate gates the
+// reporting the way JQL.EncodesAsDatasource does: convert reports a
+// convert.CodeUnresolvedAsset from its extension visit. The md→md
+// formatter needs no counterpart — it keeps the directive and its path
+// exactly as written, which is the point of that leg being total.
+//
+// resolve is the store lookup, nil when the caller configured none. That
+// case is unresolved too: the picture is just as unaddressable when
+// nothing was wired up as when the wiring came back empty.
+func UnresolvedMediaPath(n ast.Node, resolve func(ref string) (mediaID string, ok bool)) (string, bool) {
+	var attrs map[string]string
+	switch media := n.(type) {
+	case *Media:
+		attrs = media.Attrs
+	case *MediaCaption:
+		attrs = media.Attrs
+	default:
+		return "", false
+	}
+	// External media is addressed by its url, and an explicit id needs no
+	// lookup at all — neither spends the path.
+	if attrs["type"] == "external" || attrs["id"] != "" {
+		return "", false
+	}
+	path := attrs["path"]
+	if path == "" {
+		return "", false
+	}
+	return path, mediasrc.ID("", path, resolve) == ""
 }
 
 // floatAttr parses a numeric directive attribute (0 when absent/invalid).
