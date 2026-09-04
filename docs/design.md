@@ -1030,6 +1030,17 @@ The lower-level verbs remain for a custom flow: `Pending()` lists the
 worklist, `Load` reads the bytes, and `Associate(id, path)` binds an
 existing file in place.
 
+`assets.PendingRefs(store, scope, refs)` asks the same question from the
+other side: it takes the references ONE document makes and keeps the ones
+the store can read and holds no media id for. `Pending` starts at the
+assets folder and lists what is in it; `PendingRefs` starts at the
+document. The two agree wherever a reference points into a folder the
+store lists, and they part where a composed store can READ further than
+it LISTS — a folder deliberately kept out of the worklist so a push never
+scans a project for files no document mentions. That is what the push
+flow narrows with, so a picture whose file the store can reach uploads
+even when no folder walk would have offered it.
+
 ### Reference rewriting
 
 When the store layout changes — a local folder becomes a shared root, or
