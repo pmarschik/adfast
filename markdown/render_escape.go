@@ -455,10 +455,28 @@ func (r *mdRenderer) escapeAngle(s string, i int, nextLead byte) bool {
 // but still splits the one text node into three, and ":media" invents a
 // mediaInline node. Measured on all three; see
 // TestPrettierRenderKeepsDirectiveShapedTextIntact.
+//
+// A SECOND, UNRELATED RULE rides along in remark mode only: the colon of a
+// scheme that lost its host. See colonBeforeSlashEscapes.
 func (r *mdRenderer) escapesColon(s string, i int, nextLead byte, st *inlineContext) bool {
+	// Checked BEFORE st.colons, which is off in table cells: the rule this
+	// mirrors is keyed on 'phrasing', and a cell is phrasing (measured — a
+	// one-cell table holding "see https:// bare" renders the escape).
+	if r.colonBeforeSlashEscapes(byteAt(s, i+1, nextLead), st) {
+		return true
+	}
 	if !st.colons {
 		return false
 	}
+	return r.escapesDirectiveColon(s, i, nextLead, st)
+}
+
+// escapesDirectiveColon is the directive half of escapesColon, which see: the
+// ':' that would re-parse as a text directive, or as a leading "::" at a block
+// break. It lives in its own function because the caller now weighs two
+// unrelated rules, and one function holding both was harder to read than the
+// two rules are separately.
+func (r *mdRenderer) escapesDirectiveColon(s string, i int, nextLead byte, st *inlineContext) bool {
 	// A literal backslash the prettier path has just written BARE is a
 	// preserved source escape (see PreservedEscapes) and already escapes
 	// this colon; a second one would render the author's "\:" as a
@@ -478,6 +496,54 @@ func (r *mdRenderer) escapesColon(s string, i int, nextLead byte, st *inlineCont
 	}
 	atBreak := st.hasPrev && st.prev == '\n' && next == ':'
 	return escapes || atBreak
+}
+
+// colonBeforeSlashEscapes reports whether a ':' needs a backslash because
+// the reference renderer's unsafe table writes one there: its GFM
+// autolink-literal extension contributes
+//
+//	{character: ':', before: '[ps]', after: '\/', inConstruct: 'phrasing',
+//	 notInConstruct: ['autolink', 'link', 'image', 'label']}
+//
+// The intent is a scheme that lost its host, where the escape stops a later
+// parse from linkifying text that was never a link. THE RULE AS WRITTEN IS
+// MUCH CRUDER THAN THAT INTENT, and it is the rule — not the intent — that
+// the byte on disk follows. Measured against the frozen reference by
+// rendering a hand-built mdast text node, so no parse step could
+// reinterpret the string first:
+//
+//	"see https:// bare"   ->  "see https\:// bare"
+//	"see https:/one bare" ->  "see https\:/one bare"   ONE slash is enough
+//	"a ftp:// b"          ->  "a ftp\:// b"            'p' is 'p'
+//	"a sip:/foo b"        ->  "a sip\:/foo b"          not a scheme at all
+//	"a s:/ d"             ->  "a s\:/ d"               one letter is enough
+//	"a S:/ d"             ->  "a S:/ d"                'before' is case-sensitive
+//	"a P:/ d"             ->  "a P:/ d"
+//	"a file:// b"         ->  "a file:// b"             'e' is not 'p' or 's'
+//	"a xyz:/c d"          ->  "a xyz:/c d"
+//	"see https:x bare"    ->  "see https:x bare"        no slash, no escape
+//
+// So the condition is exactly: the previous byte is a lowercase 'p' or 's',
+// and the next byte is a '/'. Anything narrower ("a scheme, then //")
+// disagrees with the reference on half of the rows above.
+//
+// REMARK MODE ONLY, and that half is measured too. This mirrors
+// mdast-util-to-markdown's table, which is what remark mode IS; prettier
+// has no such rule. Prettier 3.9.6, run with the flags the parity pins use,
+// leaves "see https:// bare" bare and PRESERVES an authored
+// "see https\:// bare" — which is already what the prettier path here
+// does, through PreservedEscapes. Writing the escape in prettier mode
+// would break that parity to fix nothing: both spellings re-parse to the
+// same text, so the escape is defensive rather than semantic.
+//
+// Not reachable inside a link label, which matches the rule's
+// notInConstruct: labelEscapes is a separate set and keeps its own ':'
+// rule (the directive one).
+func (r *mdRenderer) colonBeforeSlashEscapes(next byte, st *inlineContext) bool {
+	if r.cfg.prettierText || !st.hasPrev {
+		return false
+	}
+	return (st.prev == 'p' || st.prev == 's') && next == '/'
 }
 
 // labelEscapes reports whether s[i] needs a backslash inside a link
