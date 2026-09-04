@@ -404,14 +404,21 @@ func TestMediaFormatLegHonorsPreserveLocalImages(t *testing.T) {
 	}
 }
 
-// TestMediaFormatLegKeepsThePathAttribute pins the ONE media asymmetry
-// between the legs that is not drift and must not be reconciled: for a
+// TestMediaFormatLegKeepsThePathAttribute pins a media asymmetry between
+// the legs that is not drift and must not be reconciled: for a
 // store-known asset the format leg emits the markdown-relative path=
 // where dialect's leaf prefers id= (mediaSourceAttrs). The format leg is
 // total — it may not delete an author's path and make the document
 // depend on a store lookup to say where the picture is — while the ADF
 // leg addresses the attachment by media id because that is what ADF
 // holds.
+//
+// It is not the only such asymmetry any more. The format leg also keeps
+// an explicit id BESIDE a path when the author spelled both, which the
+// ADF leg never sees because ADF has no path field at all. That one is
+// pinned in the root package (TestFormatKeepsAMediaSource) for the same
+// reason this one is pinned here: the two projections read the same
+// facts, and only the author's document can spell both.
 //
 // This is a PRESERVED-BEHAVIOR PIN: it passes before and after the
 // preserveLocalImages fix, and exists so a later attempt to collapse the
