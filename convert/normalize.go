@@ -1828,8 +1828,10 @@ func (fn *normalizer) normalizeJQL(v *dialect.JQL) ast.Node {
 	jql := ast.PlainText(v.Children)
 	if !v.EncodesAsDatasource() {
 		// Mirror EncodeADF's degradation: the query survives as a
-		// paragraph, so the formatter must rewrite the directive to that
-		// prose rather than erase the line.
+		// paragraph of FLAT text — the query string, marks and all other
+		// inline structure dropped, exactly as EncodeADF writes it — so
+		// the formatter rewrites the directive to that prose rather than
+		// erasing the line, and its output encodes to the same ADF.
 		fn.diag(CodeJQLDegraded, jqlDegradedMessage(jql))
 		if jql == "" {
 			return nil
