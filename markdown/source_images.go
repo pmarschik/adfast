@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"slices"
 
+	directive "github.com/pmarschik/goldmark-directive"
 	gast "github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
@@ -71,6 +72,13 @@ func Images(src []byte) []Image { return NewSource(src).Images() }
 // either. That is the whole reason this view exists — a regexp over the
 // source finds all four.
 //
+// An image written inside a DIRECTIVE'S LABEL is reported like any other,
+// and in all three directive forms: `:text[…]`, `::leaf[…]` and
+// `:::container[…]`. Source.Links states the reason in full — a label is
+// content, and the text form's label is parsed against a detached copy whose
+// offset has to be recovered and byte-verified before anything under it can
+// be reported. A label that does not verify feeds UnlocatedImages.
+//
 // An image is reported only when its written form can be resolved back to
 // the exact bytes goldmark read: the destination this view reports is
 // checked against the one the parser produced, and a mismatch DROPS the
@@ -115,6 +123,10 @@ func (s *Source) Images() []Image {
 // resolve to a written extent, and therefore left out of its result. See
 // UnlocatedDefinitions for why the count is reported at all; no shape of
 // input is currently known to make this one nonzero.
+//
+// TWO GATES can drop an image, the second being a TEXT DIRECTIVE'S LABEL
+// that is not spelled where its own extent says it is. UnlocatedLinks and
+// UnlocatedAutolinks state the pair in full.
 func (s *Source) UnlocatedImages() int {
 	s.Images()
 	return s.imagesUnlocated
@@ -124,10 +136,27 @@ func (s *Source) UnlocatedImages() int {
 // extent. It reports the images it located and how many it did not.
 //
 // Unlike the block views this walk descends into inline subtrees, because
-// an image IS one. That is safe for the reason blockNodes documents in
-// reverse: a text directive's label is parsed against its own detached
-// source and its root is NOT attached to this tree, so an image inside one
-// is unreachable from here and can never contribute a foreign offset.
+// an image IS one — and it descends into a TEXT DIRECTIVE'S LABEL as well,
+// which is the subtree blockNodes warns about: goldmark cannot re-enter an
+// arbitrary range, so the directive parser parses a label against a
+// DETACHED COPY of its bytes and the offsets under that root address the
+// copy rather than this source. collectAutolinks documents the recovery in
+// full; this view and Links share it.
+//
+// THE DESCENT IS OWED, and the shape that owes it is not exotic. The other
+// two directive forms are parsed in place, so a link or an image written in
+// a `::leaf[…]` or a `:::container[…]` label has always been reported here;
+// only the text form's label was a hole. Measured on
+// "x :sup[[text](https://ex.com)] y": the label root held a real link node
+// with the destination on it, this view returned nothing, and
+// UnlocatedLinks stayed at 0 — so the same document read as "no links"
+// rather than as "links I could not place", and a rewriter of destinations
+// silently skipped one. The link is real content, not decoration: the ADF
+// leg encodes that label as text carrying both a subsup and a link mark, so
+// the destination reaches a remote.
+//
+// A label that does not verify contributes its findings to the unlocated
+// count instead — the same resolve-or-drop rule, one level up.
 func collectImages(doc gast.Node, src []byte) (out []Image, unlocated int) {
 	nested := labelExtents{}
 	var walk func(gast.Node)
@@ -140,12 +169,49 @@ func collectImages(doc gast.Node, src []byte) (out []Image, unlocated int) {
 					unlocated++
 				}
 			}
+			if td, ok := c.(*directive.TextDirective); ok && td.LabelRoot != nil {
+				inner, u := collectImages(td.LabelRoot, td.LabelSource)
+				unlocated += u
+				if at, ok := textDirectiveLabel(src, td); ok {
+					for _, img := range inner {
+						out = append(out, shiftImage(img, at))
+					}
+				} else {
+					unlocated += len(inner)
+				}
+			}
 			walk(c)
 		}
 	}
 	walk(doc)
 	slices.SortFunc(out, func(a, b Image) int { return a.Span.Start - b.Span.Start })
 	return out, unlocated
+}
+
+// shiftImage moves an image resolved against a detached label copy into the
+// coordinates of the source that copy was taken from.
+func shiftImage(img Image, by int) Image {
+	img.Span, img.Alt, img.Dest = shiftSpan(img.Span, by), shiftSpan(img.Alt, by), shiftSpan(img.Dest, by)
+	return img
+}
+
+// shiftSpan moves a span by, and leaves the ZERO span exactly where it is.
+// That exception is the whole reason this is not two additions inline: a
+// reference form's Dest is the zero span and means "no destination is
+// written at this node", and shifting it would turn that sentinel into an
+// offset pointing at the label of the directive it was found in.
+//
+// No document is known to reach it — the label parse runs against a
+// detached buffer with no reference map of its own, so "x :sup[[t][b]] y"
+// with "[b]: …" beside it parses the label as literal text and builds no
+// reference node — but a sentinel that survives a move only by luck is a
+// sentinel that stops surviving when goldmark-directive gains a reference
+// map.
+func shiftSpan(s Span, by int) Span {
+	if s == (Span{}) {
+		return s
+	}
+	return Span{Start: s.Start + by, Stop: s.Stop + by}
 }
 
 // imageSpan resolves one image to its written extent. An image is a `[label]`

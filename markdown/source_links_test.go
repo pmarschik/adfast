@@ -700,3 +700,142 @@ func TestLinks_ComposeWithImagesInOneParse(t *testing.T) {
 		t.Errorf("Apply =\n%q\nwant\n%q", got, want)
 	}
 }
+
+// linkLabelCases cover a DIRECTIVE'S LABEL, which is content rather than
+// decoration: the conversion path encodes a link written there as a link, so
+// a rewriter of destinations that could not see one would leave it pointing
+// at the old target after it reported success.
+//
+// Every case carries the forms that ALREADY reported beside the one that did
+// not. A `::leaf[…]` and a `:::container[…]` label are parsed in place, so a
+// link in them has always been located here; only the TEXT form's label is
+// parsed against a DETACHED COPY of its bytes, whose offsets address the
+// copy. Reporting those unshifted would name bytes near the start of the
+// document, and skipping the root — which is what this view did — loses the
+// link and leaves UnlocatedLinks at 0, so the document reads as "no links"
+// instead of "a link I could not place".
+//
+// Every want is the label's absolute extent in the source, so a shift that
+// is off by the bracket, or omitted, fails these rather than passing with
+// plausible-looking spans.
+var linkLabelCases = []linkCase{{
+	name: "all three directive forms in one document",
+	src:  "Text :sup[[t](https://ex.com/t)] end\n\n::leaf[[l](https://ex.com/l)]\n\n:::box[[c](https://ex.com/c)]\nbody\n:::\n",
+	want: []string{
+		"[t](https://ex.com/t)|t|https://ex.com/t",
+		"[l](https://ex.com/l)|l|https://ex.com/l",
+		"[c](https://ex.com/c)|c|https://ex.com/c",
+	},
+}, {
+	// A label parsed inside a label: the recursion runs in each copy's own
+	// coordinates and the two shifts compose.
+	name: "a label inside a label composes the shifts",
+	src:  "Text :sup[a :sub[[t](https://ex.com/t)] b] end\n",
+	want: []string{"[t](https://ex.com/t)|t|https://ex.com/t"},
+}, {
+	// The ordering claim: a shifted span has to sort with the unshifted
+	// ones, not after them.
+	name: "a label link and a prose link in document order",
+	src:  "Text :sup[[a](https://ex.com/a)] and [b](https://ex.com/b)\n",
+	want: []string{
+		"[a](https://ex.com/a)|a|https://ex.com/a",
+		"[b](https://ex.com/b)|b|https://ex.com/b",
+	},
+}, {
+	name: "a label link inside a blockquote",
+	src:  "> q :sup[[t](https://ex.com/t)]\n",
+	want: []string{"[t](https://ex.com/t)|t|https://ex.com/t"},
+}, {
+	// A tab in the container prefix is what hides a definition from its own
+	// view. It does not reach here: the label's offset is recovered from the
+	// directive's extent in THIS source and verified against it.
+	name: "a label link on a tab-prefixed continuation line",
+	src:  "> q\n>\t:sup[[t](https://ex.com/t)]\n",
+	want: []string{"[t](https://ex.com/t)|t|https://ex.com/t"},
+}, {
+	name: "a label link in a table cell",
+	src:  "| :sup[[t](https://ex.com/t)] | b |\n| --- | --- |\n| c | d |\n",
+	want: []string{"[t](https://ex.com/t)|t|https://ex.com/t"},
+}, {
+	// The one span from this view that overlaps one from Images does so
+	// inside a label too, and both are shifted by the same offset.
+	name: "a thumbnail link in a label reports in both views",
+	src:  "Text :sup[[![a](i.png)](https://ex.com/t)] end\n",
+	want: []string{"[![a](i.png)](https://ex.com/t)|![a](i.png)|https://ex.com/t"},
+}, {
+	// The carve-outs hold inside a label too, because the label is parsed
+	// with the same parser.
+	name: "a link in inline code inside a label is not a link",
+	src:  "Text :sup[`[t](https://ex.com/t)`] end\n",
+	want: nil,
+}, {
+	name: "an empty label reports nothing and does not hide prose",
+	src:  "Text :sup[] and [b](x.md)\n",
+	want: []string{"[b](x.md)|b|x.md"},
+}}
+
+// TestLinks_DirectiveLabels drives linkLabelCases. See that table for what
+// each shape proves, and TestImages_DirectiveLabels for the same fix on the
+// other destination view — one root cause, one descent, two views.
+//
+// Measured with the label descent removed from collectLinks, which is what
+// this view did before:
+//
+//	--- FAIL: TestLinks_DirectiveLabels (0.00s)
+//	    --- FAIL: TestLinks_DirectiveLabels/all_three_directive_forms_in_one_document (0.00s)
+//	        Links("Text :sup[[t](https://ex.com/t)] end\n\n::leaf[[l](https://ex.com/l)]\n\n:::box[[c](https://ex.com/c)]\nbody\n:::\n") =
+//	             ["[l](https://ex.com/l)|l|https://ex.com/l" "[c](https://ex.com/c)|c|https://ex.com/c"]
+//	            want
+//	             ["[t](https://ex.com/t)|t|https://ex.com/t" "[l](https://ex.com/l)|l|https://ex.com/l" "[c](https://ex.com/c)|c|https://ex.com/c"]
+//	    --- FAIL: TestLinks_DirectiveLabels/a_label_link_on_a_tab-prefixed_continuation_line (0.00s)
+//	        Links("> q\n>\t:sup[[t](https://ex.com/t)]\n") =
+//	             []
+//	            want
+//	             ["[t](https://ex.com/t)|t|https://ex.com/t"]
+//	    --- FAIL: TestLinks_DirectiveLabels/a_label_link_in_a_table_cell (0.00s)
+//	        Links("| :sup[[t](https://ex.com/t)] | b |\n| --- | --- |\n| c | d |\n") =
+//	             []
+//	            want
+//	             ["[t](https://ex.com/t)|t|https://ex.com/t"]
+//	    --- FAIL: TestLinks_DirectiveLabels/a_thumbnail_link_in_a_label_reports_in_both_views (0.00s)
+//	        Links("Text :sup[[![a](i.png)](https://ex.com/t)] end\n") =
+//	             []
+//	            want
+//	             ["[![a](i.png)](https://ex.com/t)|![a](i.png)|https://ex.com/t"]
+//	    --- FAIL: TestLinks_DirectiveLabels/a_label_link_and_a_prose_link_in_document_order (0.00s)
+//	        Links("Text :sup[[a](https://ex.com/a)] and [b](https://ex.com/b)\n") =
+//	             ["[b](https://ex.com/b)|b|https://ex.com/b"]
+//	            want
+//	             ["[a](https://ex.com/a)|a|https://ex.com/a" "[b](https://ex.com/b)|b|https://ex.com/b"]
+//	    --- FAIL: TestLinks_DirectiveLabels/a_label_inside_a_label_composes_the_shifts (0.00s)
+//	        Links("Text :sup[a :sub[[t](https://ex.com/t)] b] end\n") =
+//	             []
+//	            want
+//	             ["[t](https://ex.com/t)|t|https://ex.com/t"]
+//	    --- FAIL: TestLinks_DirectiveLabels/a_label_link_inside_a_blockquote (0.00s)
+//	        Links("> q :sup[[t](https://ex.com/t)]\n") =
+//	             []
+//	            want
+//	             ["[t](https://ex.com/t)|t|https://ex.com/t"]
+//
+// The rows that do NOT appear there passed on both versions and are the good
+// cases: the inline-code carve-out, the empty label, and — inside the
+// three-form document — the leaf and the container links, whose spans a
+// wrongly composed shift would have moved. No OTHER test in this package
+// failed under the mutation, which is the measurement that says this view's
+// hole was untested rather than merely unfixed.
+func TestLinks_DirectiveLabels(t *testing.T) {
+	t.Parallel()
+	for _, c := range linkLabelCases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			s := markdown.NewSource([]byte(c.src))
+			if got := linkTexts(c.src, s.Links()); !eq(got, c.want) {
+				t.Errorf("Links(%q) =\n %q\nwant\n %q", c.src, got, c.want)
+			}
+			if u := s.UnlocatedLinks(); u != 0 {
+				t.Errorf("UnlocatedLinks() = %d, want 0", u)
+			}
+		})
+	}
+}
