@@ -33,8 +33,24 @@ package convert
 //
 // Both are idempotent, and ToADF is invariant under either
 // (ToADF(Normalize(n)) == ToADF(n) for every parsed AST, and the same for
-// NormalizeFormat, because ToADF drops the kept directives itself). The
-// prettier md→md formatter is the composition
+// NormalizeFormat, because ToADF drops the kept directives itself) — with
+// ONE measured exception, on the media projection. Where the pass
+// degrades a ::media directive to an ast.Image, the image form spells the
+// mediaSingle wrapper's layout ("center" for external media,
+// "align-start" for a downloaded attachment) while the directive form
+// re-infers it for a FILE-type directive only. So for EXTERNAL media that
+// omits a layout and still reaches the image form, ToADF(Normalize(n))
+// carries layout: "center" where ToADF(n) carries no layout at all.
+// Both describe the same placement — "center" is the ADF
+// schema's declared default for the attribute, and adfast's own decode
+// reads the two back as one document — so the exception is a difference
+// in the payload's BYTES, which is still enough to matter to a caller
+// that canonicalizes before it encodes. It is the directive form that
+// under-spells, and closing it belongs in dialect;
+// mediawrapperlayout_test.go holds the measured shape map, the evidence
+// for which form is wrong, and what the candidate fix costs.
+//
+// The prettier md→md formatter is the composition
 // Render∘NormalizeFormat∘Parse; that render is byte-for-byte what routing
 // the parse AST through ADF and back used to produce, except for the
 // generic directives ADF has no room for.

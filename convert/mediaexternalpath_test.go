@@ -123,6 +123,13 @@ func TestFormatLegExternalMediaPathIsAFixpoint(t *testing.T) {
 // the directive form leaves out, so ToADF(Normalize(n)) and ToADF(n)
 // disagreed for this shape; now they agree.
 //
+// For THIS shape. The wrapper attribute still splits the two encodes
+// wherever an external media directive omits a layout and reaches the
+// image form anyway — this fix blocked the projection for the shapes
+// that spell a path, and blocking is the whole reason they became
+// invariant. That wider gap is pinned, with the evidence for which of
+// the two forms is the wrong one, in mediawrapperlayout_test.go.
+//
 // This is a DEFECT PROOF: on the pre-fix implementation the normalized
 // tree encodes with the wrapper layout and the two documents differ.
 func TestExternalMediaPathSurvivesTheEncodeLeg(t *testing.T) {
