@@ -480,9 +480,25 @@ func escapeLabelTrailingSpace(s string) string {
 	return s[:len(s)-1] + hexRef(rune(s[len(s)-1]))
 }
 
-// isLabelSpace reports whether c is a byte the label parse reads as
-// whitespace, which is goldmark's own space set (util.IsSpace) minus the
-// line endings no single-line label can hold.
+// isLabelSpace reports whether c is a byte escapeLabelTrailingSpace escapes
+// at the end of a label. It is DELIBERATELY WIDER than the set the parse
+// trims, and the record here used to claim the two were the same.
+//
+// Measured per form, on "x" plus one whitespace byte, reading the label back
+// off the parse: a leaf and a container label lose a trailing ' ' and a
+// trailing '\t' — "::leaf[x\t]" and ":::box[x\t]" both read back "x" — and
+// KEEP a trailing '\v' and '\f', reading back "x\v" and "x\f". A text
+// directive's label keeps all four, which is the fixpoint
+// escapeLabelTrailingSpace's doc records. So the trimmed set is ' ' and
+// '\t', and that is what goldmark's util.IsSpace holds once the line endings
+// are dropped: its space table is '\t', '\n', '\r' and ' ' and nothing else.
+//
+// The two extra bytes cost a round trip nothing — the parse decodes the
+// character reference back to the byte, so a label ending in '\v' comes back
+// as itself either way — and they cost byte-exactness against an
+// implementation that writes a leaf label verbatim. Narrowing them away is a
+// behavior change and wants its own measurement; what is fixed here is the
+// claim.
 func isLabelSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\v' || c == '\f'
 }
