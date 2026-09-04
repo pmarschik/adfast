@@ -42,14 +42,14 @@ func storeWithOnePath() []Option {
 //	--- FAIL: TestUnresolvedMediaPathIsReported
 //	    want one unresolved-asset diagnostic — for the unresolvable
 //	    directive only — got []
-//	--- FAIL: TestResolvableAndSourcelessMediaStayQuiet/a_resolvable_path
+//	--- FAIL: TestResolvableMediaStaysQuiet/a_resolvable_path
 //	    want the one diagnostic for assets/gone.png only, got []
 //
 // And with the predicate's id guard dropped — reporting a path the store
 // cannot place even when an explicit id is spelled beside it — the
 // false alarm is named:
 //
-//	--- FAIL: TestResolvableAndSourcelessMediaStayQuiet/an_id_beside_an_unresolvable_path
+//	--- FAIL: TestResolvableMediaStaysQuiet/an_id_beside_an_unresolvable_path
 //	    want the one diagnostic for assets/gone.png only, got [media
 //	    directive path assets/gone-too.png has no media id …, media
 //	    directive path assets/gone.png has no media id …]
@@ -118,13 +118,17 @@ func TestUnresolvedMediaPathIsReportedForTheCaptionForm(t *testing.T) {
 	}
 }
 
-// The three shapes that must stay QUIET, each in a document with a
-// reported one so the probe cannot pass by reporting nothing at all: an
-// explicit id (an id the store does not know still addresses the
-// attachment), external media (addressed by url, no attachment), and a
-// directive with no source attribute at all (nothing was named, so
-// nothing was lost — see the note in the report on the sourceless form).
-func TestResolvableAndSourcelessMediaStayQuiet(t *testing.T) {
+// The shapes that must stay QUIET, each in a document with a reported one
+// so the probe cannot pass by reporting nothing at all: an explicit id (an
+// id the store does not know still addresses the attachment), external
+// media (addressed by url, no attachment), and a path the store places.
+//
+// A directive with no source attribute at all used to be on this list, on
+// the ground that nothing was named and so nothing was lost. It is off it
+// now and reported instead: nothing being lost is not the same as the
+// payload being fine, and that shape ships a media node no product can
+// resolve. See sourcelessmedia_test.go.
+func TestResolvableMediaStaysQuiet(t *testing.T) {
 	cases := []struct {
 		name string
 		row  string
@@ -136,7 +140,6 @@ func TestResolvableAndSourcelessMediaStayQuiet(t *testing.T) {
 		// be a false alarm about a picture that is on the page.
 		{"an id beside an unresolvable path", "::media[x]{id=abc-123 path=assets/gone-too.png}"},
 		{"external media", "::media[x]{type=external url=https://x/a.png}"},
-		{"no source at all", "::media[x]{}"},
 		{"a resolvable path", "::media[x]{path=assets/shot.png}"},
 	}
 	for _, c := range cases {

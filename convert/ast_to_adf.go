@@ -613,6 +613,20 @@ func (v *astBlockVisitor) VisitExtension(n ast.Node) []adf.Node {
 				Code:    CodeUnresolvedAsset,
 				Message: unresolvedMediaPathMessage(ref),
 			})
+		} else if alt, sourceless := dialect.SourcelessMedia(n); sourceless {
+			// And a directive that names nothing at all encodes to a media
+			// node with no source, which is just as unaddressable — an
+			// author reading the line sees a well-formed directive and a
+			// reader of the pushed page sees a gap.
+			//
+			// The two predicates are disjoint (see SourcelessMedia), so the
+			// else changes nothing today. It is here to hold the invariant
+			// the messages assume — at most ONE sentence per media node —
+			// against a later widening of either predicate.
+			v.c.diagnostics(Diagnostic{
+				Code:    CodeUnresolvedAsset,
+				Message: sourcelessMediaMessage(alt),
+			})
 		}
 	}
 	if ext, ok := n.(extension.Node); ok {
@@ -1276,6 +1290,25 @@ func unresolvedMediaPathMessage(ref string) string {
 	return "media directive path " + ref + " has no media id (not in the asset store); " +
 		"the media node is written without one, so the attachment cannot be " +
 		"addressed, and the path does not travel in ADF"
+}
+
+// sourcelessMediaMessage names the dead end a media directive that spells
+// no source at all encodes to. It says outright that no upload fixes this
+// one, because the neighboring message under the same code describes a
+// loss that an upload DOES fix, and a consumer with an upload flow would
+// otherwise read the two the same way.
+//
+// The alt label is the only text such a directive carries, so it is what
+// locates the line; a directive with no label at all says so instead of
+// naming an empty string.
+func sourcelessMediaMessage(alt string) string {
+	const why = "media directive names no source: no media id, no url and no path, " +
+		"so the media node addresses no attachment and the picture will not render " +
+		"(no upload can resolve it — nothing was named to upload)"
+	if alt == "" {
+		return why + "; the directive carries no label either"
+	}
+	return why + "; label " + strconv.Quote(alt)
 }
 
 // imageLabel answers the text an image degrades to when ADF has no node

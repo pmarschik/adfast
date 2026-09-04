@@ -52,9 +52,11 @@
 //   - ::media and :::media addressed by `path` spend that path on
 //     encode: ADF names an attachment by media id and has no path field,
 //     so the store lookup either produces an id or the media node ships
-//     without one (UnresolvedMediaPath). Same reason as ::jql — EncodeADF
-//     has no sink — so the predicate gates the encode's recovery and
-//     convert reports a convert.CodeUnresolvedAsset from it.
+//     without one (UnresolvedMediaPath). One that names no source at all
+//     ships without one too (SourcelessMedia). Same reason as ::jql —
+//     EncodeADF has no sink — so the predicates gate the encode's
+//     recovery and convert reports a convert.CodeUnresolvedAsset from
+//     either.
 //   - the block-mark wrappers (:::center/:::end, :::indent, :::breakout,
 //     :::dataConsumer, :::fragment) decode from ADF block MARKS:
 //     convert's block-mark wrapping constructs them around the marked
@@ -261,6 +263,57 @@ func UnresolvedMediaPath(n ast.Node, resolve func(ref string) (mediaID string, o
 		return "", false
 	}
 	return path, mediasrc.ID("", path, resolve) == ""
+}
+
+// SourcelessMedia answers the alt label of a media directive that names
+// NO source at all: no media id, no url, and no path — `::media[alt]{}`,
+// or a directive carrying only presentation attributes such as a width.
+// The label is the only text such a directive has, so it is what a report
+// can name to send a reader to the line.
+//
+// ADF has exactly two ways to address a picture, and this directive
+// supplies neither, so the encoded media node points at nothing: it will
+// not render, and the payload holds no clue why. That silence is the
+// defect. Nothing is LOST here — the author named nothing to lose, and
+// the md→md leg keeps the directive verbatim — so the node still ships
+// (dropping it would take the alt text and the caption with it, and an
+// empty directive is a reasonable thing to write while the picture it
+// will name is still being produced). What changes is that the ADF leg
+// says so, which is the same bargain UnresolvedMediaPath strikes above.
+//
+// Refusing the directive at parse time was the alternative, and it costs
+// more than it buys: it would make the directive parse depend on
+// attribute semantics, and it would turn a half-written line into literal
+// prose on a leg that today round-trips it untouched.
+//
+// The two predicates are DISJOINT by construction — this one requires no
+// path, that one requires a path — so a media directive earns at most one
+// report. Like that one, this is a predicate rather than a report because
+// EncodeADF has no diagnostics sink; convert reports a
+// convert.CodeUnresolvedAsset from its extension visit. It needs no
+// resolver: with no path there is nothing to look up.
+//
+// The inline `:media[…]` spelling is deliberately not covered. Its
+// vocabulary has no `path` at all, so a path spelled on it is ignored
+// rather than unresolvable, and reporting "names no source" over an
+// author's `:media[alt]{path=…}` would be a lie about a different bug.
+func SourcelessMedia(n ast.Node) (alt string, sourceless bool) {
+	var attrs map[string]string
+	switch media := n.(type) {
+	case *Media:
+		// The leaf form's children ARE the label.
+		attrs, alt = media.Attrs, ast.PlainText(media.Children)
+	case *MediaCaption:
+		// The container form leads with the label paragraph, when the
+		// author wrote one, and the caption body follows it.
+		attrs = media.Attrs
+		if p, ok := labelParagraph(media.Children); ok {
+			alt = ast.PlainText(p.Children)
+		}
+	default:
+		return "", false
+	}
+	return alt, attrs["id"] == "" && attrs["url"] == "" && attrs["path"] == ""
 }
 
 // floatAttr parses a numeric directive attribute (0 when absent/invalid).
