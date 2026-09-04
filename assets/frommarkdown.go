@@ -2,8 +2,10 @@ package assets
 
 import (
 	"context"
+	"maps"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	adfast "github.com/pmarschik/adfast"
@@ -40,35 +42,31 @@ func PushPipeline(ctx context.Context, store Store, up Uploader, extra ...adfast
 
 // SyncMarkdown uploads the pending assets referenced by a single markdown
 // document as one batch. It parses md, collects its local image references,
-// and uploads the intersection with the store's pending worklist — a
-// convenience for callers that encode one markdown string at a time and
-// cannot use a Pipeline/BeforeEncode hook. Nothing uploads when the document
-// references no pending assets.
+// and uploads the ones PendingRefs keeps — a convenience for callers that
+// encode one markdown string at a time and cannot use a Pipeline/BeforeEncode
+// hook. Nothing uploads when the document references no pending assets.
 func SyncMarkdown(ctx context.Context, store Store, up Uploader, md string) error {
 	return syncReferenced(ctx, store, up, []ast.Node{adfast.FromMarkdown(md)})
 }
 
-// syncReferenced uploads the intersection of the documents' local image
-// references and the store's pending worklist as one batch.
+// syncReferenced uploads the documents' local image references that the
+// store can read and holds no media id for, as one batch.
+//
+// The narrowing is PendingRefs — the documents' own references asked about
+// one by one — rather than an intersection with Store.Pending. A folder
+// worklist can only offer what it lists, and a composed store may reach
+// further than it lists on purpose; starting from the references keeps a
+// picture whose file the store can read out of the "dropped, no media id"
+// case it never belonged in.
 func syncReferenced(ctx context.Context, store Store, up Uploader, docs []ast.Node) error {
-	pending, err := store.Pending("")
-	if err != nil {
-		return err
-	}
-	if len(pending) == 0 {
-		return nil
-	}
 	referenced := map[string]bool{}
 	for _, doc := range docs {
 		collectLocalImages(doc, referenced)
 	}
-	var paths []string
-	for _, p := range pending {
-		if referenced[normalizeRef(p)] {
-			paths = append(paths, p)
-		}
+	if len(referenced) == 0 {
+		return nil
 	}
-	_, err = uploadPaths(ctx, store, up, paths)
+	_, err := uploadPaths(ctx, store, up, PendingRefs(store, "", slices.Sorted(maps.Keys(referenced))))
 	return err
 }
 
