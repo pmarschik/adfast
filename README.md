@@ -751,7 +751,10 @@ an unknown directive comes back out as the author wrote it.
   local copy carries every ADF property then renders as a plain
   `![alt](assets/shot.png)`, and it maps back to its media id on encode.
   Anything richer keeps the `::media` directive: a PDF, resized media, or
-  a non-default layout.
+  a non-default layout. The id your resolver answers is opaque and reaches
+  the payload verbatim from every spelling of a reference — adfast does not
+  case-fold or otherwise canonicalize it, so answer in the form the store
+  can be asked about again.
 - **Inline images** — an image inside a paragraph, a table cell, or a
   list item has three fates, because ADF's inline media covers only one
   of them. A path the asset store maps to a media id becomes a
