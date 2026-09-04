@@ -33,12 +33,19 @@ import "regexp"
 // parsers take urlLiteralAnchoredRe, whose host may be dotless, and the
 // DECODED-TEXT scan takes urlLiteralRe, whose host may not.
 //
-// ONE KNOWN GAP, left open deliberately because closing it widens past what
-// was measured: the path. goldmark stops a literal at its own character class
-// where the reference stops it only at whitespace, so "https://ex.com~foo"
-// links through "ex.com" here and through "foo" there. Widening the class
-// would change every literal's extent rather than only a rejected literal's
-// verdict, so it is a divergence of its own.
+// TWO KNOWN GAPS, both left open deliberately because closing either widens
+// past what was measured:
+//
+//   - The path. goldmark stops a literal at its own character class where the
+//     reference stops it only at whitespace, so "https://ex.com~foo" links
+//     through "ex.com" here and through "foo" there. Widening the class would
+//     change every literal's extent rather than only a rejected literal's
+//     verdict, so it is a divergence of its own.
+//   - A host whose FIRST segment is non-ASCII. "https://例.com/x" is a link
+//     in the reference's raw-source tokenizer, whose domain consumes any
+//     non-punctuation rune, and prose here; its decoded-text transform
+//     rejects it too (measured: "a [ https://例.com/x b" comes back
+//     unlinked), so closing the gap means widening the RAW pattern alone.
 const (
 	// urlLiteralHostDotted is goldmark's own host rule, and the reference's
 	// decoded-text rule: a dot-separated host. Only its TLD class changes,
@@ -57,7 +64,41 @@ const (
 	// "https://" match neither alternative, and the reference rejects both
 	// too — its splitUrl strips the trailing dot and then refuses the empty
 	// remainder.
-	urlLiteralHostDotted = `[-a-zA-Z0-9@:%._\+~#=]{0,256}\.[a-zA-Z]+(?::\d+)?`
+	//
+	// THE TLD CLASS ALSO TAKES A NON-ASCII LETTER, urlLiteralHostRune. Both
+	// halves of the reference run "https://ex.coſ/x" to the end of the word;
+	// goldmark's ASCII `[a-zA-Z]+` stopped at "ex.co" and emitted THAT as the
+	// href, which is the one shape in this file where the wrong URL went out
+	// rather than none.
+	urlLiteralHostDotted = `[-a-zA-Z0-9@:%._\+~#=]{0,256}\.` +
+		`(?:[a-zA-Z]|` + urlLiteralHostRune + `)+(?::\d+)?`
+	// urlLiteralHostRune is one NON-ASCII character the reference's
+	// raw-source domain consumes: micromark's tokenizer takes any code that
+	// is neither whitespace nor `\p{P}`/`\p{S}` (its unicodePunctuation is
+	// `/\p{P}|\p{S}/u`), so a letter, a digit or a combining mark from any
+	// script joins the host and a dash, a quote or a currency sign does not.
+	//
+	// ASCII IS DELIBERATELY EXCLUDED, and that is the whole point of writing
+	// the class as a negation with `\x00-\x7F` in it. The ASCII half of every
+	// host and path class in this file stays byte-for-byte what goldmark
+	// shipped, so no ASCII document's literal changes extent; only the
+	// non-ASCII half, which goldmark had no rule for at all, gains one.
+	//
+	// THE TWO RECOGNIZERS REACH THE SAME EXTENT BY DIFFERENT ROUTES, and this
+	// class stands in for both. The tokenizer puts "ſ" in the HOST; the
+	// decoded-text transform's host is ASCII-only (`[-.\w]+`), so it puts
+	// "ſ" in its PATH instead, which is `[^ \t\r\n]*`. Measured against the
+	// frozen reference, both routes answer "https://ex.coſ/x" whole:
+	//
+	//	"See https://ex.coſ/x end"    ->  "See <https://ex.coſ/x> end"
+	//	"a [ https://ex.coſ/x b"      ->  "a \\[ <https://ex.coſ/x> b"
+	//
+	// One class in the shared host therefore matches both, and it keeps the
+	// invariant TestURLLiteralRawPatternIsTheWiderOne states. Where the two
+	// decompositions DO answer differently is the path gap above: the
+	// reference's transform reads "https://ex.coſ~x" whole through its
+	// permissive path, and this stops at "ex.coſ".
+	urlLiteralHostRune = `[^\x00-\x7F\p{Z}\p{P}\p{S}]`
 	// urlLiteralHost is the raw-source host rule, and the widening: on top of
 	// the dotted form it accepts a DOTLESS host that starts alphanumeric
 	// ("localhost:8080", "jira"), which is the tokenizer's half of the
