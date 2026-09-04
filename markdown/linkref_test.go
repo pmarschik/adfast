@@ -221,6 +221,61 @@ func TestLinkRef_UnknownReferenceTypeRendersAsShortcut(t *testing.T) {
 	}
 }
 
+// TestLinkRef_DefinitionRunTakesTheBlockSeparator PINS PRESERVED
+// BEHAVIOR, not a fix: a run of adjacent definitions is written one per
+// paragraph, so a tight run in the source gains a blank line on the first
+// render and is stable from there. See renderDefinition's SPACING note for
+// why the run is not tightened — briefly: this is remark-stringify's
+// output, which is what this renderer targets, and prettier (measured at
+// 3.8.1) tightens only the LINK REFERENCE run while keeping the blank line
+// between adjacent FOOTNOTE definitions and between the two kinds, so
+// following it would add a rule for one kind rather than replace two with
+// one.
+//
+// The footnote rows and the mixed row are here because they are the half a
+// tightening must NOT move: they are already what prettier writes.
+func TestLinkRef_DefinitionRunTakesTheBlockSeparator(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "adjacent link reference definitions",
+			src:  "[a]: ./a.md\n[b]: ./b.md\n",
+			want: "[a]: ./a.md\n\n[b]: ./b.md\n",
+		},
+		{
+			name: "a definition run after a paragraph",
+			src:  "see [a] and [b]\n\n[a]: ./a.md\n[b]: ./b.md\n",
+			want: "see [a] and [b]\n\n[a]: ./a.md\n\n[b]: ./b.md\n",
+		},
+		{
+			name: "adjacent footnote definitions",
+			src:  "a[^1] b[^2]\n\n[^1]: one\n[^2]: two\n",
+			want: "a[^1] b[^2]\n\n[^1]: one\n\n[^2]: two\n",
+		},
+		{
+			name: "a link definition beside a footnote definition",
+			src:  "[a]: ./a.md\n[^1]: note\n",
+			want: "[a]: ./a.md\n\n[^1]: note\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := renderMD(t, tt.src)
+			if got != tt.want {
+				t.Errorf("render = %q, want %q", got, tt.want)
+			}
+			// The re-spacing happens once. A caller pays one diff, not
+			// churn on every render.
+			if twice := renderMD(t, got); twice != got {
+				t.Errorf("not a fixpoint:\n once:  %q\n twice: %q", got, twice)
+			}
+		})
+	}
+}
+
 // hasDefinition reports whether the tree holds a link reference
 // definition node.
 func hasDefinition(n ast.Node) bool {

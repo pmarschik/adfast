@@ -21,6 +21,32 @@ import (
 // anywhere a block may (renderBlockSequence handles the surroundings), and
 // it renders whether or not anything references it: an unused definition
 // is still content the author wrote.
+//
+// SPACING, deliberate: a run of adjacent definitions is written one per
+// paragraph, so
+//
+//	[a]: ./a.md
+//	[b]: ./b.md
+//
+// comes back with a blank line between the two. A definition is a block
+// like any other and takes the block separator; there is no tight-run
+// rule for it. The result is a fixpoint, the ADF is unchanged, and the
+// cost to a caller is one no-op-looking diff the first time a document
+// is rendered.
+//
+// This is remark-stringify's own output, which is the form this renderer
+// targets, and it is what a footnote definition run already does.
+// PRETTIER DIFFERS, and measured (3.8.1) it differs in only one of the
+// two places: prettier keeps a run of LINK REFERENCE definitions tight,
+// while it puts a blank line between adjacent FOOTNOTE definitions and
+// between a link definition and a footnote definition. So following
+// prettier here would mean adding one rule that applies to one of the
+// two kinds — not, as it looks from the outside, replacing two rules
+// with one. The prettier-format mode is a text-escaping mode
+// (renderConfig.prettierText) and carries no block-layout rules at all,
+// so there is nowhere for a mode-dependent separator to live either.
+// Tightening the run is therefore a deliberate open choice, not an
+// oversight; pinned in linkref_test.go.
 func (r *mdRenderer) renderDefinition(b *strings.Builder, node *ast.Definition) {
 	b.WriteString("[")
 	b.WriteString(maskReferenceLabel(node.Label, false))
