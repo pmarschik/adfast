@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	adfast "github.com/pmarschik/adfast"
+	"github.com/pmarschik/adfast/convert"
 	"github.com/pmarschik/adfast/skill"
 )
 
@@ -97,4 +98,64 @@ func firstLines(s string, n int) string {
 		lines = lines[:n]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// TestPitfallsReferenceListsEveryDiagnosticCode keys the reference's
+// diagnostic section on convert.Codes() rather than on a second
+// hand-kept list. The section presents itself as "the convert.Code*
+// vocabulary", so a code missing from it is a false claim of
+// completeness — and that is exactly how it drifted before: it had
+// fallen two codes behind (link-destination-dropped,
+// unused-definition-dropped) while reading as exhaustive. Codes() is
+// build-enforced against the constant block, so this test inherits that
+// guarantee and a new code now fails here until the prose explains it.
+func TestPitfallsReferenceListsEveryDiagnosticCode(t *testing.T) {
+	raw, err := fs.ReadFile(skill.Files(), "references/pitfalls.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(raw)
+
+	all := convert.Codes()
+	// The inventory has to be non-empty, or "every code is documented"
+	// would be vacuously true.
+	if len(all) == 0 {
+		t.Fatal("convert.Codes() is empty; the check below would prove nothing")
+	}
+
+	// A documented code is one that heads a list item: "- `code` — …",
+	// possibly sharing the item with its siblings ("- `a` / `b` — …").
+	// Matching the HEAD of the item rather than the whole document is
+	// what keeps a passing mention in unrelated prose from counting.
+	heads := map[string]bool{}
+	for line := range strings.SplitSeq(doc, "\n") {
+		item, ok := strings.CutPrefix(line, "- ")
+		if !ok {
+			continue
+		}
+		head, _, found := strings.Cut(item, " — ")
+		if !found {
+			continue
+		}
+		for part := range strings.SplitSeq(head, "/") {
+			if code := strings.Trim(strings.TrimSpace(part), "`"); code != "" {
+				heads[code] = true
+			}
+		}
+	}
+	// The parse has to have found the section at all.
+	if len(heads) == 0 {
+		t.Fatal("no \"- `code` — …\" list items found in references/pitfalls.md; the check below would prove nothing")
+	}
+
+	var missing []string
+	for _, code := range all {
+		if !heads[code] {
+			missing = append(missing, code)
+		}
+	}
+	if len(missing) > 0 {
+		t.Errorf("references/pitfalls.md documents %d of %d diagnostic codes; missing %v",
+			len(all)-len(missing), len(all), missing)
+	}
 }

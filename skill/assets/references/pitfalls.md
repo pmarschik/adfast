@@ -70,6 +70,15 @@ vocabulary:
   The content stays visible and the round trip is stable; only the
   "render this inline" intent is lost. An inline image the asset store
   resolves to a media id is unaffected.
+- `link-destination-dropped` — a link whose whole label converted away,
+  leaving the mark with no node to ride on. The one markdown form that
+  does it is a linked image with neither alt text nor a placeable
+  picture (`[![]()](href)`): there is no label to keep, so the href goes
+  too, and the diagnostic names it.
+- `unused-definition-dropped` — a link reference definition no reference
+  in the document uses. Its destination never travelled to a use, so
+  there is nothing in ADF to hold it; the diagnostic names the label and
+  the destination.
 - `unsupported-code-language` — a fenced code block whose language tag
   is not in the configured `WithCodeLanguages` set (after any
   `WithCanonicalCodeLanguages` normalization); the language still

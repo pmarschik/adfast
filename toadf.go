@@ -19,9 +19,16 @@ import (
 // WithCanonicalCodeLanguages, WithUnsupportedKinds,
 // WithPreserveListTightness, WithPreserveLocalImages,
 // WithImageDimsResolver, WithAssetIDResolver,
-// WithExtensions, WithDocTransforms, and WithDiagnostics (colwidths-orphan,
-// decisions-orphan, unresolved-asset, unsupported-code-language,
-// unsupported-in-product, raw-node, depth-exceeded).
+// WithExtensions, WithDocTransforms, and WithDiagnostics.
+//
+// This is the leg that emits most of the diagnostic vocabulary — every
+// degradation ADF's own shape forces. It deliberately does NOT enumerate
+// the codes: convert.Codes() is the complete, build-enforced inventory,
+// and each convert.Code* constant documents its own case and says which
+// primitive emits it. A list repeated here is a second one to keep in
+// step, and the one that used to be here had already drifted — it named
+// five of the fifteen codes this leg emits, plus two (raw-node,
+// depth-exceeded) that belong to other legs and never fire here.
 func ToADF(n ast.Node, opts ...Option) adf.Doc {
 	o := newOptions(opts)
 	doc := convert.ToADF(n, o.convertOptions()...)
