@@ -35,14 +35,26 @@ const (
 	// spanning cell above its visual column; the marker is kept as literal
 	// cell text. Emitted by the facade parse.
 	CodeSpanMarkerInvalid = "span-marker-invalid"
-	// CodeUnresolvedAsset reports an ![alt](assets/…) reference the
-	// configured asset store could not map back to a media id. ADF
-	// addresses an attachment by id, so with no id there is no node for
-	// the picture: it is kept as external media carrying the path under
-	// WithPreserveLocalImages, and otherwise the PICTURE drops while the
-	// label stays — as a link to the destination, which is the enclosing
-	// one when the image sits inside a link. The document is never
-	// emptied by it. Emitted by ToADF.
+	// CodeUnresolvedAsset reports an asset reference the configured store
+	// could not map back to a media id. ADF addresses an attachment by
+	// id, so with no id nothing on the page can find the file — and the
+	// two spellings of a reference lose different things:
+	//
+	//   - ![alt](assets/…): there is no node for the picture, so it is
+	//     kept as external media carrying the path under
+	//     WithPreserveLocalImages, and otherwise the PICTURE drops while
+	//     the label stays — as a link to the destination, which is the
+	//     enclosing one when the image sits inside a link. The document
+	//     is never emptied by it.
+	//   - ::media[alt]{path=…} (and the :::media caption form): the media
+	//     node stays, because the directive is explicit and carries the
+	//     alt text and the caption, but it is written with an empty id and
+	//     the path has no ADF field to travel in. A path spelled beside an
+	//     explicit id is not reported: the id addresses the attachment, so
+	//     nothing is lost.
+	//
+	// Emitted by ToADF. The md→md formatter has no counterpart: it keeps
+	// the reference exactly as written.
 	//
 	// Unlike the other one-way losses, whether this one is permanent
 	// depends on WHEN the encode ran, not on what the document says: an

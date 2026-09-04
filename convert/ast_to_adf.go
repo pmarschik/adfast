@@ -603,6 +603,18 @@ func (v *astBlockVisitor) VisitExtension(n ast.Node) []adf.Node {
 			})
 		}
 	}
+	if v.c.diagnostics != nil {
+		// A path is a lookup key, not an attribute ADF can hold: with no
+		// id behind it the encode emits a media node the attachment cannot
+		// be found by, and the path itself is gone. Report it here for the
+		// same reason as the two above — EncodeADF has no sink.
+		if ref, unresolved := dialect.UnresolvedMediaPath(n, v.c.assetID); unresolved {
+			v.c.diagnostics(Diagnostic{
+				Code:    CodeUnresolvedAsset,
+				Message: unresolvedMediaPathMessage(ref),
+			})
+		}
+	}
 	if ext, ok := n.(extension.Node); ok {
 		// Extension kinds encode themselves.
 		return ext.EncodeADF(&blockEncodeContext{c: v.c})
@@ -1234,6 +1246,18 @@ func unplaceableImageMessage(url, href string) string {
 	}
 	return "image " + url + " has no media id (not in the asset store); " +
 		"the picture is dropped from the ADF payload and " + kept
+}
+
+// unresolvedMediaPathMessage names the loss a ::media directive takes
+// when its path resolves to nothing. It differs from the image spelling
+// (unplaceableImageMessage) in what survives: the picture is not
+// replaced by a label here, the media node stays in the payload — with
+// no id, so nothing on the page can find the attachment, and the path
+// that said where it is has no ADF field to travel in.
+func unresolvedMediaPathMessage(ref string) string {
+	return "media directive path " + ref + " has no media id (not in the asset store); " +
+		"the media node is written without one, so the attachment cannot be " +
+		"addressed, and the path does not travel in ADF"
 }
 
 // imageLabel answers the text an image degrades to when ADF has no node
