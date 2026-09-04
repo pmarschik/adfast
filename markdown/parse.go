@@ -225,8 +225,13 @@ func promoteNode(n ast.Node, idx promotionIndex) ast.Node {
 // goldmark ≤1.8.4 crashes on some tab-indented fence-trigger lines inside
 // list items ("*\n  \t\x60": BlockOffset returns -1 and fcode_block indexes
 // with it), and user-authored files must never crash the CLI. On panic the
-// source is retried with tabs expanded to spaces; as a last resort the
-// document parses as plain text lines.
+// source is retried with tabs expanded to spaces, then with its backticks
+// escaped; as a last resort the document is parsed EMPTY, which loses the
+// content but keeps the caller running. The record said "plain text lines"
+// here, which is not what the last rung does.
+//
+// The rungs are exercised with an injected panic, because no source is known
+// to make the pinned goldmark take any of them — see parse_guarded_test.go.
 func parseGuarded(p parser.Parser, src []byte) (node gast.Node, out []byte) {
 	tree, err := tryParse(p, src)
 	if err == nil {

@@ -282,23 +282,32 @@ func TestSource_BytesAndVerbatim(t *testing.T) {
 	}
 }
 
-// TestSource_VerbatimIsFalseAfterRecovery pins the contract that matters to
-// a byte-preserving caller: when the guarded parse had to normalize the
-// source, the spans address the normalized copy and Verbatim says so.
-func TestSource_VerbatimIsFalseAfterRecovery(t *testing.T) {
+// TestSource_VerbatimIsTrueWithoutRecovery pins the ordinary case through the
+// exported constructor: the source comes back byte for byte and Verbatim says
+// so. The shape is the one goldmark <=1.8.4 panicked on — a tab-indented fence
+// trigger inside a list item — kept as a regression case for the pinned
+// version, which parses it directly.
+//
+// This replaces a test that aimed at the OTHER half of the contract, the one
+// that holds after parseGuarded normalizes a source, and asserted nothing:
+// it reached that half through this very shape and returned early once the
+// pinned goldmark stopped panicking on it. No source is known to reach the
+// recovery path on v1.8.5, so that half is asserted in-package instead, with
+// the panic injected through a stub parser — see
+// TestSource_VerbatimIsFalseAfterRecovery in parse_guarded_test.go.
+func TestSource_VerbatimIsTrueWithoutRecovery(t *testing.T) {
 	t.Parallel()
-	// goldmark <=1.8.5 panics on this shape; parseGuarded retries with tabs
-	// expanded (see parse.go).
-	s := markdown.NewSource([]byte("*\n  \t`"))
-	if s.Verbatim() {
-		return // goldmark parsed it directly; nothing to assert.
+	const src = "*\n  \t`"
+	s := markdown.NewSource([]byte(src))
+	if !s.Verbatim() {
+		t.Errorf("Verbatim = false; goldmark needed recovery for %q", src)
 	}
-	if string(s.Bytes()) == "*\n  \t`" {
-		t.Error("Verbatim = false but Bytes is the input unchanged")
+	if string(s.Bytes()) != src {
+		t.Errorf("Bytes = %q, want the input unchanged", s.Bytes())
 	}
 	for _, sp := range s.CodeSpans() {
 		if sp.Stop > len(s.Bytes()) {
-			t.Errorf("span %v is out of range of the recovered source", sp)
+			t.Errorf("span %v is out of range of the source", sp)
 		}
 	}
 }

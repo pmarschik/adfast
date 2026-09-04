@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	gast "github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/parser"
 )
 
 // Span is a half-open byte range [Start, Stop) of a Markdown source.
@@ -168,8 +169,16 @@ type Source struct {
 // bytes; Bytes returns what the spans address and Verbatim reports whether
 // it is the input unchanged. A byte-preserving caller checks Verbatim
 // before it trusts an offset against its own buffer.
-func NewSource(src []byte) *Source {
-	doc, parsed := parseGuarded(NewParser(), src)
+func NewSource(src []byte) *Source { return newSourceWithParser(NewParser(), src) }
+
+// newSourceWithParser is NewSource with the parser as a parameter. The seam
+// exists for the tests: no source is known to make goldmark v1.8.5 panic, so
+// a recovered Source — the only one whose Verbatim is false — cannot be built
+// through the exported constructor on the pinned version, and the contract
+// that its spans address the recovered copy would go unasserted. A stub
+// parser that panics on demand closes that gap; see parse_guarded_test.go.
+func newSourceWithParser(p parser.Parser, src []byte) *Source {
+	doc, parsed := parseGuarded(p, src)
 	return &Source{src: parsed, doc: doc, same: bytes.Equal(parsed, src)}
 }
 
