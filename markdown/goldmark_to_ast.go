@@ -22,12 +22,6 @@ import (
 // This is the parse-side AST→AST half of FromMarkdown: goldmark nodes
 // reference raw source bytes, so all source extraction and CommonMark escape
 // decoding happens here; the resulting AST tree is source-independent.
-// urlLiteralRe matches GFM literal-autolink URLs (goldmark's linkify
-// pattern; the path part optional).
-var urlLiteralRe = regexp.MustCompile(
-	"(?:(?:https?|ftp)://|www\\.)[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-z]+(?::\\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\\(\\);,'\">\\^{}\\[\\]`]*)?",
-)
-
 // relinkifyTexts converts bare URL literals inside plain text nodes into
 // autolinks. Goldmark's linkify skips URLs while inside a potential link
 // label (a dangling "[ http://…"), where remark still linkifies — and the

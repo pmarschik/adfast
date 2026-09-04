@@ -175,12 +175,81 @@ var autolinkBoundaryCases = []autolinkCase{{
 	src:  "emph *https://a.example* end\n",
 	want: []string{"https://a.example|https://a.example|https://a.example|bare|url"},
 }, {
-	// goldmark's linkifier requires a dotted domain, so a dotless host is
-	// not an autolink at all. A caller mirroring an implementation that
-	// linkifies it has to know that, and a silent empty view is how it
-	// finds out — hence the count assertion in the runner.
-	name: "a dotless host is not an autolink",
+	// MOVED HERE FROM THE "not an autolink" GROUP BELOW, where it read
+	// "a dotless host is not an autolink" with want nil, because goldmark's
+	// own pattern demanded a dotted domain. The reference's tokenizer
+	// demands none, and an INTRANET NAME is the audience: this package now
+	// supplies its own pattern (urlliteral.go) and the address links.
+	name: "a dotless host is an autolink",
 	src:  "See https://localhost:8080/x end\n",
+	want: []string{
+		"https://localhost:8080/x|https://localhost:8080/x|https://localhost:8080/x|bare|url",
+	},
+}, {
+	name: "a dotless intranet host is an autolink",
+	src:  "See https://jira/browse/X end\n",
+	want: []string{"https://jira/browse/X|https://jira/browse/X|https://jira/browse/X|bare|url"},
+}, {
+	// The scheme is compared without regard to case, as the reference
+	// compares it (it lowercases the scheme first). goldmark's own pattern
+	// tested three lowercase byte prefixes AND spelled its TLD class
+	// `[a-z]+`, so an address in capitals failed twice over.
+	name: "an uppercase scheme and host is an autolink",
+	src:  "See HTTPS://EX.COM/x end\n",
+	want: []string{"HTTPS://EX.COM/x|HTTPS://EX.COM/x|HTTPS://EX.COM/x|bare|url"},
+}, {
+	name: "a mixed-case scheme is an autolink",
+	src:  "See Https://ex.com/y end\n",
+	want: []string{"Https://ex.com/y|Https://ex.com/y|Https://ex.com/y|bare|url"},
+}, {
+	// The SECOND raw-source parser, colonURLParser, has to widen with the
+	// first. goldmark's linkify never triggers on ':', so a URL written
+	// right after one reaches the pattern by a different route — and that
+	// route carried its own case-sensitive scheme pre-check, which would
+	// have kept these two narrow while the prose forms above widened.
+	name: "an uppercase scheme after a colon is an autolink",
+	src:  "See link:HTTPS://EX.COM/x now\n",
+	want: []string{"HTTPS://EX.COM/x|HTTPS://EX.COM/x|HTTPS://EX.COM/x|bare|url"},
+}, {
+	name: "a dotless host after a colon is an autolink",
+	src:  "See link:https://localhost/x now\n",
+	want: []string{"https://localhost/x|https://localhost/x|https://localhost/x|bare|url"},
+}, {
+	// THE NEGATIVE SIDE OF THE WIDENING, and the half that a pattern
+	// accepting "anything after ://" would fail. The reference rejects each
+	// of these, measured: a host that starts on punctuation is no host.
+	name: "a host starting on an underscore is not an autolink",
+	src:  "See https://_x end\n",
+	want: nil,
+}, {
+	// The scheme is case-INSENSITIVE, not case-FOLDED. Go's `(?i)` folds
+	// U+017F onto "s"; the reference folds neither way and leaves this
+	// unlinked, measured. Spelling the pattern `(?i:https?|ftp)` passes every
+	// positive row above and turns this one into an autolink.
+	name: "a long-s scheme is not an autolink",
+	src:  "See httpſ://ex.com/x end\n",
+	want: nil,
+}, {
+	name: "a host starting on a hyphen is not an autolink",
+	src:  "See https://-x end\n",
+	want: nil,
+}, {
+	name: "a host starting on a slash is not an autolink",
+	src:  "See https:///x end\n",
+	want: nil,
+}, {
+	name: "a punctuation-led host after a colon is not an autolink",
+	src:  "See link:https://_x now\n",
+	want: nil,
+}, {
+	name: "a scheme with no host at all is not an autolink",
+	src:  "See https:// end\n",
+	want: nil,
+}, {
+	// A scheme is still a scheme and not a suffix: the address has to start
+	// where the reader is looking.
+	name: "a scheme run into a preceding word is not an autolink",
+	src:  "See xhttps://localhost/x end\n",
 	want: nil,
 }, {
 	name: "a URL in a link label is not an autolink",
