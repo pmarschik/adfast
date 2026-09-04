@@ -134,8 +134,24 @@ func parityAgreeing() []parityCase {
 	return []parityCase{
 		{"external image", "![alt](https://x/a.png)", nil},
 		{"linked external image", "[![alt](https://x/a.png)](https://home/)", nil},
+		// Reconciled drift that the divergence table never held, because
+		// nothing had measured it: the format leg kept the link's title
+		// (its inline mark context carries one) and the ADF leg dropped it,
+		// so formatting a document and pushing it wrote two different
+		// links. Both legs now carry it — as the mark's title attribute on
+		// the ADF leg, as the hrefTitle attribute on the directive form.
+		{"linked external image with a title", "[![alt](https://x/a.png)](https://home/ \"Home\")", nil},
 		{"external media", "::media[alt]{type=external url=https://x/a.png}", nil},
 		{"external media with href", "::media[alt]{type=external url=https://x/a.png href=https://home/}", nil},
+		{
+			"external media with href and hrefTitle",
+			"::media[alt]{type=external url=https://x/a.png href=https://home/ hrefTitle=Home}",
+			nil,
+		},
+		// An hrefTitle with no href beside it: the encode builds no link
+		// mark at all from it, so both legs must drop it rather than one
+		// keeping an attribute the other cannot represent.
+		{"hrefTitle without an href", "::media[alt]{type=external url=https://x/a.png hrefTitle=Home}", nil},
 		{"external media, relative url", "::media[alt]{type=external url=img/a.png}", nil},
 		// Reconciled drift, and the row that proves it: this used to sit
 		// in TestMediaProjectionLegsDivergeAsMeasured because
@@ -169,6 +185,16 @@ func parityAgreeing() []parityCase {
 		{"plain caption becomes the title", ":::media[alt]{type=external url=https://x/a.png}\nA caption\n:::", nil},
 		{"rich caption keeps the container", ":::media[alt]{type=external url=https://x/a.png}\nA **bold** caption\n:::", nil},
 		{"caption and href together", ":::media[alt]{type=external url=https://x/a.png href=https://home/}\nA caption\n:::", nil},
+		// Two titles in one row: the caption is the IMAGE's title and the
+		// hrefTitle is the LINK's, and the image form spells both at once —
+		// [![alt](url "A caption")](href "Home"). A projection that mixed
+		// them up renders one of the two in the wrong place and this row
+		// disagrees.
+		{
+			"caption, href and hrefTitle together",
+			":::media[alt]{type=external url=https://x/a.png href=https://home/ hrefTitle=Home}\nA caption\n:::",
+			nil,
+		},
 		{"caption on store media", ":::media[alt]{id=AID width=10 height=20}\nA caption\n:::", assets},
 		{"a media group", "::media[a]{id=X group=true}\n\n::media[b]{id=Y group=true}", nil},
 	}
@@ -537,6 +563,143 @@ func TestNoOpResizeDoesNotBlockTheImageForm(t *testing.T) {
 	}
 }
 
+// TestALinkedImageKeepsTheLinkTitleOnBothLegs pins the exact bytes for a
+// link wrapped around a block image that spells a title after its
+// destination.
+//
+// The ADF leg used to drop that title: withMediaLink wrote the href onto
+// the media node's link mark and nothing else, so
+// [![alt](url)](href "Home") came back as [![alt](url)](href). The
+// format leg kept it — an inline image rides under its enclosing link's
+// full context, title included — so the two legs wrote two different
+// links for one document and a pull → format → push cycle changed the
+// author's markdown.
+//
+// The directive spelling is the other half. A media node too rich for an
+// image form carries the destination as href, so the title needs an
+// attribute of its own (hrefTitle), and both decodes have to write it or
+// the encode side is writing into a payload nothing reads.
+//
+// Mutation, with the title dropped from withMediaLink, mediaLinkMark and
+// linkMarkFromAttrs again (the pre-fix encode). All four defect rows name
+// themselves and the two good rows stay green. MEASURED, with the
+// trailing good cases every row carries elided as … and the test name
+// abbreviated the same way:
+//
+//	--- FAIL: TestALinkedImageKeepsTheLinkTitleOnBothLegs/a_bordered_leaf_keeps_hrefTitle_as_an_attribute
+//	    defect proof: adf leg
+//	      in:   "::media[alt]{type=external url=https://x/a.png borderColor=#000 href=https://home/ hrefTitle=Home}…"
+//	      got:  "::media[alt]{borderColor=\"#000\" href=\"https://home/\" type=\"external\" url=\"https://x/a.png\"}…"
+//	      want: "::media[alt]{borderColor=\"#000\" href=\"https://home/\" hrefTitle=\"Home\" type=\"external\" url=\"https://x/a.png\"}…"
+//	--- FAIL: …/a_caption_and_a_link_title_together
+//	    defect proof: adf leg
+//	      in:   ":::media[alt]{type=external url=https://x/a.png href=https://home/ hrefTitle=Home}\nA caption\n:::…"
+//	      got:  "[![alt](https://x/a.png \"A caption\")](https://home/)…"
+//	      want: "[![alt](https://x/a.png \"A caption\")](https://home/ \"Home\")…"
+//	--- FAIL: …/a_titled_link_around_an_image
+//	    defect proof: adf leg
+//	      in:   "[![alt](https://x/a.png)](https://home/ \"Home\")…"
+//	      got:  "[![alt](https://x/a.png)](https://home/)…"
+//	      want: "[![alt](https://x/a.png)](https://home/ \"Home\")…"
+//	--- FAIL: …/the_directive_spelling_of_the_same_link
+//	    defect proof: adf leg
+//	      in:   "::media[alt]{type=external url=https://x/a.png href=https://home/ hrefTitle=Home}…"
+//	      got:  "[![alt](https://x/a.png)](https://home/)…"
+//	      want: "[![alt](https://x/a.png)](https://home/ \"Home\")…"
+//
+// And with the format leg's half dropped instead (no hrefTitle in
+// normalize.go's mediaFromAttrs, mediaLinkAttrs and normalizeMediaInline),
+// THREE of those four rows fail on the format side — every directive
+// spelling — while "a titled link around an image" stays green: the
+// formatter reads that title straight off the markdown link, which the
+// format leg never had to leave (see linkOnly). The parity tripwire
+// catches the same mutation as a disagreement between the legs. MEASURED,
+// one of each:
+//
+//	--- FAIL: …/the_directive_spelling_of_the_same_link
+//	    defect proof: format leg
+//	      in:   "::media[alt]{type=external url=https://x/a.png href=https://home/ hrefTitle=Home}…"
+//	      got:  "[![alt](https://x/a.png)](https://home/)…"
+//	      want: "[![alt](https://x/a.png)](https://home/ \"Home\")…"
+//	--- FAIL: TestMediaProjectionLegsAgree/external_media_with_href_and_hrefTitle
+//	    the two media projections disagree
+//	      in:     "::media[alt]{type=external url=https://x/a.png href=https://home/ hrefTitle=Home}…"
+//	      format: "[![alt](https://x/a.png)](https://home/)…"
+//	      adf:    "[![alt](https://x/a.png)](https://home/ \"Home\")…"
+func TestALinkedImageKeepsTheLinkTitleOnBothLegs(t *testing.T) {
+	t.Parallel()
+	good := "\n\n" + parityGoodImage + "\n\n" + parityGoodLink + "\n"
+	cases := []struct {
+		name string
+		row  string
+		want string
+		kind string
+	}{
+		{
+			name: "a titled link around an image",
+			row:  "[![alt](https://x/a.png)](https://home/ \"Home\")",
+			want: "[![alt](https://x/a.png)](https://home/ \"Home\")" + good,
+			kind: "defect proof",
+		},
+		{
+			// The same ADF from the other spelling: the directive carries
+			// the destination and its title as attributes, and the image
+			// form is where they land back together.
+			name: "the directive spelling of the same link",
+			row:  "::media[alt]{type=external url=https://x/a.png href=https://home/ hrefTitle=Home}",
+			want: "[![alt](https://x/a.png)](https://home/ \"Home\")" + good,
+			kind: "defect proof",
+		},
+		{
+			// Two titles, two owners: the caption belongs to the picture,
+			// the hrefTitle to the link.
+			name: "a caption and a link title together",
+			row: ":::media[alt]{type=external url=https://x/a.png href=https://home/ hrefTitle=Home}\n" +
+				"A caption\n:::",
+			want: "[![alt](https://x/a.png \"A caption\")](https://home/ \"Home\")" + good,
+			kind: "defect proof",
+		},
+		{
+			// The leaf form: a border blocks the image, so the title has to
+			// survive as the directive attribute rather than as markdown.
+			name: "a bordered leaf keeps hrefTitle as an attribute",
+			row:  "::media[alt]{type=external url=https://x/a.png borderColor=#000 href=https://home/ hrefTitle=Home}",
+			want: "::media[alt]{borderColor=\"#000\" href=\"https://home/\" hrefTitle=\"Home\" " +
+				"type=\"external\" url=\"https://x/a.png\"}" + good,
+			kind: "defect proof",
+		},
+		{
+			// A titleless link must still write no title anywhere: absent
+			// rather than empty is the contract the text link mark set (see
+			// linkTitleAttr).
+			name: "a titleless link stays titleless",
+			row:  "[![alt](https://x/a.png)](https://home/)",
+			want: "[![alt](https://x/a.png)](https://home/)" + good,
+			kind: "good case",
+		},
+		{
+			// An hrefTitle with nothing to be the title of: the encode
+			// builds no link mark, so both legs drop it.
+			name: "an hrefTitle without an href drops",
+			row:  "::media[alt]{type=external url=https://x/a.png hrefTitle=Home}",
+			want: "![alt](https://x/a.png)" + good,
+			kind: "good case",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			md := parityDoc(c.row)
+			if got := parityFormatLeg(md); got != c.want {
+				t.Errorf("%s: format leg\n  in:   %q\n  got:  %q\n  want: %q", c.kind, md, got, c.want)
+			}
+			if got := parityADFLeg(md); got != c.want {
+				t.Errorf("%s: adf leg\n  in:   %q\n  got:  %q\n  want: %q", c.kind, md, got, c.want)
+			}
+		})
+	}
+}
+
 // TestMediaFormatLegIsAFixpoint: the prettier formatter must be
 // idempotent on media, its own output included. This is the property the
 // linked-image drift broke — the format leg deleted the link the decode
@@ -550,6 +713,7 @@ func TestMediaFormatLegIsAFixpoint(t *testing.T) {
 	cases := append(parityAgreeing(),
 		parityCase{"a link around an image", "[![alt](https://x/a.png)](https://home/)", nil},
 		parityCase{"a link around a titled image", "[![alt](https://x/a.png \"t\")](https://home/)", nil},
+		parityCase{"a titled link around a titled image", "[![alt](https://x/a.png \"t\")](https://home/ \"Home\")", nil},
 		parityCase{"a link around a reference image", "[![alt][r]](https://home/)\n\n[r]: https://x/a.png", nil},
 		parityCase{"a link around a store image", "[![alt](assets/a.png)](https://home/)", assets},
 		parityCase{"a link around an unplaceable image", "[![alt](img/a.png)](https://home/)", nil},
