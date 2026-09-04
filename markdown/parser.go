@@ -1,7 +1,6 @@
 package markdown
 
 import (
-	"bytes"
 	"regexp"
 
 	directive "github.com/pmarschik/goldmark-directive"
@@ -25,12 +24,6 @@ import (
 // or ftp://, the ':' is emitted as text and the URL is returned as an AutoLink.
 type colonURLParser struct{}
 
-// colonURLRegexp matches http/https/ftp URLs — same pattern as Goldmark's
-// internal linkify urlRegexp in extension/linkify.go (path group made optional).
-var colonURLRegexp = regexp.MustCompile(
-	`^(?:https?|ftp)://[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+(?::\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`,
-)
-
 func (*colonURLParser) Trigger() []byte { return []byte{':'} }
 
 func (*colonURLParser) Parse(parent gast.Node, block text.Reader, pc parser.Context) gast.Node {
@@ -43,12 +36,11 @@ func (*colonURLParser) Parse(parent gast.Node, block text.Reader, pc parser.Cont
 		return nil
 	}
 	rest := line[1:]
-	if !bytes.HasPrefix(rest, []byte("https://")) &&
-		!bytes.HasPrefix(rest, []byte("http://")) &&
-		!bytes.HasPrefix(rest, []byte("ftp://")) {
-		return nil
-	}
-	m := colonURLRegexp.FindIndex(rest)
+	// The anchored pattern is the whole gate. A scheme pre-check used to sit
+	// in front of it, spelled with three case-SENSITIVE byte prefixes, and
+	// it silently narrowed this parser back below urlLiteralAnchoredRe: the
+	// pattern accepts "HTTPS://" and the pre-check dropped it first.
+	m := urlLiteralAnchoredRe.FindIndex(rest)
 	if len(m) == 0 || m[0] != 0 {
 		return nil
 	}
@@ -108,7 +100,27 @@ func NewParser() parser.Parser {
 			// larger RFC 5322 set (backtick, %, …), linkifying text remark
 			// leaves alone. goldmark still enforces the ≥1-dot domain and
 			// trailing-character rules on top of this pattern.
-			extension.NewLinkify(extension.WithLinkifyEmailRegexp(gfmEmailRe)),
+			//
+			// The URL pattern is this package's own (see urlliteral.go),
+			// because goldmark's is narrower than the reference's in two
+			// measured ways: it tests the scheme case-sensitively, and it
+			// requires a dotted host, so "HTTPS://EX.COM/x" and an intranet
+			// "https://jira/browse/X" both parsed as prose.
+			//
+			// AllowedProtocols has to be given along with it. goldmark uses
+			// that list only as a byte-prefix pre-gate before it runs the URL
+			// pattern at all, and its default gate is the three schemes
+			// spelled in lowercase — which would drop "HTTPS://" before the
+			// pattern ever saw it. The first letter of each accepted scheme,
+			// in both cases, is therefore the whole list: the pattern itself
+			// is what decides the scheme.
+			extension.NewLinkify(
+				extension.WithLinkifyEmailRegexp(gfmEmailRe),
+				extension.WithLinkifyURLRegexp(urlLiteralAnchoredRe),
+				extension.WithLinkifyAllowedProtocols([][]byte{
+					[]byte("h"), []byte("H"), []byte("f"), []byte("F"),
+				}),
+			),
 			extension.Table,
 			// TaskList is replaced by strictTaskCheckBoxParser below —
 			// goldmark accepts "[ ]" without following whitespace, where
