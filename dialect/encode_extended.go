@@ -233,7 +233,7 @@ func (n *MediaCaption) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 		alt = ast.PlainText(p.Children)
 		children = children[1:]
 	}
-	media := mediaFromAttrs(n.Attrs, alt)
+	media := mediaFromAttrs(ctx, n.Attrs, alt)
 	single := mediaSingleFromAttrs(n.Attrs, media)
 	if inlines := captionInlines(ctx, children); len(inlines) > 0 {
 		single.Content = append(single.Content, &adf.Caption{Content: inlines})

@@ -7,6 +7,7 @@ import (
 	"github.com/pmarschik/adfast/adf"
 	"github.com/pmarschik/adfast/ast"
 	"github.com/pmarschik/adfast/extension"
+	"github.com/pmarschik/adfast/internal/mediasrc"
 )
 
 // This file implements the ast→adf path of the dialect kinds: the
@@ -49,20 +50,7 @@ func (n *Expand) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 // a media node wrapped in mediaSingle, or a single-item mediaGroup that
 // the converter merges with adjacent group items.
 func (n *Media) EncodeADF(ctx extension.EncodeContext) []adf.Node {
-	media := mediaFromAttrs(n.Attrs, ast.PlainText(n.Children))
-	// A local asset omits its id + intrinsic dimensions (decode drops them);
-	// resolve them back from the markdown-relative path via the asset store.
-	if media.ID == "" {
-		if id, ok := ctx.AssetID(n.Attrs["path"]); ok {
-			media.ID = id
-		}
-	}
-	if media.Width == nil || media.Height == nil {
-		if w, h, ok := ctx.AssetDims(n.Attrs["path"]); ok {
-			wf, hf := float64(w), float64(h)
-			media.Width, media.Height = &wf, &hf
-		}
-	}
+	media := mediaFromAttrs(ctx, n.Attrs, ast.PlainText(n.Children))
 	if n.Attrs["group"] == "true" {
 		return []adf.Node{&adf.MediaGroup{Content: []adf.Node{media}}}
 	}
@@ -71,7 +59,13 @@ func (n *Media) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 
 // mediaFromAttrs builds the ADF media leaf from a media directive's
 // attribute payload and alt label (shared by ::media and :::media).
-func mediaFromAttrs(attrs map[string]string, alt string) *adf.Media {
+//
+// The store resolution happens here, not at the call sites, because a
+// media leaf that carries only a path is not addressable in ADF at all:
+// ADF names an attachment by media id, so an encode site that forgot to
+// recover it would emit a media node with an empty id. It was spelled
+// out at the ::media site only, and :::media did exactly that.
+func mediaFromAttrs(ctx extension.EncodeContext, attrs map[string]string, alt string) *adf.Media {
 	media := &adf.Media{Type: "file"}
 	if t := attrs["type"]; t != "" {
 		media.Type = t
@@ -110,6 +104,15 @@ func mediaFromAttrs(attrs map[string]string, alt string) *adf.Media {
 	if mark := linkMarkFromAttrs(attrs); mark != nil {
 		media.Marks = append(media.Marks, mark)
 	}
+	// A local asset omits its id + intrinsic dimensions (decode drops them);
+	// resolve them back from the markdown-relative path via the asset store.
+	// mediasrc owns that recovery for every leg of the projection — the
+	// md→md formatter performs the same one over its own media shape — so
+	// a path-addressed directive cannot be a picture on one leg and opaque
+	// on the other.
+	path := attrs["path"]
+	media.ID = mediasrc.ID(media.ID, path, ctx.AssetID)
+	media.Width, media.Height = mediasrc.Dims(media.Width, media.Height, path, ctx.AssetDims)
 	return media
 }
 

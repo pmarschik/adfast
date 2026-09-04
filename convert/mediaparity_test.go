@@ -56,6 +56,13 @@ package convert
 //     and the only shape both could call is one taking the four answers
 //     as booleans — which would move the actual checks back out to the
 //     call sites and lose exactly what factoring them in bought.
+//   - the STORE RESOLUTION is no longer doubled either, and was worse
+//     than doubled: recovering the media id and the intrinsic size a
+//     path-addressed directive leaves out was spelled at dialect's
+//     ::media encode site only. :::media never did it, and the format
+//     leg looked assets up by id alone. Both legs now call
+//     internal/mediasrc, and on the ADF leg the recovery sits inside
+//     mediaFromAttrs, where no encode site can skip it.
 
 import (
 	"strings"
@@ -143,6 +150,14 @@ func parityAgreeing() []parityCase {
 			[]Option{WithPreserveLocalImages()},
 		},
 		{"file media in the store", "::media[alt]{id=AID width=10 height=20}", assets},
+		// Reconciled drift, the second row to move up out of the
+		// divergence table: a path-addressed directive spells neither id
+		// nor size, and only the ADF leg recovered them from the store, so
+		// one directive was a picture on one leg and an opaque directive
+		// on the other. Both legs now ask mediasrc.ID/mediasrc.Dims.
+		{"file media addressed by path", "::media[alt]{path=assets/a.png}", assets},
+		{"plain caption on path-addressed media", ":::media[alt]{path=assets/a.png}\nA caption\n:::", assets},
+		{"rich caption on path-addressed media", ":::media[alt]{path=assets/a.png}\nA **bold** caption\n:::", assets},
 		{"file media with href", "::media[alt]{id=AID width=10 height=20 href=https://home/}", assets},
 		{"bordered media", "::media[alt]{type=external url=https://x/a.png borderColor=#000 borderSize=2}", nil},
 		{"wide layout", "::media[alt]{type=external url=https://x/a.png layout=wide}", nil},
@@ -220,7 +235,6 @@ type parityDivergence struct {
 // exactly the failure this table produces when someone does.
 func TestMediaProjectionLegsDivergeAsMeasured(t *testing.T) {
 	t.Parallel()
-	assets := parityAssetOpts()
 	good := "\n\n" + parityGoodImage + "\n\n" + parityGoodLink + "\n"
 	cases := []parityDivergence{
 		// --- by contract ---
@@ -259,21 +273,12 @@ func TestMediaProjectionLegsDivergeAsMeasured(t *testing.T) {
 		},
 		// --- drift: the format copy is missing a rule the ADF copy has ---
 		//
-		// The WithPreserveLocalImages row that used to lead this group is
-		// reconciled and now lives in parityAgreeing; see the comment on
-		// it there.
-		{
-			name:   "file media addressed by path",
-			row:    "::media[alt]{path=assets/a.png}",
-			opts:   assets,
-			format: "::media[alt]{path=\"assets/a.png\"}" + good,
-			adf:    "![alt](assets/a.png)" + good,
-			why: "Media.EncodeADF resolves a path-only directive back to its id and " +
-				"dimensions through the store (AssetID, AssetDims), so the ADF leg " +
-				"finds the asset and collapses to an image; normalize.go's " +
-				"fileMediaAsImage looks the asset up by id alone and gives up when the " +
-				"directive carries only a path.",
-		},
+		// Empty, and that is the point of the table. Both rows this group
+		// has held so far — external media under WithPreserveLocalImages,
+		// and file media addressed by path — are reconciled and now live
+		// in parityAgreeing; see the comments on them there. A new row
+		// belongs here only as a measurement, until the missing rule moves
+		// into a function both legs call.
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -364,6 +369,171 @@ func TestMediaFormatLegKeepsThePathAttribute(t *testing.T) {
 	}
 	if strings.Contains(got, "id=") {
 		t.Errorf("the format leg emitted an id= it should have resolved to a path=: %q", got)
+	}
+}
+
+// TestPathAddressedMediaResolvesOnBothLegs pins the exact bytes both
+// legs give a media directive that spells only a path — the form a
+// pulled document uses, since an attachment downloaded next to the
+// markdown needs no id and no size in the text.
+//
+// parityAgreeing already fails when the two legs disagree; this test
+// exists because agreement is not the whole property. Both legs could
+// agree on losing the picture, so the picture is pinned here.
+//
+// Two mutations, one per leg. Dropping the mediasrc calls from the
+// normalizer's mediaShape — the format leg's pre-fix state, an asset
+// lookup by id alone:
+//
+//	--- FAIL: TestPathAddressedMediaResolvesOnBothLegs/the_leaf_reaches_image_form
+//	    defect proof (format leg): format leg
+//	      in:   "::media[alt]{path=assets/a.png}…"
+//	      got:  "::media[alt]{path=\"assets/a.png\"}…"
+//	      want: "![alt](assets/a.png)…"
+//	    …/a_plain_caption_reaches_image_form likewise, plus
+//	    TestMediaProjectionLegsAgree on both path rows.
+//
+// Building the caption carrier's leaf without the store — the ADF leg's
+// pre-fix state, since the recovery was written at the ::media site and
+// not inside mediaFromAttrs:
+//
+//	--- FAIL: TestPathAddressedMediaResolvesOnBothLegs/a_rich_caption_keeps_the_source
+//	    defect proof (adf leg): adf leg
+//	      in:   ":::media[alt]{path=assets/a.png}\nA **bold** caption\n:::…"
+//	      got:  ":::media[alt]\nA **bold** caption\n:::…"
+//	      want: ":::media[alt]{path=\"assets/a.png\"}\nA **bold** caption\n:::…"
+//
+// The "got" there is the whole point: the payload held a media node with
+// an empty id, an attachment no Atlassian product can address.
+func TestPathAddressedMediaResolvesOnBothLegs(t *testing.T) {
+	t.Parallel()
+	assets := parityAssetOpts()
+	good := "\n\n" + parityGoodImage + "\n\n" + parityGoodLink + "\n"
+	cases := []struct {
+		name string
+		row  string
+		want string
+		kind string
+	}{
+		{
+			// The format leg looked the asset up by id alone and kept an
+			// opaque directive where the ADF leg produced a picture.
+			name: "the leaf reaches image form",
+			row:  "::media[alt]{path=assets/a.png}",
+			want: "![alt](assets/a.png)" + good,
+			kind: "defect proof (format leg)",
+		},
+		{
+			// Same on the caption carrier, whose plain-text caption becomes
+			// the image title.
+			name: "a plain caption reaches image form",
+			row:  ":::media[alt]{path=assets/a.png}\nA caption\n:::",
+			want: "![alt](assets/a.png \"A caption\")" + good,
+			kind: "defect proof (format leg)",
+		},
+		{
+			// This one is an ADF-leg defect: MediaCaption.EncodeADF built
+			// the leaf without the store resolution, so the payload carried
+			// a media node with an empty id — an attachment Atlassian
+			// cannot address — and reading it back left a bare :::media
+			// with no source at all.
+			name: "a rich caption keeps the source",
+			row:  ":::media[alt]{path=assets/a.png}\nA **bold** caption\n:::",
+			want: ":::media[alt]{path=\"assets/a.png\"}\nA **bold** caption\n:::" + good,
+			kind: "defect proof (adf leg)",
+		},
+		{
+			// The good case for all three: a path-addressed media too rich
+			// for an image still keeps its path, so the fix recovered the
+			// source without collapsing everything into a picture.
+			name: "a bordered leaf keeps the directive",
+			row:  "::media[alt]{path=assets/a.png borderColor=#000 borderSize=2}",
+			want: "::media[alt]{borderColor=\"#000\" borderSize=\"2\" path=\"assets/a.png\"}" + good,
+			kind: "good case",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			md := parityDoc(c.row)
+			if got := parityFormatLeg(md, assets...); got != c.want {
+				t.Errorf("%s: format leg\n  in:   %q\n  got:  %q\n  want: %q", c.kind, md, got, c.want)
+			}
+			if got := parityADFLeg(md, assets...); got != c.want {
+				t.Errorf("%s: adf leg\n  in:   %q\n  got:  %q\n  want: %q", c.kind, md, got, c.want)
+			}
+		})
+	}
+}
+
+// TestNoOpResizeDoesNotBlockTheImageForm pins the resolution of a
+// contradiction inside the media projection that the path resolution
+// above made reachable: mediaOmissions drops a pixel display width equal
+// to the picture's intrinsic width as a redundant no-op, while
+// singleBlocksImage counted the same attribute as a reason the picture
+// could not take the plain image form. A media node with both facts
+// therefore rendered as a directive that no longer spelled the width —
+// and that directive, read again, was a picture. The formatter changed
+// its own output.
+//
+// One predicate now answers both questions, so a display width the text
+// omits cannot also be a display width the text depends on.
+//
+// Mutation: with singleBlocksImage blocking on any layoutWidth again
+// (both copies), the fix row and the fixpoint both report the picture
+// stuck in directive form, one pass short of the image:
+//
+//	--- FAIL: TestNoOpResizeDoesNotBlockTheImageForm/an_intrinsic-width_pixel_resize_is_not_a_resize
+//	    fix: format leg
+//	      in:   "::media[alt]{id=AID width=10 height=20 layoutWidth=10 widthType=pixel}…"
+//	      got:  "::media[alt]{path=\"assets/a.png\"}…"
+//	      want: "![alt](assets/a.png)…"
+//	    fix: adf leg — the same got/want.
+//	--- FAIL: TestMediaFormatLegIsAFixpoint/no-op_resize
+//	    formatting the formatter's own media output changed it
+//	      in:    "::media[alt]{id=AID width=10 height=20 layoutWidth=10 widthType=pixel}…"
+//	      once:  "::media[alt]{path=\"assets/a.png\"}…"
+//	      twice: "![alt](assets/a.png)…"
+func TestNoOpResizeDoesNotBlockTheImageForm(t *testing.T) {
+	t.Parallel()
+	assets := parityAssetOpts()
+	good := "\n\n" + parityGoodImage + "\n\n" + parityGoodLink + "\n"
+	cases := []struct {
+		name string
+		row  string
+		want string
+		kind string
+	}{
+		{
+			name: "an intrinsic-width pixel resize is not a resize",
+			row:  "::media[alt]{id=AID width=10 height=20 layoutWidth=10 widthType=pixel}",
+			want: "![alt](assets/a.png)" + good,
+			kind: "fix",
+		},
+		{
+			name: "a narrower display width still blocks",
+			row:  "::media[alt]{id=AID width=10 height=20 layoutWidth=5 widthType=pixel}",
+			want: "::media[alt]{layoutWidth=\"5\" path=\"assets/a.png\" widthType=\"pixel\"}" + good,
+			kind: "good case",
+		},
+		{
+			name: "the same number in percent still blocks",
+			row:  "::media[alt]{id=AID width=10 height=20 layoutWidth=10 widthType=percentage}",
+			want: "::media[alt]{layoutWidth=\"10\" path=\"assets/a.png\" widthType=\"percentage\"}" + good,
+			kind: "good case",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			md := parityDoc(c.row)
+			if got := parityFormatLeg(md, assets...); got != c.want {
+				t.Errorf("%s: format leg\n  in:   %q\n  got:  %q\n  want: %q", c.kind, md, got, c.want)
+			}
+			if got := parityADFLeg(md, assets...); got != c.want {
+				t.Errorf("%s: adf leg\n  in:   %q\n  got:  %q\n  want: %q", c.kind, md, got, c.want)
+			}
+		})
 	}
 }
 
