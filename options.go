@@ -263,21 +263,37 @@ func WithIncrementListMarkers() Option {
 }
 
 // WithPreserveLocalImages keeps an unresolved document-relative image
-// reference (![alt](assets/x.png)) as external media carrying the path
-// instead of dropping it (the remark-reference default).
+// reference (![alt](assets/x.png)) as external media carrying the path,
+// instead of giving up the picture (the remark-reference default).
 //
-// Read by every leg of the media projection, and they agree: ToADF
-// promotes the local image to external media, FromADF reads that media
-// back as a plain image, and ToMarkdown in the prettier-format mode
-// (WithPrettierFormat) projects the equivalent ::media directive to a
-// plain image without going through ADF at all. Off, all three keep the
-// ::media form instead, so a relative external url survives re-encode
-// losslessly.
+// Off is not a deletion: the PICTURE has no node to live in, but the
+// label is content and it stays — as a link to the path, or as plain
+// text when there is nothing to click — and an unresolved-asset
+// diagnostic names it. ![sketch](assets/x.png) becomes the text
+// "sketch" carrying a link mark to assets/x.png; with the option it
+// becomes mediaSingle > media{type: external, url: assets/x.png} and no
+// diagnostic fires.
+//
+// It reaches only the media forms that can hold an external url, which
+// means the image ON ITS OWN LINE. An inline image in running prose is
+// byte-identical with the option and without it, and still reports
+// unresolved-asset, because mediaInline has no external variant — no
+// setting can make ADF carry an unuploaded picture mid-sentence. Moving
+// the image onto its own line is the only way to keep it.
+//
+// Within that scope every leg agrees: ToADF promotes the local image to
+// external media, FromADF reads that media back as a plain image, and
+// ToMarkdown in the prettier-format mode (WithPrettierFormat) projects
+// the equivalent ::media directive to a plain image without going
+// through ADF at all. Off, all three keep the ::media form instead, so a
+// relative external url survives re-encode losslessly.
 //
 // Use it for store-aware round-trips and diff normalization where a
 // not-yet-uploaded local image must survive so a later push upload can
 // resolve it; do NOT use it for the final Jira push encode, where an
-// unresolved image should drop with an unresolved-asset diagnostic.
+// unresolved path must not be sent as external media a reader cannot
+// fetch — there the degraded link plus the unresolved-asset diagnostic
+// is the wanted outcome.
 func WithPreserveLocalImages() Option {
 	return func(o *options) { o.preserveLocalImages = true }
 }
@@ -337,14 +353,30 @@ func WithMediaAssetResolver(r convert.MediaAssetResolver) Option {
 	return func(o *options) { o.resolveMediaAsset = r }
 }
 
-// WithPrintWidth sets the paragraph wrapping width. Pass 0 to disable
-// wrapping. Read by ToMarkdown.
+// WithPrintWidth sets the paragraph wrapping width. Read by ToMarkdown.
+//
+// A width of 0 means NO WRAPPING — it is not "unset" and does not fall
+// back to the 80-column default. Passing it is the same output as
+// WithNoWrap, byte for byte (see WithNoWrap for why both names exist).
 func WithPrintWidth(width int) Option {
 	return func(o *options) { w := width; o.printWidth = &w }
 }
 
 // WithNoWrap disables paragraph wrapping, matching remark-stringify's
 // default of preserving long lines. Read by ToMarkdown.
+//
+// It is deliberately the readable alias for WithPrintWidth(0): both end
+// at the same wrapWidth = 0, so they produce identical bytes, and the
+// pair is kept because the two callers ask different questions. A
+// caller threading a configured width through wants the number, and 0
+// is the value that turns the feature off; a caller who simply never
+// wants wrapping should not have to know that 0 is the magic number for
+// it. Neither is deprecated.
+//
+// Given BOTH, no-wrap wins whatever order they are passed in: the
+// facade applies printWidth first and no-wrap after it, so
+// WithPrintWidth(40) followed by WithNoWrap() and the reverse both
+// leave prose unwrapped.
 func WithNoWrap() Option {
 	return func(o *options) { o.noWrap = true }
 }

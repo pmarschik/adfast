@@ -217,6 +217,37 @@ func TestPrintWidth_ZeroWidthLeavesProseUnwrapped(t *testing.T) {
 	}
 }
 
+// TestNoWrapIsTheAliasForWidthZero is a PRESERVED-BEHAVIOR PIN for what
+// WithNoWrap's doc comment now states: it is deliberately the readable
+// alias for WithPrintWidth(0), so the two produce identical bytes, and
+// given both, no-wrap wins in either order because the facade applies
+// printWidth first and no-wrap after it. Nothing changed in the option
+// plumbing; the comment previously said neither thing, leaving the pair
+// looking like an accident one of the two names should be removed to fix.
+func TestNoWrapIsTheAliasForWidthZero(t *testing.T) {
+	const input = "This is a long paragraph that should be wrapped at eighty characters because that is the default width.\n"
+
+	// Precondition: wrapping must be live in this build, or every
+	// comparison below would pass on a formatter that never wraps.
+	if wrapped := NewPipeline().Format(input, WithPrintWidth(40)); wrapped == input {
+		t.Fatalf("width 40 did not wrap; the assertions below would be vacuous: %q", wrapped)
+	}
+
+	for _, tc := range []struct {
+		name string
+		opts []Option
+	}{
+		{"WithPrintWidth(0)", []Option{WithPrintWidth(0)}},
+		{"WithNoWrap()", []Option{WithNoWrap()}},
+		{"width then no-wrap", []Option{WithPrintWidth(40), WithNoWrap()}},
+		{"no-wrap then width", []Option{WithNoWrap(), WithPrintWidth(40)}},
+	} {
+		if got := NewPipeline().Format(input, tc.opts...); got != input {
+			t.Errorf("%s wrapped the prose:\ngot  %q\nwant %q", tc.name, got, input)
+		}
+	}
+}
+
 // TestPrintWidth_ShortLinesThatOpenNoBlock carries forward the inputs of a
 // regression test whose defect no longer has a subject: the retired function
 // sliced the first four bytes of a digit-led line to sniff an ordered-list
