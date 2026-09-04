@@ -113,6 +113,36 @@ var urlLiteralHostCases = []urlLiteralHostCase{{
 	raw:  "",
 	text: "",
 }, {
+	// AN EMPTY LEADING SEGMENT. The reference's decoded-text host is
+	// `[-.\w]+`, so it may open on a dot, and its isCorrectDomain skips an
+	// empty segment instead of rejecting it. Measured, whole bodies:
+	//
+	//	"See https://.x end"          ->  "See <https://.x> end"
+	//	"See https://.internal/x end" ->  "See <https://.internal/x> end"
+	//
+	// goldmark's `{1,256}` needed one character before the dot, so both
+	// came out as prose. Both patterns take it: the reference's raw-source
+	// tokenizer rejects a punctuation-led host, but its decoded-text
+	// transform then links the leftover text anyway, so the observable
+	// answer is a link either way.
+	name: "an empty leading host segment",
+	src:  "https://.x",
+	raw:  "https://.x",
+	text: "https://.x",
+}, {
+	name: "an empty leading segment with a path",
+	src:  "https://.internal/x",
+	raw:  "https://.internal/x",
+	text: "https://.internal/x",
+}, {
+	// The empty segment is not a license for an EMPTY HOST: the TLD class
+	// still needs one character. The reference rejects both of these too —
+	// its splitUrl strips the trailing dot and refuses the empty remainder.
+	name: "a lone dot is not a host",
+	src:  "https://.",
+	raw:  "",
+	text: "",
+}, {
 	// A punctuation-led host is still accepted when it is DOTTED, because
 	// goldmark accepted it and so does the reference's transform. Dropping
 	// it would be a narrowing dressed up as a widening.

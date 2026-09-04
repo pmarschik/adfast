@@ -33,23 +33,31 @@ import "regexp"
 // parsers take urlLiteralAnchoredRe, whose host may be dotless, and the
 // DECODED-TEXT scan takes urlLiteralRe, whose host may not.
 //
-// TWO KNOWN GAPS, both left open deliberately because closing either widens
-// past what was measured:
-//
-//   - A dotless host the transform still accepts through an EMPTY leading
-//     segment ("https://.x" — the reference links it, this does not).
-//   - The path. goldmark stops a literal at its own character class where
-//     micromark stops it only at whitespace, so "https://ex.com~foo" links
-//     through "ex.com" here and through "foo" there. That is a third
-//     divergence, not this one, and widening the class would change every
-//     literal's extent rather than only a rejected literal's verdict.
+// ONE KNOWN GAP, left open deliberately because closing it widens past what
+// was measured: the path. goldmark stops a literal at its own character class
+// where the reference stops it only at whitespace, so "https://ex.com~foo"
+// links through "ex.com" here and through "foo" there. Widening the class
+// would change every literal's extent rather than only a rejected literal's
+// verdict, so it is a divergence of its own.
 const (
 	// urlLiteralHostDotted is goldmark's own host rule, and the reference's
 	// decoded-text rule: a dot-separated host. Only its TLD class changes,
 	// and only in CASE — goldmark spelled it `[a-z]+`, so "EX.COM" was not a
 	// host at all. The class is written out as ASCII rather than folded with
 	// `(?i)`; see urlLiteralScheme for why that distinction is not cosmetic.
-	urlLiteralHostDotted = `[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z]+(?::\d+)?`
+	//
+	// THE LEADING SEGMENT MAY BE EMPTY, which goldmark's `{1,256}` forbade.
+	// The reference's decoded-text host is `[-.\w]+`, so it may open on a
+	// dot, and its isCorrectDomain then SKIPS an empty segment rather than
+	// rejecting it (a falsy part fails neither of its two tests). Measured
+	// against the frozen reference, "See https://.x end" comes back as
+	// "See <https://.x> end" while goldmark left it as prose, which is what
+	// an author writing "https://.internal/x" gets. An all-empty host is
+	// still rejected: the TLD class needs one character, so "https://." and
+	// "https://" match neither alternative, and the reference rejects both
+	// too — its splitUrl strips the trailing dot and then refuses the empty
+	// remainder.
+	urlLiteralHostDotted = `[-a-zA-Z0-9@:%._\+~#=]{0,256}\.[a-zA-Z]+(?::\d+)?`
 	// urlLiteralHost is the raw-source host rule, and the widening: on top of
 	// the dotted form it accepts a DOTLESS host that starts alphanumeric
 	// ("localhost:8080", "jira"), which is the tokenizer's half of the
