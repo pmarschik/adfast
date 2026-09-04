@@ -3,6 +3,7 @@ package markdown
 import (
 	"slices"
 
+	directive "github.com/pmarschik/goldmark-directive"
 	gast "github.com/yuin/goldmark/ast"
 )
 
@@ -86,6 +87,17 @@ func Links(src []byte) []Link { return NewSource(src).Links() }
 // destination of each definition, Links locates the destination of each
 // inline link.
 //
+// A link written inside a DIRECTIVE'S LABEL is reported like any other, and
+// in all three directive forms: `:text[…]`, `::leaf[…]` and
+// `:::container[…]`. A label is content rather than decoration — the
+// conversion path encodes a link written there as a link, so its destination
+// reaches a remote — and a caller rewriting destinations has to see it. The
+// TEXT form takes work to report at all, because its label is parsed against
+// a detached copy of its bytes; collectAutolinks documents the recovery, and
+// a label whose offset into this source cannot be byte-verified feeds
+// UnlocatedLinks instead of reporting spans that would splice into the wrong
+// place.
+//
 // A link is reported only when its written form can be resolved back to the
 // exact bytes goldmark read: the destination this view reports is checked
 // against the one the parser produced, and a mismatch DROPS the link rather
@@ -122,6 +134,13 @@ func (s *Source) Links() []Link {
 // resolve to a written extent, and therefore left out of its result. See
 // UnlocatedDefinitions for why the count is reported at all; no shape of
 // input is currently known to make this one nonzero.
+//
+// TWO GATES can drop a link, which is why the count is not a branch this
+// package could remove by construction: the destination must be spelled
+// where the parser recorded it, and a TEXT DIRECTIVE'S LABEL must be spelled
+// where its own extent says it is. UnlocatedAutolinks states the same pair
+// in full; neither gate is one this package can prove unreachable from
+// outside goldmark.
 func (s *Source) UnlocatedLinks() int {
 	s.Links()
 	return s.linksUnlocated
@@ -131,8 +150,9 @@ func (s *Source) UnlocatedLinks() int {
 // It reports the links it located and how many it did not.
 //
 // Like collectImages this walk descends into inline subtrees, because a link
-// IS one, and it is safe for the same reason: a text directive's label is
-// parsed against its own detached source and its root is not attached here.
+// IS one, and — like collectAutolinks — it descends into a TEXT DIRECTIVE'S
+// LABEL through the detached-copy shift that function documents. See
+// collectImages for why the two views owe that descent.
 func collectLinks(doc gast.Node, src []byte) (out []Link, unlocated int) {
 	nested := labelExtents{}
 	var walk func(gast.Node)
@@ -145,12 +165,30 @@ func collectLinks(doc gast.Node, src []byte) (out []Link, unlocated int) {
 					unlocated++
 				}
 			}
+			if td, ok := c.(*directive.TextDirective); ok && td.LabelRoot != nil {
+				inner, u := collectLinks(td.LabelRoot, td.LabelSource)
+				unlocated += u
+				if at, ok := textDirectiveLabel(src, td); ok {
+					for _, l := range inner {
+						out = append(out, shiftLink(l, at))
+					}
+				} else {
+					unlocated += len(inner)
+				}
+			}
 			walk(c)
 		}
 	}
 	walk(doc)
 	slices.SortFunc(out, func(a, b Link) int { return a.Span.Start - b.Span.Start })
 	return out, unlocated
+}
+
+// shiftLink moves a link resolved against a detached label copy into the
+// coordinates of the source that copy was taken from.
+func shiftLink(l Link, by int) Link {
+	l.Span, l.Text, l.Dest = shiftSpan(l.Span, by), shiftSpan(l.Text, by), shiftSpan(l.Dest, by)
+	return l
 }
 
 // linkSpan resolves one link to its written extent. A link is a `[label]`

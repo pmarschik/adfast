@@ -435,3 +435,153 @@ func TestImages_ComposeWithHeadingsInOneParse(t *testing.T) {
 		t.Errorf("Apply =\n%q\nwant\n%q", got, want)
 	}
 }
+
+// imageLabelCases cover a DIRECTIVE'S LABEL, the subtree this view used to
+// skip. Source.Links and linkLabelCases state the reason and the mechanism
+// in full — the text form's label is parsed against a detached copy, so its
+// offsets have to be recovered and shifted, while the leaf and container
+// forms are parsed in place and have always reported. Both views had the one
+// root cause and share the one descent, so both tables carry the forms that
+// already worked beside the form that did not.
+var imageLabelCases = []imageCase{{
+	name: "all three directive forms in one document",
+	src:  "Text :sup[![t](t.png)] end\n\n::leaf[![l](l.png)]\n\n:::box[![c](c.png)]\nbody\n:::\n",
+	want: []string{
+		"![t](t.png)|t|t.png",
+		"![l](l.png)|l|l.png",
+		"![c](c.png)|c|c.png",
+	},
+}, {
+	name: "a label inside a label composes the shifts",
+	src:  "Text :sup[a :sub[![t](t.png)] b] end\n",
+	want: []string{"![t](t.png)|t|t.png"},
+}, {
+	name: "a label image and a prose image in document order",
+	src:  "Text :sup[![a](a.png)] and ![b](b.png)\n",
+	want: []string{"![a](a.png)|a|a.png", "![b](b.png)|b|b.png"},
+}, {
+	name: "a label image inside a blockquote",
+	src:  "> q :sup[![t](t.png)]\n",
+	want: []string{"![t](t.png)|t|t.png"},
+}, {
+	name: "a label image on a tab-prefixed continuation line",
+	src:  "> q\n>\t:sup[![t](t.png)]\n",
+	want: []string{"![t](t.png)|t|t.png"},
+}, {
+	name: "a thumbnail link in a label reports in both views",
+	src:  "Text :sup[[![a](i.png)](https://ex.com/t)] end\n",
+	want: []string{"![a](i.png)|a|i.png"},
+}, {
+	name: "an image in inline code inside a label is not an image",
+	src:  "Text :sup[`![t](t.png)`] end\n",
+	want: nil,
+}, {
+	// A PIN, not a fix: this passes on both versions of the descent, and it
+	// records the one form a label cannot hold. The detached copy is parsed
+	// with no reference map of its own, so `![t][id]` in a label is never an
+	// image node at all — goldmark builds literal text, and there is nothing
+	// for this view to under-report. It is the shape shiftSpan's zero-Dest
+	// guard is written against, and it is why that guard is unreachable
+	// today rather than merely untested.
+	name: "a reference image in a label is not an image at all",
+	src:  "Text :sup[![t][id]] end\n\n[id]: t.png\n",
+	want: nil,
+}, {
+	name: "an empty label reports nothing and does not hide prose",
+	src:  "Text :sup[] and ![b](b.png)\n",
+	want: []string{"![b](b.png)|b|b.png"},
+}}
+
+// TestImages_DirectiveLabels drives imageLabelCases.
+//
+// Measured with the label descent removed from collectImages, which is what
+// this view did before:
+//
+//	--- FAIL: TestImages_DirectiveLabels (0.00s)
+//	    --- FAIL: TestImages_DirectiveLabels/a_label_image_on_a_tab-prefixed_continuation_line (0.00s)
+//	        Images("> q\n>\t:sup[![t](t.png)]\n") =
+//	             []
+//	            want
+//	             ["![t](t.png)|t|t.png"]
+//	    --- FAIL: TestImages_DirectiveLabels/a_label_image_and_a_prose_image_in_document_order (0.00s)
+//	        Images("Text :sup[![a](a.png)] and ![b](b.png)\n") =
+//	             ["![b](b.png)|b|b.png"]
+//	            want
+//	             ["![a](a.png)|a|a.png" "![b](b.png)|b|b.png"]
+//	    --- FAIL: TestImages_DirectiveLabels/a_thumbnail_link_in_a_label_reports_in_both_views (0.00s)
+//	        Images("Text :sup[[![a](i.png)](https://ex.com/t)] end\n") =
+//	             []
+//	            want
+//	             ["![a](i.png)|a|i.png"]
+//	    --- FAIL: TestImages_DirectiveLabels/a_label_image_inside_a_blockquote (0.00s)
+//	        Images("> q :sup[![t](t.png)]\n") =
+//	             []
+//	            want
+//	             ["![t](t.png)|t|t.png"]
+//	    --- FAIL: TestImages_DirectiveLabels/all_three_directive_forms_in_one_document (0.00s)
+//	        Images("Text :sup[![t](t.png)] end\n\n::leaf[![l](l.png)]\n\n:::box[![c](c.png)]\nbody\n:::\n") =
+//	             ["![l](l.png)|l|l.png" "![c](c.png)|c|c.png"]
+//	            want
+//	             ["![t](t.png)|t|t.png" "![l](l.png)|l|l.png" "![c](c.png)|c|c.png"]
+//	    --- FAIL: TestImages_DirectiveLabels/a_label_inside_a_label_composes_the_shifts (0.00s)
+//	        Images("Text :sup[a :sub[![t](t.png)] b] end\n") =
+//	             []
+//	            want
+//	             ["![t](t.png)|t|t.png"]
+//
+// The rows that do NOT appear there passed on both versions and are the good
+// cases: the inline-code carve-out, the empty label, the reference-image PIN
+// the table labels as one, and the leaf and container images of the
+// three-form document.
+func TestImages_DirectiveLabels(t *testing.T) {
+	t.Parallel()
+	for _, c := range imageLabelCases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			s := markdown.NewSource([]byte(c.src))
+			if got := imageTexts(c.src, s.Images()); !eq(got, c.want) {
+				t.Errorf("Images(%q) =\n %q\nwant\n %q", c.src, got, c.want)
+			}
+			if u := s.UnlocatedImages(); u != 0 {
+				t.Errorf("UnlocatedImages() = %d, want 0", u)
+			}
+		})
+	}
+}
+
+// TestImages_RewriteALabelDestinationInOneParse is the user-visible half:
+// the span a caller gets for an image inside a text directive's label has to
+// be the span it can SPLICE, not just one that reads back. An off-by-one
+// shift passes a text comparison against the label's bytes and destroys the
+// document here.
+//
+// Measured with the label descent removed:
+//
+//	--- FAIL: TestImages_RewriteALabelDestinationInOneParse (0.00s)
+//	    built 1 edits, want 2
+//
+// The prose image beside the label one is the good case: it keeps the count
+// honest, so a descent that reported the label image TWICE fails here too.
+func TestImages_RewriteALabelDestinationInOneParse(t *testing.T) {
+	t.Parallel()
+	const src = "See :sup[![a](old.png)] and ![b](old2.png)\n"
+	s := markdown.NewSource([]byte(src))
+
+	var edits []markdown.Edit
+	for _, im := range s.Images() {
+		edits = append(edits, markdown.Edit{
+			Span: im.Dest, Text: "new" + strings.TrimPrefix(string(s.Text(im.Dest)), "old"),
+		})
+	}
+	if len(edits) != 2 {
+		t.Fatalf("built %d edits, want 2", len(edits))
+	}
+	got, err := s.Apply(edits...)
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	const want = "See :sup[![a](new.png)] and ![b](new2.png)\n"
+	if string(got) != want {
+		t.Errorf("Apply =\n%q\nwant\n%q", got, want)
+	}
+}
