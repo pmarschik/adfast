@@ -372,3 +372,75 @@ func TestTextMatchesMemoizesTheRuns(t *testing.T) {
 		t.Fatalf("second call = %v, want [NEW-2]", got)
 	}
 }
+
+// urlRe is the shape a caller bringing a bare-URL normalizer to this view
+// would write.
+var urlRe = regexp.MustCompile(`https://[A-Za-z0-9./-]+`)
+
+// TestTextMatchesCannotReportAnAutolinkedURL pins the one pattern the view's
+// doc comment used to name as a motivating use case and cannot serve. GFM's
+// linkify pass consumes a running-text URL into an autolink before any text
+// node exists, so the URL is in no prose run and no match over it is ever
+// enclosed. The exclusion is silent — an empty result, no count — which is
+// why it is pinned rather than left to a reader of the doc.
+//
+// PRESERVED-BEHAVIOR PIN, not a fix proof: the change this test accompanies
+// is to the doc comment, so it passes on both versions of the code. What it
+// defends is the doc's new claim, so a later change that made a bare URL
+// matchable would fail here and force the doc to be rewritten with it.
+//
+// The GOOD CASE is in the same table and is the sharp one: a URL written as
+// a LINK'S TEXT does match, because no autolink is built inside `[…]`. So the
+// exclusion is the autolink NODE's, not the pattern's, and a view that
+// reported nothing URL-shaped at all would fail this test.
+func TestTextMatchesCannotReportAnAutolinkedURL(t *testing.T) {
+	for _, tc := range []textMatchCase{{
+		name: "a bare URL in a paragraph",
+		src:  "Read https://ex.com/plain here.\n",
+	}, {
+		name: "a bare URL in a table cell",
+		src:  "| a | https://ex.com/cell |\n| - | - |\n",
+	}, {
+		name: "a URL in angle brackets",
+		src:  "Read <https://ex.com/angle> here.\n",
+	}, {
+		// A directive label IS prose and a key written in one does match
+		// (see proseCases) — but linkify runs inside a label too, so a URL
+		// there is an autolink and out of reach for the same reason.
+		name: "a bare URL in a leaf directive label",
+		src:  "::colwidths[https://ex.com/leaf]\n",
+	}, {
+		name: "a bare URL in a container directive label",
+		src:  ":::note[https://ex.com/cont]\nbody\n:::\n",
+	}, {
+		name: "a URL as a link's text",
+		src:  "See [https://ex.com/label](https://ex.com/dest) here.\n",
+		want: []string{"https://ex.com/label"},
+	}, {
+		name: "a URL as an image's alt",
+		src:  "See ![https://ex.com/alt](img.png) here.\n",
+		want: []string{"https://ex.com/alt"},
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := markdown.NewSource([]byte(tc.src))
+			var got []string
+			for _, sp := range s.TextMatches(urlRe, 0) {
+				got = append(got, string(s.Text(sp)))
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("TextMatches(%q) = %v, want %v", tc.src, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("TextMatches(%q) = %v, want %v", tc.src, got, tc.want)
+				}
+			}
+			// Autolinks is where the doc comment now sends such a caller, so
+			// it has to be able to answer: every URL this view left out is
+			// reported there.
+			if len(tc.want) == 0 && len(s.Autolinks()) != 1 {
+				t.Fatalf("Autolinks(%q) = %v, want the one URL this view cannot report", tc.src, s.Autolinks())
+			}
+		})
+	}
+}
