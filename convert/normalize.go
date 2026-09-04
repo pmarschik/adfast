@@ -806,12 +806,14 @@ func normalizeMediaInline(v *dialect.MediaInline) ast.Node {
 	// dropped because the inline chip's encode ignored `path` altogether,
 	// so there was nothing for the formatter to preserve.
 	//
-	// Both are kept when both are spelled, unlike the block form's
-	// mediaSourceAttrs, which writes the path INSTEAD of the id. Keeping
-	// the pair is lossless in the direction that matters — the encode
-	// prefers an explicit id and never spends the path beside it
-	// (mediasrc.ID) — while writing only the path would silently re-point
-	// a pinned id at whatever the store now says the file is.
+	// Both are kept when both are spelled, the same rule the block form's
+	// mediaSourceAttrs follows. Keeping the pair is lossless in the
+	// direction that matters — the encode prefers an explicit id and never
+	// spends the path beside it (mediasrc.ID) — while writing only the
+	// path would silently re-point a pinned id at whatever the store now
+	// says the file is. The chip has no id-derived path case for the block
+	// form's second condition to answer: nothing here consults the
+	// download catalog, so a path on a chip is always the author's.
 	if p := v.Attrs["path"]; p != "" {
 		attrs["path"] = p
 	}
@@ -2009,9 +2011,16 @@ type fmtMedia struct {
 	// dialect's mediaAnnotationAttrs).
 	annotationID   string
 	annotationType string
-	borderSize     int
-	hasBorder      bool
-	hasSingle      bool
+	// pinnedID is the media id the AUTHOR spelled, held apart from id,
+	// which mediaShape overwrites with the store's answer for a
+	// path-addressed directive. The two are not interchangeable when this
+	// leg decides what to write back: the author's is a pin to keep, the
+	// store's is a derived fact to leave out. Empty unless the source
+	// spelled an id (see mediaSourceAttrs).
+	pinnedID   string
+	borderSize int
+	hasBorder  bool
+	hasSingle  bool
 }
 
 // mediaFromAttrs mirrors dialect's mediaFromAttrs.
@@ -2080,6 +2089,10 @@ func mediaFromAttrs(attrs map[string]string, alt string) *fmtMedia {
 // reached image form on the ADF leg and stayed an opaque directive here.
 func (fn *normalizer) mediaShape(attrs map[string]string, alt string) *fmtMedia {
 	m := mediaFromAttrs(attrs, alt)
+	// Remember the id as spelled BEFORE the recovery replaces it: from
+	// here on m.id may be the store's answer, and only the author's may
+	// be written back (see pinnedID and mediaSourceAttrs).
+	m.pinnedID = m.id
 	m.id = mediasrc.ID(m.id, m.path, fn.resolveAssetID)
 	m.width, m.height = mediasrc.Dims(m.width, m.height, m.path, fn.resolveImageDims)
 	return m
@@ -2433,15 +2446,44 @@ func mediaSingleAttrs(m *fmtMedia, om mediaOmissions, attrs map[string]string) {
 
 // mediaSourceAttrs writes where the media comes from.
 func mediaSourceAttrs(m *fmtMedia, om mediaOmissions, attrs map[string]string) {
-	// A locally-downloaded asset emits its path and OMITS the explicit id
-	// (encode resolves the id from the path via the scoped store); otherwise
-	// keep the id (nothing can resolve it). Mirrors dialect's mediaLeafNode.
+	// A locally-downloaded asset emits its path and omits the id the store
+	// can recover from it (encode resolves it back via the scoped store);
+	// otherwise keep the id (nothing can resolve it). Mirrors dialect's
+	// mediaLeafNode, with one difference this leg cannot avoid: dialect's
+	// copy runs on ADF, where a path is never spelled, while this one runs
+	// on the AUTHOR'S document, which may spell both.
 	path := m.path
 	if om.isLocal {
 		path = om.asset.Path
 	}
 	if path != "" {
 		attrs["path"] = path
+		// An id the author spelled BESIDE A PATH THEY ALSO SPELLED stays.
+		// An explicit id outranks the store — mediasrc.ID returns a given
+		// id untouched and only looks a path up when there is none — so
+		// writing the path INSTEAD would re-point the pin at whatever the
+		// store now answers for that file, a different attachment after a
+		// re-upload. A format may not do that, and the inline chip's leg
+		// already does not (see normalizeMediaInline): keeping the pair is
+		// lossless, because the encode prefers the id and never spends the
+		// path beside it.
+		//
+		// Both halves of the condition carry weight:
+		//
+		//   - the author's id, never the recovered one. For a path-only
+		//     directive m.id IS the store's answer, and writing it back
+		//     would pin a derived fact into the document and let it go
+		//     stale — the very thing omitting the id avoids.
+		//
+		//   - only beside the author's OWN path. When the path came from
+		//     the store instead (the om.isLocal branch above, where the
+		//     directive spelled an id and no path), the store has just
+		//     said the two name one attachment, so the id is redundant
+		//     with the path it was derived from and the canonical form
+		//     leaves it out — the same slimming the decode leg performs.
+		if m.pinnedID != "" && m.path != "" {
+			attrs["id"] = m.pinnedID
+		}
 	} else if m.id != "" {
 		attrs["id"] = m.id
 	}
