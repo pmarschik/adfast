@@ -1059,8 +1059,8 @@ even when no folder walk would have offered it.
 
 When the store layout changes — a local folder becomes a shared root, or
 a fused store becomes a split one — the markdown rewrites through the
-formatter. `assets.RewriteReferences(old, new)` re-paths the image
-destinations as an AST transform, wired through `WithASTTransforms` and
+formatter. `assets.RewriteReferences(old, new)` re-paths the local
+pictures as an AST transform, wired through `WithASTTransforms` and
 run on the tree of the formatter between `convert.NormalizeFormat` and the
 render, while the formatting pass keeps every other byte:
 
@@ -1071,6 +1071,16 @@ out := adfast.ToMarkdown(
     assets.RewriteReferences(oldStore, newStore),
 )
 ```
+
+All four spellings of a picture follow the file. `![alt](path)` keeps its
+destination on the node (or on the definition a reference-style image
+resolves to), while `::media`, `:::media` and the inline `:media` chip
+keep theirs in a `path` directive attribute — so the attribute write
+belongs to `dialect.RewriteMediaPath`, which knows which media kinds also
+bind that attribute to a typed field. That function deliberately answers
+for more directives than the upload scan's `dialect.MediaLookupPath`: a
+path beside a pinned id, or on external media, is not a lookup key, but
+it is still a path that moved, and the formatter keeps it on purpose.
 
 The canonical conversion needs no facility at all. A render with
 `RenderOptions(store)` always emits the current reference paths of the

@@ -267,6 +267,65 @@ func MediaLookupPath(n ast.Node) (string, bool) {
 	return path, path != ""
 }
 
+// RewriteMediaPath re-paths the markdown-relative `path` a media
+// directive names — on any of the three spellings, `::media`, `:::media`
+// and the inline `:media` chip — through the caller's mapping, and
+// reports the path it left behind. It is the WRITE half of the read
+// MediaLookupPath performs, for a caller that moves the files a document
+// points at (an asset-store layout change).
+//
+// The write belongs here because the attribute map is where the path
+// LIVES. `path` is a lookup key rather than part of a media node's ADF
+// shape, so the caption and chip forms deliberately give it no typed
+// field (see MediaInline) while the leaf form's Media.Path binds the same
+// map entry for a consumer's convenience. A caller writing the map itself
+// would have to know which of the three kinds keeps a typed copy to keep
+// in step — knowledge that is the dialect's, and that goes stale in the
+// caller the day a spelling or a bound field is added here.
+//
+// It deliberately answers for MORE directives than MediaLookupPath, and
+// the asymmetry is the point. That predicate asks which path is SPENT as
+// a lookup key, and a path beside an explicit id or on external media is
+// not: nothing looks it up, so nothing uploads it. This one asks which
+// path NAMES A FILE, and neither a pinned id nor an external url moves a
+// file. The formatter keeps such a path on purpose — it is the author's,
+// and writing the path in place of the pin would re-point the pin — so
+// declining to re-path it would preserve the author's bytes and let their
+// meaning rot: the day the pin comes off, the path is the only address
+// left and it addresses nothing, the encode ships a media node with an
+// EMPTY id, and the report blames the path. Re-pathing it changes nothing
+// that resolves today, because the encode prefers an explicit id
+// (mediasrc.ID) and the upload scan still declines the path.
+//
+// rewrite runs only for a directive that carries a non-empty path;
+// returning its argument unchanged is how a caller declines one.
+func RewriteMediaPath(n ast.Node, rewrite func(path string) string) (string, bool) {
+	var attrs map[string]string
+	// bound is the typed field that mirrors attrs["path"], for the one
+	// kind that has one; the write has to move both or the node
+	// contradicts itself.
+	var bound *string
+	switch media := n.(type) {
+	case *Media:
+		attrs, bound = media.Attrs, &media.Path
+	case *MediaCaption:
+		attrs = media.Attrs
+	case *MediaInline:
+		attrs = media.Attrs
+	default:
+		return "", false
+	}
+	if attrs["path"] == "" {
+		return "", false
+	}
+	path := rewrite(attrs["path"])
+	attrs["path"] = path
+	if bound != nil {
+		*bound = path
+	}
+	return path, true
+}
+
 // UnresolvedMediaPath answers the markdown-relative path a media
 // directive names that the asset store cannot turn into a media id.
 //

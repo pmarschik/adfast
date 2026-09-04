@@ -1329,9 +1329,11 @@ returns an `adfast.Pipeline` that uploads the referenced pending assets
 automatically, immediately before the encode, through a
 `WithBeforeEncode` hook on the pipeline. `assets.EnsureUploaded` syncs
 first and returns the wired markdown options.
-`assets.RewriteReferences(old, new)` re-paths the image references
-through the formatter, as a `WithASTTransforms` transform, after a change
-to the store layout.
+`assets.RewriteReferences(old, new)` re-paths the local picture
+references through the formatter, as a `WithASTTransforms` transform,
+after a change to the store layout — every spelling of a picture follows
+the file, `![alt](path)` and the `::media`/`:::media`/`:media` `path`
+attribute alike.
 
 An attachment has a product-side container boundary. A Jira media id is
 bound to one issue, and a Confluence one to one page.
