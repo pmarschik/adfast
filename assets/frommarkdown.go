@@ -10,6 +10,7 @@ import (
 
 	adfast "github.com/pmarschik/adfast"
 	"github.com/pmarschik/adfast/ast"
+	"github.com/pmarschik/adfast/dialect"
 )
 
 // SyncOnEncode makes a Pipeline trigger the uploader itself: as a
@@ -84,11 +85,31 @@ func collectLocalImages(root ast.Node, out map[string]bool) {
 	}
 }
 
-// collectImageNodes is collectLocalImages' recursion over the inline
-// image nodes.
+// collectImageNodes is collectLocalImages' recursion over the nodes that
+// name a local file: the markdown image nodes, and the media directives.
+//
+// A picture has FOUR spellings — ![alt](path), ::media, :::media and the
+// inline :media chip — and this walk used to match ast.Image alone. The
+// three directive spellings all accept a `path` the encode resolves
+// through the asset store into a media id, so a new picture could not be
+// written in any of them: the file was never offered for upload, the store
+// never learned it, the resolve found nothing, and the media node shipped
+// with an EMPTY id — an unaddressable picture, reported as if the path
+// were wrong. The only workaround was to write the image form and let a
+// round-trip convert it.
+//
+// Which path counts is dialect's to say, not this walk's
+// (MediaLookupPath): a path beside an explicit id or on external media is
+// never spent on a lookup, so uploading it would push a file the document
+// does not address and leave a stray attachment behind.
 func collectImageNodes(n ast.Node, out map[string]bool) {
-	if img, ok := n.(*ast.Image); ok {
-		collectLocalDest(img.URL, out)
+	switch node := n.(type) {
+	case *ast.Image:
+		collectLocalDest(node.URL, out)
+	default:
+		if ref, ok := dialect.MediaLookupPath(n); ok {
+			collectLocalDest(ref, out)
+		}
 	}
 	for _, c := range ast.Children(n) {
 		collectImageNodes(c, out)
