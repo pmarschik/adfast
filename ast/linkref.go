@@ -1,6 +1,6 @@
 package ast
 
-import "strings"
+import "github.com/yuin/goldmark/util"
 
 // Link reference definitions and the reference-style links that use them:
 // the three nodes mdast calls definition, linkReference and
@@ -141,29 +141,46 @@ func (n *ImageRef) Identifier() string { return NormalizeLabel(n.Label) }
 
 // NormalizeLabel returns the identifier a bracketed label pairs on:
 // whitespace runs collapse to one space, the ends are trimmed, and the
-// result case-folds. It is micromark's normalizeIdentifier, the rule
-// CommonMark gives for link reference definitions ("[A]" matches
-// "[ a ]") and the one GFM footnotes reuse (see NormalizeFootnoteLabel).
+// case folds. It is the rule CommonMark gives for link reference
+// definitions ("[A]" matches "[ a ]") and the one GFM footnotes reuse
+// (see NormalizeFootnoteLabel).
 //
-// goldmark's own parser pairs on util.ToLinkReference, which is the same
-// three steps, so a reference this package resolves is a reference
-// goldmark resolved.
+// It CALLS goldmark's util.ToLinkReference rather than spelling the rule
+// out again, because goldmark is the parser that decides whether a
+// reference node exists at all: it pairs each use with a definition
+// during the parse and copies the destination across, and this function
+// only has to find that definition again. A fold that differs from the
+// parser's therefore does not merely disagree about an identifier — it
+// DROPS A LINK the parser already resolved. Measured on the hand-rolled
+// fold this replaced, strings.ToUpper(strings.ToLower(s)), which is Go's
+// SIMPLE case mappings:
+//
+//	See [ss] here.
+//
+//	[ẞ]: https://e.com/x
+//
+// goldmark paired the two ends, so the tree held a LinkRef, but the
+// lookup here missed ("SS" against "ß") and the ADF came out as the
+// literal text "[ss]" — plus an unused-definition-dropped diagnostic for
+// a definition that was used. "SS"/"ß" and "FI"/"ﬁ" went the same way:
+// FULL case folding maps ẞ and ﬁ onto multi-character sequences and Go's
+// simple mappings leave both alone.
+//
+// The whitespace half needs no adjusting to match: goldmark's space set
+// (util.IsSpace) is the four bytes the old loop collapsed, ' ', '\t',
+// '\n' and '\r'.
+//
+// There is no single oracle for the fold, and this is the divergence the
+// call accepts. micromark's normalizeIdentifier is
+// .toLowerCase().toUpperCase(), which pairs the Turkish dotless "ı" with
+// "I"; full case folding does not, and neither does goldmark. For a link
+// reference that is unreachable — no document parses into a pair for this
+// function to resolve — so the choice only shows on footnotes, whose two
+// ends this package pairs itself (see markdown/footnote.go). Taking the
+// parser's fold there loses "ı"/"I" and wins "ss"/"ẞ", "SS"/"ß" and
+// "FI"/"ﬁ", which micromark pairs and the old fold did not; matching
+// micromark on all four would need JS's full uppercase mappings, which
+// the standard library does not have.
 func NormalizeLabel(label string) string {
-	var b strings.Builder
-	b.Grow(len(label))
-	space := false
-	for _, r := range label {
-		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
-			space = true
-			continue
-		}
-		if space && b.Len() > 0 {
-			b.WriteRune(' ')
-		}
-		space = false
-		b.WriteRune(r)
-	}
-	// The double fold is micromark's: .toLowerCase().toUpperCase() folds
-	// the characters whose lower case is not a round trip (ẛ, İ).
-	return strings.ToUpper(strings.ToLower(b.String()))
+	return util.ToLinkReference([]byte(label))
 }

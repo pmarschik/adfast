@@ -45,8 +45,11 @@ func (*FootnoteRef) Kind() string { return "footnoteReference" }
 
 // NormalizeFootnoteLabel returns the identifier a footnote label pairs
 // on: whitespace runs collapse to one space, the ends are trimmed, and
-// the result case-folds. It is micromark's normalizeIdentifier, the same
-// rule link reference definitions use, so "[^A]" matches "[^ a ]".
+// the case folds. It is the same rule link reference definitions use, so
+// "[^A]" matches "[^ a ]" — and, unlike a link reference, both ends of a
+// footnote are paired by this package rather than by goldmark, so the
+// rule's one divergence from micromark is reachable here. NormalizeLabel
+// documents it.
 //
 // That shared rule now has a name of its own — NormalizeLabel, in
 // linkref.go, where the link reference kinds call it — and this function

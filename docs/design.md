@@ -373,7 +373,13 @@ inferred from the specification prose. A label holds no whitespace, not
 even an escaped one. An escaped bracket is part of the label, and a raw
 one ends it. The cap is the link-reference cap of 999 raw characters. The
 identifier equality is case-folding, so `[^Ref]` pairs with `[^ref]`, and
-both ends keep their source spelling. A shape that breaks one of these
+both ends keep their source spelling. That equality is
+`ast.NormalizeLabel`, shared with the link references, and it is the one
+label rule here that is goldmark's rather than micromark's: full case
+folding pairs `[^ss]` with `[^ẞ]`, which micromark also pairs and the
+earlier fold did not, and it does not pair the Turkish dotless `ı` with
+`I`, which micromark does. Matching micromark on both would need JS's
+full uppercase mappings, which the standard library does not have. A shape that breaks one of these
 rules is not a footnote but a link reference definition, which is why the
 rules must be exact: the two constructs share the `[…]:` surface, and the
 one adfast rejects the other one claims.
@@ -455,9 +461,17 @@ block before any inline.
 The label is an **identifier**, not prose. It is written back verbatim,
 escapes included, and no leg may re-escape it, re-case it or rewrite it to
 match the spelling at the other end: the two ends pair on
-`ast.NormalizeLabel`, which is micromark's `normalizeIdentifier` (collapse
-whitespace runs, trim, fold the case twice) — the rule the footnote labels
-already needed, now shared by both families. Only the full form has link
+`ast.NormalizeLabel` — the rule the footnote labels already needed, now
+shared by both families. That function CALLS goldmark's
+`util.ToLinkReference` (collapse whitespace runs, trim, fold the case
+fully) rather than spelling the rule out, because goldmark is what decides
+whether a reference node exists: it pairs the two ends during the parse,
+and a fold of its own here does not disagree about an identifier, it drops
+a link the parser resolved. The hand-rolled fold that preceded it —
+`strings.ToUpper(strings.ToLower(s))`, Go's simple case mappings — did
+exactly that for `[ss]` against `[ẞ]`: goldmark paired them, the lookup
+missed, and the ADF carried the literal text `[ss]` plus an
+`unused-definition-dropped` diagnostic for a definition that was used. Only the full form has link
 text distinct from the label, and only there do the reference nodes'
 children render.
 
