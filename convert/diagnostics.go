@@ -2,6 +2,7 @@ package convert
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/pmarschik/adfast/adf"
 )
@@ -248,6 +249,70 @@ const (
 	// by the ADF decode codec and the facade markdown parse.
 	CodeDepthExceeded = adf.CodeDepthExceeded
 )
+
+// codes is the inventory of the vocabulary above, in the declaration order
+// of the constants — the const block is the reading order of the doc
+// comments, and keeping the two aligned makes an omission visible in the
+// diff rather than only in the test.
+//
+// diagnostics_test.go re-derives this list by parsing the source of this
+// package (and of adf, for the re-exports) and fails if the two disagree,
+// so a code added to the const block without a line here breaks the build
+// of the package that OWNS the vocabulary, instead of silently shrinking
+// the inventory a consumer trusted to be complete.
+var codes = []string{
+	CodeColwidthsOrphan,
+	CodeDecisionsOrphan,
+	CodeParseRecovered,
+	CodeMalformedFrontmatter,
+	CodeSpanMarkerInvalid,
+	CodeUnresolvedAsset,
+	CodeUnsupportedCodeLanguage,
+	CodeUnsupportedInProduct,
+	CodeHeadingAnchorDropped,
+	CodeInlineImageDegraded,
+	CodeFootnoteFlattened,
+	CodeUnusedDefinitionDropped,
+	CodeLinkDestinationDropped,
+	CodeListItemContent,
+	CodeBeforeEncodeFailed,
+	CodeRawNode,
+	CodeDecodeFailed,
+	CodeFontSizeDropped,
+	CodeJQLDegraded,
+	CodeSmartLinkDegraded,
+
+	CodeUnknownNode,
+	CodeUnknownMark,
+	CodeUnknownAttr,
+	CodeDepthExceeded,
+}
+
+// Codes returns every diagnostic code a Diagnostic produced anywhere in
+// this library can carry, including the codes re-exported from adf. The
+// order is the declaration order of the Code* constants, and the returned
+// slice is a fresh copy, so a caller may sort or filter it in place.
+//
+// It exists for the consumer that must handle EVERY code — classify each
+// one as a real loss, a retry-later, or an informational notice, or route
+// it to a severity — and wants the compiler and its test suite to prove it
+// missed none. Key that table by the Code* CONSTANTS rather than by the
+// string literals: a renamed code is then a compile error on the consumer's
+// side, and a code adfast ADDS is a missing key this inventory reveals:
+//
+//	for _, code := range convert.Codes() {
+//		if _, ok := severityOf[code]; !ok {
+//			t.Errorf("adfast diagnostic code %q is unclassified", code)
+//		}
+//	}
+//
+// Such a test is meant to fail on an adfast upgrade that adds a code —
+// that is the point of it — so put the check in a test and not on a
+// request path. The inventory carries no severity of its own: what a code
+// MEANS for a document is in the doc comment on its constant, and what to
+// DO about it is the consumer's policy (see CodeUnsupportedInProduct and
+// CodeListItemContent, which say so explicitly).
+func Codes() []string { return slices.Clone(codes) }
 
 // fontSizeDroppedMessage is the shared message for CodeFontSizeDropped,
 // emitted identically on every path that retires a fontSize construct.
