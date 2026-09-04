@@ -223,34 +223,30 @@ func NewMedia(attrs map[string]string, children []ast.Node) *Media {
 	}
 }
 
-// UnresolvedMediaPath answers the markdown-relative path a media
-// directive names that the asset store cannot turn into a media id.
+// MediaLookupPath answers the markdown-relative path a media directive
+// SPENDS as an asset-store lookup key, on any of the three spellings:
+// `::media`, `:::media` and the inline `:media` chip.
 //
 // ADF addresses an attachment by media id and has no field for a path,
-// so `path` on a ::media, :::media or inline :media directive is not an
-// attribute that travels — it is a lookup key, spent on encode (see the
-// recovery in mediaFromAttrs and in MediaInline.EncodeADF). An id the
-// store does not know still addresses the attachment; a path it does not
-// know addresses nothing, and encode emits a media node with an EMPTY
-// id. So the path does not survive the ADF leg in any form, and the loss
-// is worth a word to the author.
+// so `path` is not an attribute that travels — it is a key, spent on
+// encode (see the recovery in mediaFromAttrs and in
+// MediaInline.EncodeADF) and gone afterwards. A directive that names its
+// picture some other way never spends it: external media is addressed by
+// its url, and an explicit id outranks the store (mediasrc.ID), so the
+// path beside either is inert.
 //
-// All three spellings are covered because all three spend the path the
-// same way. The inline chip used to be left out of both halves at once —
-// it never resolved a path, so it never had one to fail to resolve —
-// which made an inline chip the one media spelling that shipped
-// unaddressable in silence.
-//
-// EncodeADF has no diagnostics sink, so this predicate gates the
-// reporting the way JQL.EncodesAsDatasource does: convert reports a
-// convert.CodeUnresolvedAsset from its extension visit. The md→md
-// formatter needs no counterpart — it keeps the directive and its path
-// exactly as written, which is the point of that leg being total.
-//
-// resolve is the store lookup, nil when the caller configured none. That
-// case is unresolved too: the picture is just as unaddressable when
-// nothing was wired up as when the wiring came back empty.
-func UnresolvedMediaPath(n ast.Node, resolve func(ref string) (mediaID string, ok bool)) (string, bool) {
+// This is the one place that answers "which path is a lookup key", and it
+// has two callers that must not disagree about it. The report of a path
+// the store cannot turn into an id is one (UnresolvedMediaPath, below).
+// The UPLOAD scan is the other: assets.collectLocalImages walked only
+// ast.Image, so a hand-written `::media[new]{path=assets/new.png}` was
+// never offered for upload — the store never learned the file, the
+// resolve found nothing, and the media node shipped with an EMPTY id. The
+// author then got the unresolved-asset report saying the path could not
+// be resolved, when the real answer was that nothing had ever tried to
+// upload it. One predicate for both means the scan can only miss a path
+// the encode also declines to spend.
+func MediaLookupPath(n ast.Node) (string, bool) {
 	var attrs map[string]string
 	switch media := n.(type) {
 	case *Media:
@@ -268,7 +264,37 @@ func UnresolvedMediaPath(n ast.Node, resolve func(ref string) (mediaID string, o
 		return "", false
 	}
 	path := attrs["path"]
-	if path == "" {
+	return path, path != ""
+}
+
+// UnresolvedMediaPath answers the markdown-relative path a media
+// directive names that the asset store cannot turn into a media id.
+//
+// The path it asks about is the one MediaLookupPath names — the key the
+// encode spends — because a path nothing spends cannot be lost. An id the
+// store does not know still addresses the attachment; a path it does not
+// know addresses nothing, and encode emits a media node with an EMPTY id.
+// So the path does not survive the ADF leg in any form, and the loss is
+// worth a word to the author.
+//
+// All three spellings are covered because all three spend the path the
+// same way. The inline chip used to be left out of both halves at once —
+// it never resolved a path, so it never had one to fail to resolve —
+// which made an inline chip the one media spelling that shipped
+// unaddressable in silence.
+//
+// EncodeADF has no diagnostics sink, so this predicate gates the
+// reporting the way JQL.EncodesAsDatasource does: convert reports a
+// convert.CodeUnresolvedAsset from its extension visit. The md→md
+// formatter needs no counterpart — it keeps the directive and its path
+// exactly as written, which is the point of that leg being total.
+//
+// resolve is the store lookup, nil when the caller configured none. That
+// case is unresolved too: the picture is just as unaddressable when
+// nothing was wired up as when the wiring came back empty.
+func UnresolvedMediaPath(n ast.Node, resolve func(ref string) (mediaID string, ok bool)) (string, bool) {
+	path, spent := MediaLookupPath(n)
+	if !spent {
 		return "", false
 	}
 	return path, mediasrc.ID("", path, resolve) == ""
