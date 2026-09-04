@@ -46,44 +46,14 @@ func FromMarkdown(md string, opts ...Option) ast.Node {
 // (PlainTextOf, which parses with markdown.WithGenericDirectives) reuses the
 // identical line-ending, frontmatter and diagnostics handling instead of
 // restating it.
+//
+// The pre-parse preamble — the byte order mark peel, the line-ending
+// normalization and the frontmatter provider — is splitFrontmatterSource,
+// shared with the exported SplitFrontmatter so the two cannot disagree
+// about where a document's metadata ends.
 func parseMarkdownSource(md string, o options, extra ...markdown.ParseOption) ast.Node {
-	// A leading UTF-8 byte order mark is a decoding artifact, not content.
-	// Peeled here, before the frontmatter provider and the goldmark parse
-	// see the source: left in place it is ordinary text at the start of
-	// line 1, so the first block misparses (a heading degrades to a
-	// paragraph, a list's first item splits off, a fence is reflowed) and
-	// a provider would need its own mark tolerance to find the block.
-	// ast.Root carries the fact so the render prepends it again; adfast
-	// does not silently change a document's encoding preamble.
-	bom := strings.HasPrefix(md, markdown.ByteOrderMark)
-	md = strings.TrimPrefix(md, markdown.ByteOrderMark)
-
-	// CommonMark line-ending normalization: remark treats a lone CR as a
-	// line ending; goldmark does not, which would leave raw \r bytes inside
-	// text nodes.
-	if strings.ContainsRune(md, '\r') {
-		md = strings.ReplaceAll(md, "\r\n", "\n")
-		md = strings.ReplaceAll(md, "\r", "\n")
-	}
-
-	provider := o.frontmatter
-	if provider == nil {
-		provider = defaultFrontmatterProvider
-	}
-	front, source := "", md
-	switch f, rest, outcome := provider(md); outcome {
-	case FrontmatterFound:
-		front, source = f, rest
-	case FrontmatterMalformed:
-		if o.diagnostics != nil {
-			o.diagnostics(convert.Diagnostic{
-				Code:    convert.CodeMalformedFrontmatter,
-				Message: "document opens a frontmatter fence but does not close it validly; the block is kept as body",
-			})
-		}
-	case FrontmatterAbsent:
-		// No metadata block: the whole source is body (front stays "").
-	}
+	split := splitFrontmatterSource(md, o)
+	bom, front, source := split.ByteOrderMark, split.Front, split.Body
 
 	var root *ast.Root
 	if strings.TrimSpace(source) == "" {

@@ -27,6 +27,15 @@
 // the parse behind it deliberately skips the typed-directive promotion
 // the primitives depend on (see PlainTextOf).
 //
+// SplitFrontmatter sits beside them as a piece of FromMarkdown rather than
+// a conversion: it runs the byte order mark peel, the line-ending
+// normalization and the FrontmatterProvider — the whole of FromMarkdown's
+// pre-parse preamble — and stops there. It is the answer for a caller who
+// only wants the leading metadata block and the body, and who would
+// otherwise round-trip the document through ADF to read the block back off
+// the tree or hand-roll a "---" scan that has to agree with adfast on
+// every delimiter edge case.
+//
 // The Markdown dialect is CommonMark + GFM plus remark-directive-style
 // generic directives (via github.com/pmarschik/goldmark-directive) for ADF
 // features without native Markdown syntax — panels, expands, media, smart
