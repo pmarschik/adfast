@@ -36,10 +36,12 @@ const (
 	// spanning cell above its visual column; the marker is kept as literal
 	// cell text. Emitted by the facade parse.
 	CodeSpanMarkerInvalid = "span-marker-invalid"
-	// CodeUnresolvedAsset reports an asset reference the configured store
-	// could not map back to a media id. ADF addresses an attachment by
-	// id, so with no id nothing on the page can find the file — and the
-	// two spellings of a reference lose different things:
+	// CodeUnresolvedAsset reports a picture the payload cannot address:
+	// an asset reference the configured store could not map back to a
+	// media id, or a media directive that names no source at all. ADF
+	// addresses an attachment by id, so with no id nothing on the page can
+	// find the file — and the spellings of a reference lose different
+	// things:
 	//
 	//   - ![alt](assets/…): there is no node for the picture, so it is
 	//     kept as external media carrying the path under
@@ -53,15 +55,26 @@ const (
 	//     the path has no ADF field to travel in. A path spelled beside an
 	//     explicit id is not reported: the id addresses the attachment, so
 	//     nothing is lost.
+	//   - ::media[alt]{} (and the :::media caption form): a directive with
+	//     no id, no url and no path names nothing to begin with, so this
+	//     one is not a loss the encode caused — it is an unrenderable node
+	//     the encode would otherwise have shipped in silence, with the
+	//     author's line looking well-formed and the pushed page showing a
+	//     gap. The node still ships, for the same reason as above. The
+	//     inline :media[…] spelling is not covered; its vocabulary has no
+	//     path, so a path on it is ignored rather than unresolvable.
 	//
 	// Emitted by ToADF. The md→md formatter has no counterpart: it keeps
 	// the reference exactly as written.
 	//
-	// Unlike the other one-way losses, whether this one is permanent
-	// depends on WHEN the encode ran, not on what the document says: an
-	// asset uploads and the next encode finds its id. A consumer with an
-	// upload flow should report it only from the encode that actually
-	// ships.
+	// Whether the loss is permanent depends on WHICH of the shapes above
+	// it was, and for the first two on WHEN the encode ran rather than on
+	// what the document says: an asset uploads and the next encode finds
+	// its id. A consumer with an upload flow should report those two only
+	// from the encode that actually ships. The sourceless directive is the
+	// exception — no upload resolves it, because nothing was named to
+	// upload — and its message says so, so a consumer can route the two
+	// apart on the text without a second code.
 	CodeUnresolvedAsset = "unresolved-asset"
 	// CodeUnsupportedCodeLanguage reports a fenced code block whose
 	// language tag is not in the WithCodeLanguages set; the language
