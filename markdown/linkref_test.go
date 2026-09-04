@@ -276,6 +276,122 @@ func TestLinkRef_DefinitionRunTakesTheBlockSeparator(t *testing.T) {
 	}
 }
 
+// TestLinkRef_TitleOnItsOwnLine covers the CommonMark rule the lift used to
+// break: a title written on the line AFTER the destination is a title only
+// when nothing else follows it on that line. The spec (0.31.2) ends a
+// definition after "an optional link title … No further character may
+// occur", and the reference implementation (commonmark.js 0.31.2) resolves
+// `[foo]: /url` + `"title" ok` to `<a href="/url">foo</a>` — no title
+// attribute — while keeping `"title" ok` as a paragraph.
+//
+// goldmark v1.8.5 leaves the excluded line in the paragraph but still
+// records the title it scanned off it, so the lift copied a title the
+// author never wrote AND the line stayed prose: the same text appeared
+// TWICE in the render. The "tail" rows are the FIX PROOF; the rows above
+// them are the good cases that keep the fix honest, since "reject every
+// next-line title" would pass the tail rows alone.
+func TestLinkRef_TitleOnItsOwnLine(t *testing.T) {
+	tests := []struct {
+		name, src, want string
+	}{
+		// --- a title alone on its own line IS the definition's title ---
+		{
+			"next line holds the title alone",
+			"[a]: x.md\n\"t\"\n\nUse [a].\n",
+			"[a]: x.md \"t\"\n\nUse [a].\n",
+		},
+		{
+			"next line holds the title and trailing spaces",
+			"[a]: x.md\n\"t\"   \n\nUse [a].\n",
+			"[a]: x.md \"t\"\n\nUse [a].\n",
+		},
+		{
+			"next line holds an indented title",
+			"[a]: x.md\n   \"t\"\n\nUse [a].\n",
+			"[a]: x.md \"t\"\n\nUse [a].\n",
+		},
+		// --- a title with anything after it on the line is NO title, and
+		// the line is a paragraph of its own ---
+		{
+			"next line holds a title and a tail",
+			"[a]: x.md\n\"t\" tail\n\nUse [a].\n",
+			"[a]: x.md\n\n\"t\" tail\n\nUse [a].\n",
+		},
+		{
+			"the tail follows a single-quoted title",
+			"[a]: x.md\n't' tail\n\nUse [a].\n",
+			"[a]: x.md\n\n't' tail\n\nUse [a].\n",
+		},
+		{
+			"the tail follows a parenthesized title",
+			"[a]: x.md\n(t) tail\n\nUse [a].\n",
+			"[a]: x.md\n\n(t) tail\n\nUse [a].\n",
+		},
+		// A destination whose own last byte is a title closer: the check
+		// cannot be "does the definition end in a quote or a paren".
+		{
+			"the destination ends in a closing paren",
+			"[a]: a(b)\n\"t\" tail\n\nUse [a].\n",
+			"[a]: a\\(b\\)\n\n\"t\" tail\n\nUse [a].\n",
+		},
+		{
+			"the destination is angle-bracketed",
+			"[a]: <x y>\n\"t\" tail\n\nUse [a].\n",
+			"[a]: <x y>\n\n\"t\" tail\n\nUse [a].\n",
+		},
+		{
+			"the definition sits in a list item",
+			"- [a]: x.md\n  \"t\" tail\n\nUse [a].\n",
+			"- [a]: x.md\n  \"t\" tail\n\nUse [a].\n",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := renderMD(t, tc.src); got != tc.want {
+				t.Errorf("render of %q\n got %q\nwant %q", tc.src, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestLinkRef_ExcludedTitleIsNotOnTheNode pins the same rule one layer
+// down, on the pivot AST rather than the render, because the AST is what
+// the ADF leg reads: a definition whose title line CommonMark excludes
+// must carry NO title, or every consumer of the tree invents one.
+func TestLinkRef_ExcludedTitleIsNotOnTheNode(t *testing.T) {
+	tests := []struct {
+		name, src, want string
+	}{
+		{"title alone", "[a]: x.md\n\"t\"\n", "t"},
+		{"title with a tail", "[a]: x.md\n\"t\" tail\n", ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			def := firstDefinition(Parse([]byte(tc.src)))
+			if def == nil {
+				t.Fatalf("%q produced no definition node", tc.src)
+			}
+			if def.Title != tc.want {
+				t.Errorf("definition title = %q, want %q", def.Title, tc.want)
+			}
+		})
+	}
+}
+
+// firstDefinition returns the first link reference definition of the tree,
+// or nil when it holds none.
+func firstDefinition(n ast.Node) *ast.Definition {
+	if def, ok := n.(*ast.Definition); ok {
+		return def
+	}
+	for _, c := range ast.Children(n) {
+		if got := firstDefinition(c); got != nil {
+			return got
+		}
+	}
+	return nil
+}
+
 // hasDefinition reports whether the tree holds a link reference
 // definition node.
 func hasDefinition(n ast.Node) bool {
