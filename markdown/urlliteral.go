@@ -33,19 +33,43 @@ import "regexp"
 // parsers take urlLiteralAnchoredRe, whose host may be dotless, and the
 // DECODED-TEXT scan takes urlLiteralRe, whose host may not.
 //
-// TWO KNOWN GAPS, both left open deliberately because closing either widens
-// past what was measured:
+// ONE KNOWN GAP, left open deliberately because closing it widens past what
+// was measured: THE PATH. goldmark's path must open on '/', '#' or '?' and
+// then stays inside goldmark's own character class, where BOTH of the
+// reference's recognizers run the path to the next whitespace and trim a
+// trailing-punctuation run afterwards. So a literal ends early here wherever
+// the next character is neither whitespace nor a path character, and the
+// truncated address goes out as the href. Measured against the frozen
+// reference, whole bodies:
 //
-//   - The path. goldmark stops a literal at its own character class where the
-//     reference stops it only at whitespace, so "https://ex.com~foo" links
-//     through "ex.com" here and through "foo" there. Widening the class would
-//     change every literal's extent rather than only a rejected literal's
-//     verdict, so it is a divergence of its own.
-//   - A host whose FIRST segment is non-ASCII. "https://例.com/x" is a link
-//     in the reference's raw-source tokenizer, whose domain consumes any
-//     non-punctuation rune, and prose here; its decoded-text transform
-//     rejects it too (measured: "a [ https://例.com/x b" comes back
-//     unlinked), so closing the gap means widening the RAW pattern alone.
+//	"https://ex.com~foo"     ref "https://ex.com~foo"     here "https://ex.com"
+//	"https://ex.com,x"       ref "https://ex.com,x"       here "https://ex.com"
+//	"https://ex.com—x"       ref "https://ex.com—x"       here "https://ex.com"
+//	"https://ex.com€x"       ref "https://ex.com€x"       here "https://ex.com"
+//	"https://ex.com/a|b"     ref "https://ex.com/a|b"     here "https://ex.com/a"
+//	"https://ex.com/a—b"     ref "https://ex.com/a—b"     here "https://ex.com/a"
+//	"https://www.點看.com"    ref "https://www.點看.com"    here "https://www.點看"
+//
+// THIS ONE IS NOT A CLASS WIDENING, which is why it is still open. The
+// reference's stop rule is an algorithm, not a character set: the tokenizer
+// consumes to whitespace and then LOOKS AHEAD over a trailing run of
+// `! " ' ) * , . : ; ? _ ~`, a `&…;` character reference and a `]` not
+// followed by '(' or '[', while the transform trims `[!"&'),.:;<>?\]}]+$`
+// with its own paren-balancing pass — two different trail rules for the two
+// recognizers. A character class cannot express either, so closing this needs
+// a scanner plus a trim, and it moves the extent of literals that already
+// link rather than the verdict of literals that do not. Measured over both
+// repositories' Markdown, a "path runs to whitespace" candidate moves 3 of
+// 212 literals; over the ADF and Markdown fixtures, 31 of 93.
+//
+// The non-ASCII half of the gap ("—x", "€x") measures as zero corpus movement
+// on its own and would fit the negation discipline described below, but it is
+// held back with the rest on purpose: unlike the host widenings, which turn a
+// WRONG href into the right one, a longer path REPLACES a right href with a
+// longer one that merely agrees with the reference. Measured, the reference
+// links "https://ex.com的页面。" whole out of "参见https://ex.com的页面。" while
+// the address the author meant is "https://ex.com". So the path moves as one
+// piece, with the trail rule, or not at all.
 const (
 	// urlLiteralHostDotted is goldmark's own host rule, and the reference's
 	// decoded-text rule: a dot-separated host. Only its TLD class changes,
@@ -70,8 +94,12 @@ const (
 	// goldmark's ASCII `[a-zA-Z]+` stopped at "ex.co" and emitted THAT as the
 	// href, which is the one shape in this file where the wrong URL went out
 	// rather than none.
-	urlLiteralHostDotted = `[-a-zA-Z0-9@:%._\+~#=]{0,256}\.` +
+	urlLiteralHostDotted = urlLiteralHostByte + `{0,256}\.` +
 		`(?:[a-zA-Z]|` + urlLiteralHostRune + `)+(?::\d+)?`
+	// urlLiteralHostByte is goldmark's own host character class, spelled once
+	// so the three host alternatives below cannot drift apart. The bytes are
+	// goldmark's, unchanged.
+	urlLiteralHostByte = `[-a-zA-Z0-9@:%._\+~#=]`
 	// urlLiteralHostRune is one NON-ASCII character the reference's
 	// raw-source domain consumes: micromark's tokenizer takes any code that
 	// is neither whitespace nor `\p{P}`/`\p{S}` (its unicodePunctuation is
@@ -99,15 +127,65 @@ const (
 	// reference's transform reads "https://ex.coſ~x" whole through its
 	// permissive path, and this stops at "ex.coſ".
 	urlLiteralHostRune = `[^\x00-\x7F\p{Z}\p{P}\p{S}]`
+	// urlLiteralHostUnicodeLed is the RAW-SOURCE-ONLY widening for a host
+	// whose FIRST character is non-ASCII: an IDN address, "https://例.com/x"
+	// or "https://пример.рф/x". goldmark's two host alternatives both open on
+	// an ASCII byte, so such an address was not a host at all and came out as
+	// prose. The reference's raw-source tokenizer links it whole: its
+	// afterProtocol gate refuses only whitespace and `\p{P}`/`\p{S}` right
+	// after the "://", and its domain then consumes any rune that is neither.
+	//
+	// RAW ONLY, and that asymmetry is the reference's own, measured both ways.
+	// Its tokenizer links the address whole; its decoded-text transform
+	// REJECTS it outright, because that recognizer's host is the ASCII
+	// `[-.\w]+` and needs one such character right after the "://":
+	//
+	//	"See https://例.com/x end"  ->  "See <https://例.com/x> end"
+	//	"a [ https://例.com/x b"    ->  "a \\[ https\\://例.com/x b"
+	//
+	// So this alternative joins urlLiteralHost and NOT urlLiteralHostDotted,
+	// and urlLiteralRe keeps refusing the address.
+	//
+	// IT CANNOT MATCH AN ASCII ADDRESS, which is what makes it safe to add:
+	// the leading urlLiteralHostRune excludes `\x00-\x7F`, so for a host that
+	// opens on an ASCII byte this alternative fails at its first character
+	// and the pattern falls through to the two goldmark alternatives
+	// byte-for-byte. Measured over the parity corpus, its cassette and both
+	// repositories' Markdown, it changes the extent of ZERO literals that
+	// link today; it only turns prose into a link.
+	//
+	// A NON-ASCII SEGMENT THAT IS NOT THE FIRST STILL TRUNCATES, deliberately.
+	// "https://www.點看.com" (micromark's own example) links whole in BOTH
+	// halves of the reference and comes out here as "https://www.點看", and
+	// "https://a.coſ.com/x" likewise stops at "https://a.coſ". Both are the
+	// PATH gap above rather than a host rule: the reference's transform reads
+	// them as an ASCII host ("www.", "a.co") plus its whitespace-terminated
+	// path. Widening the raw host to reach them alone would make the raw
+	// pattern outrun the decoded-text one and break the same-extent invariant
+	// TestURLLiteralRawPatternIsTheWiderOne states.
+	//
+	// AN UNDERSCORE IN THE LAST TWO SEGMENTS is the one shape this alternative
+	// takes and the reference does not ("https://例_x"): micromark's
+	// domainAfter refuses it. The ASCII alternatives have carried the same
+	// hole since goldmark ("https://ex.com_x" is prose in both halves of the
+	// reference and "https://ex.com" here), so modeling the rule belongs to
+	// that divergence and not to this one.
+	urlLiteralHostUnicodeLed = urlLiteralHostRune +
+		`(?:` + urlLiteralHostByte + `|` + urlLiteralHostRune + `)*`
 	// urlLiteralHost is the raw-source host rule, and the widening: on top of
 	// the dotted form it accepts a DOTLESS host that starts alphanumeric
 	// ("localhost:8080", "jira"), which is the tokenizer's half of the
-	// reference and which an INTRANET name needs. The dotted alternative
-	// comes FIRST so a host satisfying both keeps the extent it always had.
-	urlLiteralHost = `(?:` + urlLiteralHostDotted +
-		`|[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{0,255})`
+	// reference and which an INTRANET name needs, and the Unicode-led form
+	// above. The dotted alternative comes before the dotless one so a host
+	// satisfying both keeps the extent it always had; the Unicode-led one is
+	// first because it is the only alternative that can open on a non-ASCII
+	// character, so it is unreachable for every address the other two accept.
+	urlLiteralHost = `(?:` + urlLiteralHostUnicodeLed + `|` + urlLiteralHostDotted +
+		`|[a-zA-Z0-9]` + urlLiteralHostByte + `{0,255})`
 	// urlLiteralPath is goldmark's own optional path class, unchanged: a
-	// literal's path is only entered through '/', '#' or '?'.
+	// literal's path is only entered through '/', '#' or '?' and then stays
+	// inside this class. That is the one open gap this file's header
+	// describes, and the rows pinned in urlliteral_test.go measure it.
 	urlLiteralPath = `(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`
 	// urlLiteralScheme is the scheme set goldmark's linkify extension
 	// accepts, now matched WITHOUT REGARD TO CASE, which is the reference's
