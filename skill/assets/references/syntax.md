@@ -341,6 +341,18 @@ key order, comments, and quoting untouched.
   leaves the document, the label stays as a link — with an
   `unresolved-asset` diagnostic. Upload the asset and the next encode
   places the picture.
+- **Linked images** — `[![alt](url)](href)`, a logo that links home or a
+  badge that links to a build, is representable: the link mark goes on
+  the media node itself, so the picture keeps what it links to. The
+  block form loses nothing — a linked image alone in its paragraph
+  becomes `mediaSingle` → `media` with the `link` mark, external URL or
+  store-resolved attachment alike. Only the degrading forms above give
+  something up, and there it is the IMAGE that goes, not the
+  destination: with two candidate hrefs and one link mark the
+  **enclosing** destination wins, because that is the one the reader
+  means to click, and the diagnostic names both halves. Moving a linked
+  image onto its own line is therefore the fix for an
+  `inline-image-degraded` on one.
 - **Issue/page links** — a link whose text equals the resolver-derived
   key (e.g. `[ABC-123](https://…/browse/ABC-123)`, or
   `[DOCS/123456](https://…/wiki/spaces/DOCS/pages/123456/…)` with the

@@ -415,15 +415,24 @@ func WithPrettierFormat() Option {
 	return func(o *options) { o.prettier = true }
 }
 
-// WithDiagnostics registers a sink for non-fatal diagnostics, wired into
-// whichever primitive emits: FromMarkdown (parse-recovered,
-// malformed-frontmatter, depth-exceeded, span-marker-invalid), ToADF (colwidths-orphan,
-// decisions-orphan, unresolved-asset, unsupported-code-language,
-// unsupported-in-product, raw-node, depth-exceeded), and FromADF (decode-failed, unknown-node,
-// unknown-mark, unknown-attr, raw-node). ToMarkdown's prettier-format
-// mode runs the same canonicalization as ToADF, so the ToADF
-// diagnostics (notably unsupported-code-language) also fire there.
-// Without a sink, diagnostics are silently dropped.
+// WithDiagnostics registers a sink for non-fatal diagnostics. Every
+// primitive emits some, so pass it to whichever ones a composition runs:
+// FromMarkdown reports what the parse recovered from, ToADF what ADF's
+// shape cannot carry (the largest group by far), FromADF and the byte
+// decode what the wire document held that the typed model does not know,
+// and ToMarkdown's prettier-format mode runs the same canonicalization
+// as ToADF and so repeats that leg's notices. Without a sink they are
+// silently dropped.
+//
+// The code vocabulary is NOT enumerated here, on purpose. convert.Codes()
+// is the complete, build-enforced inventory, and each convert.Code*
+// constant documents its own case and names the primitive that emits it —
+// which is the fact a caller wiring a sink actually needs, and the fact a
+// hand-kept list here loses first. The list that used to sit in this
+// comment had drifted on both counts: it named fourteen of the
+// twenty-four codes, and it filed raw-node and depth-exceeded under
+// ToADF, which emits neither (raw-node comes from the FromADF leg,
+// depth-exceeded from FromMarkdown and from the byte decode).
 func WithDiagnostics(sink func(convert.Diagnostic)) Option {
 	return func(o *options) { o.diagnostics = sink }
 }
