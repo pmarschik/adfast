@@ -219,6 +219,19 @@ Canonical conversion drops block HTML silently and flattens inline tags
 to literal text; only the style-preserving formatter carries HTML
 through unchanged. Express structure with directives instead.
 
+The flatten is visible in the rendered Markdown, and it looks like a
+render bug until you trace it: `a b <br> c` comes back from an ADF round
+trip as `a b \<br> c`. The backslash is correct. ADF has no node kind for
+raw HTML at all (see `docs/adf-availability.json`), so the `<br>` is
+already plain text by the time the render sees it, and a text node
+holding `<` has to be escaped or the next parse would read it back as a
+tag. The remark reference serializer prints the same bytes from the same
+text-folded input, so this is not a divergence from it — the earlier
+figures that suggested otherwise were comparing md → md against
+md → ADF → md. The escape is also stable: a second round trip returns
+the same one backslash rather than accumulating another. `rawhtml_test.go`
+pins both legs.
+
 ## Supported code languages
 
 Code-block language tags encode verbatim by default; `WithCodeLanguages`
