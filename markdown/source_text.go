@@ -22,8 +22,8 @@ func TextMatches(src []byte, re *regexp.Regexp, group int) Spans {
 // non-overlapping. Group 0 is the whole match.
 //
 // This is the view for the caller that has a pattern over a document's WORDS
-// — an issue key, a ticket reference, a bare URL — rather than over its
-// syntax. Such a caller has always had to answer "is this hit real prose or
+// — an issue key, a ticket reference, a cross-reference marker — rather than
+// over its syntax. Such a caller has always had to answer "is this hit real prose or
 // is it an example?" for itself, and every hand-written answer in the tree
 // answered it as a blocklist: find every hit, then drop the ones inside code.
 // A blocklist is only as complete as its author's list of places that are not
@@ -40,6 +40,24 @@ func TextMatches(src []byte, re *regexp.Regexp, group int) Spans {
 // including a comment, and a directive's attribute block. A label IS prose
 // and does match, on a link, an image, and a leaf or container directive:
 // the author wrote those words to be read.
+//
+// A BARE URL IS NOT REACHABLE FROM HERE, and it is named because it is the
+// one pattern a caller is most likely to bring to a "pattern over the words"
+// view and the one this view cannot serve. GFM's linkify pass consumes a
+// running-text URL into an autolink node BEFORE any text node exists, so the
+// URL is never part of a prose run and no match over it is ever enclosed:
+// "Read https://ex.com/plain here." reports nothing, and neither does
+// "| a | https://ex.com/cell |". The failure is silent — no error, no count,
+// just an empty result — so a caller that moved a bare-URL normalizer onto
+// this view would stop normalizing altogether. Autolinks is the view for
+// that pattern, and it is a better answer than a pattern was: it reports
+// both written forms, keeps the sentence's trailing punctuation out of the
+// address, and tells a `www.` form apart from a whole URL.
+//
+// This is not a gap that could be closed by widening the runs to include an
+// autolink's text. An autolink's text IS its destination, so a rewriter
+// handed it as words would be editing a URL believing it was editing prose —
+// exactly the corruption this view exists to make impossible.
 //
 // A RUN is a maximal stretch of source bytes the parser reports as literal
 // text with nothing in between. Runs matter because goldmark splits a text
