@@ -1225,6 +1225,17 @@ func convertGoldmarkAutoLink(n *gast.AutoLink, src []byte) []ast.Node {
 	if label == "" {
 		label = href
 	}
+	// An email autolink carries its scheme in the NODE, as mdast does.
+	// goldmark leaves URL() schemeless here because its own HTML renderer
+	// is what prepends "mailto:" at render time, so a consumer reading the
+	// AST would otherwise get a schemeless href: a relative link when it
+	// reaches ADF, and a relative-path link when the document round trips.
+	// The label keeps the bare address, which is what makes the render side
+	// emit the autolink form again. Done after the validity gate above so
+	// the rejection path still measures the string goldmark produced.
+	if n.AutoLinkType == gast.AutoLinkEmail && !strings.HasPrefix(href, "mailto:") {
+		href = "mailto:" + href
+	}
 	return []ast.Node{&ast.Link{
 		URL:      href,
 		Bare:     !angle,
