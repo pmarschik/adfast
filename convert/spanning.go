@@ -34,9 +34,13 @@ type spanOps[T any] struct {
 	em     func(*T) bool
 	strike func(*T) bool
 	isCode func(*T) bool
-	text   func(*T) string
-	set    func(*T, spanMark)
-	leaf   func(*T) ast.Node
+	// isBreak marks an explicit line break, the one item a nesting mark
+	// cannot ride across: groupSpans closes every wrapper at it, because
+	// the break carries no marks of its own.
+	isBreak func(*T) bool
+	text    func(*T) string
+	set     func(*T, spanMark)
+	leaf    func(*T) ast.Node
 }
 
 func (ops spanOps[T]) has(item *T, mark spanMark) bool {
@@ -123,9 +127,18 @@ func codeRunEnd[T any](items []T, ops spanOps[T], start int) int {
 // whose items carry no nesting mark of their own — how far a re-inferred
 // mark may reach forward when the source marks are only a best-effort
 // reconstruction (see inferAfterCode's lax parameter).
+//
+// An explicit line break ends the run even though it carries no mark. A
+// break is the one item groupSpans cannot keep a wrapper open across, so a
+// mark inferred past one is a mark that has to be split apart again on the
+// way out — and the split output re-encodes to different ADF than the
+// inference produced, which leaves the render short of a fixpoint. It is
+// also the reading with no evidence behind it: the lax rule exists to
+// recover the mark an editor shed AROUND A CODE SPAN, and a code span
+// never spanned a line break.
 func unmarkedRunEnd[T any](items []T, ops spanOps[T], start int) int {
 	end := start
-	for end < len(items) && !marked(ops, &items[end]) {
+	for end < len(items) && !marked(ops, &items[end]) && !ops.isBreak(&items[end]) {
 		end++
 	}
 	return end
