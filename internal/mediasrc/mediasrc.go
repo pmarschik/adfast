@@ -30,6 +30,16 @@ package mediasrc
 // path. Absent both, "" — nothing can address the attachment, and the
 // caller reports the loss.
 //
+// Either way the id is returned UNCHANGED. This is the place any
+// canonicalization of a media id would go — one function both legs call —
+// and the answer is that there is none: the id is the store's name for an
+// attachment, and a name adfast rewrites is a name the store cannot be
+// asked about again. adfast's own store settles it explicitly, folding case
+// only to MATCH an id and recording "whatever case the product handed
+// over" (assets.idKey). The markdown-image legs used to lowercase the
+// store's answer while these directive legs did not, so one attachment had
+// two ids; the fold is gone rather than spread, for the reason above.
+//
 // resolve is the store lookup (nil when the caller configured none).
 func ID(id, path string, resolve func(ref string) (mediaID string, ok bool)) string {
 	if id != "" || path == "" || resolve == nil {

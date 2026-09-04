@@ -930,6 +930,8 @@ func (c *astConverter) convertDecisionItems(items []*ast.ListItem) adf.Node {
 // singleAttachmentImage reports the paragraph's sole child when it is an
 // image whose path the asset store maps back to a media id (a downloaded
 // attachment).
+//
+// The id travels VERBATIM — see the case note on assetID.
 func (c *astConverter) singleAttachmentImage(node *ast.Paragraph) (*ast.Image, string, bool) {
 	if c.resolveAssetID == nil || len(node.Children) != 1 {
 		return nil, "", false
@@ -945,11 +947,28 @@ func (c *astConverter) singleAttachmentImage(node *ast.Paragraph) (*ast.Image, s
 	if !ok || id == "" {
 		return nil, "", false
 	}
-	return img, strings.ToLower(id), true
+	return img, id, true
 }
 
 // assetID resolves a markdown-relative asset reference to its media id via the
 // configured resolver, or ("", false) when unresolvable.
+//
+// The id is written to ADF EXACTLY as the store answered it. A media id is
+// the store's name for an attachment, not a value this library gets to
+// reinterpret: adfast's own store folds case when it MATCHES an id and
+// keeps "whatever case the product handed over" when it RECORDS one (see
+// assets.idKey), and the reverse leg looks an id up as a plain map key
+// (mediaAssets.lookup), so a case adfast invents on the encode is a case
+// nothing can look up again.
+//
+// Both image spellings used to lowercase it here while the ::media
+// directive spellings passed it through, which gave one attachment two ids
+// depending on which spelling the author reached for, and made
+// ADF → md → ADF return an id different from the one it was handed. Atlassian
+// media ids are lowercase UUIDs in practice, so folding them bought
+// nothing and cost the fidelity a store that names its assets otherwise —
+// a content-addressed store, a test double, a non-Atlassian backend —
+// depends on.
 func (c *astConverter) assetID(ref string) (string, bool) {
 	if c.resolveAssetID == nil || ref == "" {
 		return "", false
@@ -1170,7 +1189,7 @@ func (v *inlineFlattener) VisitImage(n *ast.Image) []adf.Node {
 	if id, ok := v.c.assetID(n.URL); ok && id != "" {
 		return []adf.Node{&adf.MediaInline{
 			Type:       "file",
-			ID:         strings.ToLower(id),
+			ID:         id,
 			Alt:        alt,
 			Collection: new(""),
 			Marks:      mediaLinkMark(v.ctx),

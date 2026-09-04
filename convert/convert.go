@@ -90,6 +90,13 @@ type ImageDimsResolver func(path string) (width, height int, ok bool)
 
 // AssetIDResolver maps a referenced asset path (relative to the markdown
 // file) back to its media id via the asset store.
+//
+// The id is OPAQUE: whatever the resolver answers is what reaches the ADF
+// media node, byte for byte, from every markdown spelling of a reference
+// (![alt](path), ::media{path=…}, :::media{path=…}). adfast does not case-fold
+// it, trim it or otherwise canonicalize it — the store names the attachment
+// and the encode only carries the name. A resolver that wants a canonical
+// form should answer in it.
 type AssetIDResolver func(path string) (id string, ok bool)
 
 // Diagnostic reports a non-fatal conversion issue: input that was
