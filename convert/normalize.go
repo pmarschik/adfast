@@ -800,6 +800,21 @@ func normalizeMediaInline(v *dialect.MediaInline) ast.Node {
 	if v.Attrs["id"] != "" {
 		attrs["id"] = v.Attrs["id"]
 	}
+	// The path is where the local file is, and this leg is the AUTHOR'S
+	// document being reformatted: dropping it rewrote a chip that resolves
+	// into one that resolves nothing, and no format may do that. It was
+	// dropped because the inline chip's encode ignored `path` altogether,
+	// so there was nothing for the formatter to preserve.
+	//
+	// Both are kept when both are spelled, unlike the block form's
+	// mediaSourceAttrs, which writes the path INSTEAD of the id. Keeping
+	// the pair is lossless in the direction that matters — the encode
+	// prefers an explicit id and never spends the path beside it
+	// (mediasrc.ID) — while writing only the path would silently re-point
+	// a pinned id at whatever the store now says the file is.
+	if p := v.Attrs["path"]; p != "" {
+		attrs["path"] = p
+	}
 	// The link mark's destination is the caller's to keep, like the
 	// collection: an inline attachment that links somewhere may not lose
 	// where, nor the title spelled after it (mirrors dialect's

@@ -244,13 +244,20 @@ The last three rows are the lossy ones, and none is silent:
   the only loss here that is not permanent: upload the asset and the
   next encode finds its id.
 
-  The `::media[alt]{path=…}` spelling of the same reference — what a
-  pulled document writes for a downloaded attachment — takes a different
-  loss and reports the same code. The directive is explicit and carries
-  the alt text and the caption, so the media node ships; but `path` is a
-  lookup key, not an ADF field, so with nothing behind it the node is
-  written with an EMPTY id and the path is gone. A path spelled beside an
-  explicit `id` is not reported: the id still addresses the attachment.
+  The directive spellings of the same reference — `::media[alt]{path=…}`
+  and `:::media`, what a pulled document writes for a downloaded
+  attachment, and the inline `:media[alt]{path=…}` chip — take a
+  different loss and report the same code. The directive is explicit and
+  carries the alt text and the caption, so the media node ships; but
+  `path` is a lookup key, not an ADF field, so with nothing behind it the
+  node is written with an EMPTY id and the path is gone. A path spelled
+  beside an explicit `id` is not reported: the id still addresses the
+  attachment.
+
+  All three spellings resolve the path the same way, through one asset
+  store lookup. The inline chip used to resolve nothing at all — it
+  dropped `path` on encode, so it shipped without an id even when the
+  store held the file, and reported nothing because it never looked.
 
   Emitting nothing instead is what this row used to say, and the cost
   was out of all proportion to the picture. An image is very often the

@@ -356,7 +356,15 @@ func (n *Status) EncodeADF(_ extension.EncodeContext) []adf.Node {
 }
 
 // EncodeADF implements extension.Node.
-func (n *MediaInline) EncodeADF(_ extension.EncodeContext) []adf.Node {
+//
+// The inline chip resolves a path-addressed source through the same
+// mediasrc entry point the block forms use. It did not, and dropped the
+// context to say so: a `:media[alt]{path=…}` encoded to a mediaInline
+// with an EMPTY id, so the chip pointed at no attachment even when the
+// asset store held the file. Two directive spellings of one fact cannot
+// disagree about whether a path is a source, and mediasrc exists so the
+// answer is written once (see the package comment there).
+func (n *MediaInline) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 	mi := &adf.MediaInline{Type: "file"}
 	if t := n.Attrs["type"]; t != "" {
 		mi.Type = t
@@ -364,6 +372,13 @@ func (n *MediaInline) EncodeADF(_ extension.EncodeContext) []adf.Node {
 	if id := n.Attrs["id"]; id != "" {
 		mi.ID = id
 	}
+	// An explicit id wins over a path — mediasrc.ID returns the id it was
+	// given untouched and only looks the path up when there is none, so a
+	// pinned id is never re-derived from the file beside it.
+	//
+	// mediaInline has no width/height in ADF, so there are no intrinsic
+	// dimensions to recover here: the id is the whole recovery.
+	mi.ID = mediasrc.ID(mi.ID, n.Attrs["path"], ctx.AssetID)
 	if v, ok := n.Attrs["collection"]; ok {
 		mi.Collection = new(v)
 	}
