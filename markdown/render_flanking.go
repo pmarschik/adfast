@@ -8,6 +8,8 @@ import (
 
 	"github.com/pmarschik/adfast/ast"
 	"github.com/pmarschik/adfast/extension"
+
+	"github.com/yuin/goldmark/util"
 )
 
 // Link serialization and the CommonMark flanking checks that drive
@@ -368,14 +370,12 @@ func siblingLeadRune(nodes []ast.Node, i int) rune {
 	return nodeLeadRune(nodes[i])
 }
 
+// linkLeadRune is the first rune writeLink puts down for this link. It asks
+// autolinkText rather than repeating its test, so the two can never
+// disagree about which links reach the autolink form.
 func linkLeadRune(node *ast.Link) rune {
-	if len(node.Children) == 1 {
-		if t, ok := node.Children[0].(*ast.Text); ok {
-			text := t.Value
-			if text == node.URL || (strings.HasPrefix(node.URL, "mailto:") && text == strings.TrimPrefix(node.URL, "mailto:")) {
-				return '<'
-			}
-		}
+	if _, ok := autolinkText(node); ok {
+		return '<'
 	}
 	return '['
 }
@@ -422,7 +422,14 @@ func autolinkText(node *ast.Link) (string, bool) {
 	text := t.Value
 	isMailto := strings.HasPrefix(node.URL, "mailto:")
 	mailtoAddr := strings.TrimPrefix(node.URL, "mailto:")
-	if text == node.URL || (isMailto && text == mailtoAddr) {
+	if text == node.URL {
+		return text, true
+	}
+	// The mailto: form emits the bare ADDRESS, not the URL, so the URI
+	// grammar above is not the grammar that has to accept it: an address
+	// the email autolink parser stops short of would come back as plain
+	// text and the render would not be a fixpoint.
+	if isMailto && text == mailtoAddr && autolinkableEmail(mailtoAddr) {
 		return text, true
 	}
 	return "", false
@@ -478,6 +485,18 @@ var autolinkableURLRe = regexp.MustCompile("^[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\x00
 // [label](url) form).
 func autolinkableURL(url string) bool {
 	return autolinkableURLRe.MatchString(url)
+}
+
+// autolinkableEmail reports whether <addr> would re-parse as an email
+// autolink. The parser's own scanner answers, rather than a restatement of
+// CommonMark's email grammar, so the two cannot drift: the angle parser
+// takes the address up to util.FindEmailIndex and then demands a '>' there,
+// so the whole address has to be consumed. A domain label opening on '_' or
+// '-' is the case this rejects ("00@0._AA"): goldmark's linkify pass will
+// still take it as a GFM literal, and remark stringifies it as an autolink
+// and then cannot read it back either, gaining a bracket pair per render.
+func autolinkableEmail(addr string) bool {
+	return util.FindEmailIndex([]byte(addr)) == len(addr)
 }
 
 // formatLinkURL serializes a link/image destination. Prettier wraps it in

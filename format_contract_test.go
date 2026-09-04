@@ -681,11 +681,13 @@ func TestEmailLiteralStaysUnlinkedAcrossFormat(t *testing.T) {
 			want: "[a@b.com](x)\n",
 		},
 		{
-			// A real autolink literal keeps its link mark and renders in
-			// the explicit form.
+			// A real autolink literal keeps its link mark, and because
+			// the mark now carries the mailto: scheme the renderer can
+			// recognize it as an autolink again and keep the bare source
+			// form (prettier's choice for a linkified literal).
 			name: "genuine autolink literal",
 			md:   "a@b.com",
-			want: "[a@b.com](a@b.com)\n",
+			want: "a@b.com\n",
 		},
 	}
 	for _, tt := range tests {
