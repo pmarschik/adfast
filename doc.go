@@ -63,7 +63,9 @@
 //     the remark-compatible renderer
 //   - convert: the AST ⇄ ADF transforms, the shared Normalize
 //     canonicalization pass, and their parameter types (SmartLinks,
-//     LinkResolver, MediaAsset, resolvers, Diagnostic)
+//     LinkResolver, MediaAsset, resolvers, Diagnostic) — including
+//     convert.Codes(), the whole diagnostic-code vocabulary, for a
+//     consumer that must prove it classifies every one
 //   - debug: human-readable dumps of both trees for debugging (output
 //     format not covered by compatibility guarantees)
 //   - jira: a separate submodule bundling the Jira conventions

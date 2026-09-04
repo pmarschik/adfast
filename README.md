@@ -538,6 +538,29 @@ silently dropped. `Pipeline.MarkdownToADFAll` is the errable batch
 variant. A failure of a `BeforeEncode` hook, for example a batched asset
 upload, aborts the call and returns the error.
 
+The list above names the codes worth reading about, and not all of them.
+`convert.Codes()` returns the **whole** vocabulary — every code a
+`Diagnostic` can carry, including the ones re-exported from `adf` — so a
+consumer that must handle each one (classify it as a real loss, a
+retry-later, or a notice, or map it to a severity) can prove against the
+inventory that it missed none:
+
+```go
+for _, code := range convert.Codes() {
+    if _, ok := severityOf[code]; !ok {
+        t.Errorf("adfast diagnostic code %q is unclassified", code)
+    }
+}
+```
+
+Key such a table by the `convert.Code*` **constants** rather than by the
+string literals; a renamed code is then a compile error on the consumer's
+side, and a code adfast adds shows up as the missing key above. That
+check is meant to fail on an upgrade that adds a code, so keep it in a
+test and not on a request path. The inventory carries no severity of its
+own: what a code means for the document is the doc comment on its
+constant, and what to do about it is the consumer's policy.
+
 There is one programming error the render refuses to paper over.
 `ToMarkdown` panics on a directive node whose `Name` is not a name the
 directive dialect can spell — one or more ASCII alphanumerics, with `-`
