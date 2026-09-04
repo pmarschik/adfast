@@ -213,6 +213,17 @@ link to its definition, because ADF has no anchor construct to link to. A
 before a push if authors expect footnotes to survive a product round
 trip.
 
+A definition nothing references is kept, as an item of its own with a
+number of its own. GFM's HTML renderer drops it and remark's own md → md
+render does not, and the ADF encode follows the md leg: the HTML is a
+view with the source still behind it, while the ADF becomes the stored
+document, so dropping there would delete the author's text for good. The
+cost is that an unreferenced definition placed first shifts the numbers
+after it — `[^m]` defined before a referenced `[^n]` makes `[^n]`'s
+superscript 2, where GFM's HTML shows 1. The diagnostic distinguishes the
+two cases in its message, so a consumer that wants GFM's drop can apply
+it above adfast rather than losing the choice.
+
 ## Raw HTML has no ADF mapping
 
 Canonical conversion drops block HTML silently and flattens inline tags

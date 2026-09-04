@@ -164,3 +164,104 @@ func TestDuplicateFootnoteDefinitionsBothSurvive(t *testing.T) {
 		}
 	}
 }
+
+// The mixed document the "keep" decision rests on: one definition a
+// reference resolves to, and one nothing references, in the same source.
+// Measured against remark on 2026-09-04 because it looks like a
+// divergence, and the two remark legs disagree — remark's md → md render
+// keeps both definitions (as the formatter case below does, byte for
+// byte), remark-rehype's HTML render drops the unreferenced one and
+// renumbers by first-reference order. The ADF encode follows the md leg:
+// it is a push, not a view, so a dropped definition is gone for good.
+// convert/footnote.go carries the full argument.
+func TestUnreferencedFootnoteDefinitionSurvivesBesideAReferencedOne(t *testing.T) {
+	const src = "[^n]: Note one.\n\n[^m]: Note two.\n\nBody uses only one.[^n]\n"
+
+	// The GOOD case first, and the precondition for everything below:
+	// the parse really does read "[^m]" as a definition nothing
+	// references. If the body carried a second reference, "kept" would
+	// be trivially true and the assertions would prove nothing.
+	if got, want := fmtMD(src), src; got != want {
+		t.Fatalf("md→md formatter: got %q, want %q (remark returns the same)", got, want)
+	}
+	if strings.Count(src, "[^m]") != 1 {
+		t.Fatalf("fixture broken: %q must mention [^m] once, as its definition", src)
+	}
+
+	var msgs []string
+	got := adfJSON(t, mdToADF(src, WithDiagnostics(func(d convert.Diagnostic) {
+		if d.Code == convert.CodeFootnoteFlattened {
+			msgs = append(msgs, d.Message)
+		}
+	})))
+
+	// Exactly one superscript, so "[^m]" is confirmed unreferenced on
+	// the ADF side too, not merely unreferenced in the source text.
+	if n := strings.Count(got, `"subsup"`); n != 1 {
+		t.Fatalf("want 1 superscript in the encoded document, got %d:\n%s", n, got)
+	}
+	// Both definitions reach the list, the unreferenced one included.
+	for _, want := range []string{`"Note one."`, `"Note two."`} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %s in\n%s", want, got)
+		}
+	}
+
+	// And the diagnostic tells the two apart, which is the hook a caller
+	// needs to apply GFM's drop for itself.
+	if len(msgs) != 2 {
+		t.Fatalf("want 2 diagnostics, got %d: %v", len(msgs), msgs)
+	}
+	if want := "[^n] flattened to superscript 1"; !strings.Contains(msgs[0], want) {
+		t.Errorf("referenced definition: %q, want it to name %q", msgs[0], want)
+	}
+	if want := "[^m] is defined but never referenced"; !strings.Contains(msgs[1], want) {
+		t.Errorf("unreferenced definition: %q, want it to say %q", msgs[1], want)
+	}
+	if bad := "flattened to superscript 2"; strings.Contains(msgs[1], bad) {
+		t.Errorf("unreferenced definition: %q must not claim %q — there is no superscript 2 in the document", msgs[1], bad)
+	}
+}
+
+// A duplicate definition of a referenced label is itself unreachable: the
+// reference resolves to the FIRST definition sharing the label, so the
+// second one has no superscript pointing at it either, and the
+// diagnostic must not claim one.
+func TestDuplicateFootnoteDefinitionReportsTheSecondAsUnreferenced(t *testing.T) {
+	var msgs []string
+	mdToADF("a[^1]\n\n[^1]: first\n\n[^1]: second\n",
+		WithDiagnostics(func(d convert.Diagnostic) {
+			if d.Code == convert.CodeFootnoteFlattened {
+				msgs = append(msgs, d.Message)
+			}
+		}))
+
+	if len(msgs) != 2 {
+		t.Fatalf("want 2 diagnostics, got %d: %v", len(msgs), msgs)
+	}
+	if want := "flattened to superscript 1"; !strings.Contains(msgs[0], want) {
+		t.Errorf("first definition: %q, want it to name %q", msgs[0], want)
+	}
+	if want := "is defined but never referenced"; !strings.Contains(msgs[1], want) {
+		t.Errorf("second definition: %q, want it to say %q", msgs[1], want)
+	}
+}
+
+// The numbering pin that goes with the keep: an unreferenced definition
+// takes a number of its own, so putting it FIRST shifts the referenced
+// footnote's superscript to 2 where remark-rehype's HTML shows 1. That
+// is the definition-order numbering convert/footnote.go documents, and
+// the list order still agrees with the superscript.
+func TestUnreferencedFootnoteDefinitionTakesItsOwnNumber(t *testing.T) {
+	const src = "[^m]: Note two.\n\n[^n]: Note one.\n\nBody uses only one.[^n]\n"
+
+	if got, want := fmtMD(src), src; got != want {
+		t.Fatalf("md→md formatter: got %q, want %q", got, want)
+	}
+
+	got := ToMarkdown(FromADF(mdToADF(src)), WithPrintWidth(80))
+	want := "Body uses only one.:sup[2]\n\n---\n\n1. Note two.\n1. Note one.\n"
+	if got != want {
+		t.Fatalf("md→ADF→md: got %q, want %q", got, want)
+	}
+}
