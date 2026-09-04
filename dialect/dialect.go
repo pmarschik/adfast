@@ -49,14 +49,14 @@
 //     diagnostic — EncodeADF has no sink of its own, so the same
 //     predicate gates the encode, the diagnostic, and the prettier
 //     formatter's mirror of the encode.
-//   - ::media and :::media addressed by `path` spend that path on
-//     encode: ADF names an attachment by media id and has no path field,
-//     so the store lookup either produces an id or the media node ships
-//     without one (UnresolvedMediaPath). One that names no source at all
-//     ships without one too (SourcelessMedia). Same reason as ::jql —
-//     EncodeADF has no sink — so the predicates gate the encode's
-//     recovery and convert reports a convert.CodeUnresolvedAsset from
-//     either.
+//   - ::media, :::media and the inline :media chip addressed by `path`
+//     spend that path on encode: ADF names an attachment by media id and
+//     has no path field, so the store lookup either produces an id or the
+//     media node ships without one (UnresolvedMediaPath). A block form
+//     that names no source at all ships without one too
+//     (SourcelessMedia). Same reason as ::jql — EncodeADF has no sink —
+//     so the predicates gate the encode's recovery and convert reports a
+//     convert.CodeUnresolvedAsset from either.
 //   - the block-mark wrappers (:::center/:::end, :::indent, :::breakout,
 //     :::dataConsumer, :::fragment) decode from ADF block MARKS:
 //     convert's block-mark wrapping constructs them around the marked
@@ -227,12 +227,19 @@ func NewMedia(attrs map[string]string, children []ast.Node) *Media {
 // directive names that the asset store cannot turn into a media id.
 //
 // ADF addresses an attachment by media id and has no field for a path,
-// so `path` on a ::media or :::media directive is not an attribute that
-// travels — it is a lookup key, spent on encode (see the recovery in
-// mediaFromAttrs). An id the store does not know still addresses the
-// attachment; a path it does not know addresses nothing, and encode
-// emits a media node with an EMPTY id. So the path does not survive the
-// ADF leg in any form, and the loss is worth a word to the author.
+// so `path` on a ::media, :::media or inline :media directive is not an
+// attribute that travels — it is a lookup key, spent on encode (see the
+// recovery in mediaFromAttrs and in MediaInline.EncodeADF). An id the
+// store does not know still addresses the attachment; a path it does not
+// know addresses nothing, and encode emits a media node with an EMPTY
+// id. So the path does not survive the ADF leg in any form, and the loss
+// is worth a word to the author.
+//
+// All three spellings are covered because all three spend the path the
+// same way. The inline chip used to be left out of both halves at once —
+// it never resolved a path, so it never had one to fail to resolve —
+// which made an inline chip the one media spelling that shipped
+// unaddressable in silence.
 //
 // EncodeADF has no diagnostics sink, so this predicate gates the
 // reporting the way JQL.EncodesAsDatasource does: convert reports a
@@ -249,6 +256,8 @@ func UnresolvedMediaPath(n ast.Node, resolve func(ref string) (mediaID string, o
 	case *Media:
 		attrs = media.Attrs
 	case *MediaCaption:
+		attrs = media.Attrs
+	case *MediaInline:
 		attrs = media.Attrs
 	default:
 		return "", false
@@ -293,10 +302,13 @@ func UnresolvedMediaPath(n ast.Node, resolve func(ref string) (mediaID string, o
 // convert.CodeUnresolvedAsset from its extension visit. It needs no
 // resolver: with no path there is nothing to look up.
 //
-// The inline `:media[…]` spelling is deliberately not covered. Its
-// vocabulary has no `path` at all, so a path spelled on it is ignored
-// rather than unresolvable, and reporting "names no source" over an
-// author's `:media[alt]{path=…}` would be a lie about a different bug.
+// The inline `:media[…]` spelling is not covered here, though it IS
+// covered by UnresolvedMediaPath above: a path spelled on the chip
+// resolves like the block forms', so an unresolvable one reports. What
+// stays out is the sourceless case — `:media[alt]{}` encodes to a
+// mediaInline with no id and says nothing. That is the same silence this
+// predicate closed for the block forms, and closing it for the chip is a
+// widening of what reports rather than a repair of what resolves.
 func SourcelessMedia(n ast.Node) (alt string, sourceless bool) {
 	var attrs map[string]string
 	switch media := n.(type) {
@@ -569,11 +581,20 @@ func (n *Status) SetChildNodes(kids []ast.Node) { n.Children = kids }
 func (*Status) MarkdownLead() byte { return ':' }
 
 // MediaInline is inline :media[alt]{…} ⇄ ADF mediaInline.
+//
+// `path` has no field of its own, deliberately: it is not part of the
+// node's ADF shape but a lookup key spent on encode, and both places
+// that spend it (EncodeADF and UnresolvedMediaPath) read the raw Attrs
+// map — as does the block form's own resolution in mediaFromAttrs, which
+// reads attrs["path"] and not Media.Path. A typed field here would be a
+// second home for one value with no reader, i.e. a place for it to go
+// stale.
 type MediaInline struct {
 	MediaType  string
 	ID         string
 	Collection string
-	// Attrs is the raw directive attribute payload.
+	// Attrs is the raw directive attribute payload; `path` lives here
+	// only (see above).
 	Attrs map[string]string
 	// Children hold the alt-text label.
 	Children []ast.Node

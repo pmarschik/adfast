@@ -603,37 +603,52 @@ func (v *astBlockVisitor) VisitExtension(n ast.Node) []adf.Node {
 			})
 		}
 	}
-	if v.c.diagnostics != nil {
-		// A path is a lookup key, not an attribute ADF can hold: with no
-		// id behind it the encode emits a media node the attachment cannot
-		// be found by, and the path itself is gone. Report it here for the
-		// same reason as the two above — EncodeADF has no sink.
-		if ref, unresolved := dialect.UnresolvedMediaPath(n, v.c.assetID); unresolved {
-			v.c.diagnostics(Diagnostic{
-				Code:    CodeUnresolvedAsset,
-				Message: unresolvedMediaPathMessage(ref),
-			})
-		} else if alt, sourceless := dialect.SourcelessMedia(n); sourceless {
-			// And a directive that names nothing at all encodes to a media
-			// node with no source, which is just as unaddressable — an
-			// author reading the line sees a well-formed directive and a
-			// reader of the pushed page sees a gap.
-			//
-			// The two predicates are disjoint (see SourcelessMedia), so the
-			// else changes nothing today. It is here to hold the invariant
-			// the messages assume — at most ONE sentence per media node —
-			// against a later widening of either predicate.
-			v.c.diagnostics(Diagnostic{
-				Code:    CodeUnresolvedAsset,
-				Message: sourcelessMediaMessage(alt),
-			})
-		}
-	}
+	v.c.reportMediaSource(n)
 	if ext, ok := n.(extension.Node); ok {
 		// Extension kinds encode themselves.
 		return ext.EncodeADF(&blockEncodeContext{c: v.c})
 	}
 	return v.blockFallback(n)
+}
+
+// reportMediaSource reports a media directive whose source the ADF leg
+// cannot carry. Both extension visits call it, because the media family
+// spans both positions: the ::media/:::media block forms and the inline
+// :media chip spend a `path` the same way, so they take the same loss and
+// owe the author the same sentence. It used to live inline in the block
+// visit only, which is how the chip came to resolve nothing and report
+// nothing.
+//
+// A path is a lookup key, not an attribute ADF can hold: with no id
+// behind it the encode emits a media node the attachment cannot be found
+// by, and the path itself is gone. Reported from the visit rather than
+// from EncodeADF because EncodeADF has no diagnostics sink (see the ::jql
+// and smart-link cases in the block visit, and the fontSize note in
+// inlineFlattener.VisitExtension).
+func (c *astConverter) reportMediaSource(n ast.Node) {
+	if c.diagnostics == nil {
+		return
+	}
+	if ref, unresolved := dialect.UnresolvedMediaPath(n, c.assetID); unresolved {
+		c.diagnostics(Diagnostic{
+			Code:    CodeUnresolvedAsset,
+			Message: unresolvedMediaPathMessage(ref),
+		})
+	} else if alt, sourceless := dialect.SourcelessMedia(n); sourceless {
+		// And a directive that names nothing at all encodes to a media
+		// node with no source, which is just as unaddressable — an
+		// author reading the line sees a well-formed directive and a
+		// reader of the pushed page sees a gap.
+		//
+		// The two predicates are disjoint (see SourcelessMedia), so the
+		// else changes nothing today. It is here to hold the invariant
+		// the messages assume — at most ONE sentence per media node —
+		// against a later widening of either predicate.
+		c.diagnostics(Diagnostic{
+			Code:    CodeUnresolvedAsset,
+			Message: sourcelessMediaMessage(alt),
+		})
+	}
 }
 
 // blockFallback handles the kinds without a dedicated block conversion.
@@ -1397,6 +1412,10 @@ func (v *inlineFlattener) VisitExtension(n ast.Node) []adf.Node {
 		// produced). Report the drop here — EncodeADF has no sink.
 		v.c.diagnostics(Diagnostic{Code: CodeFontSizeDropped, Message: fontSizeDroppedMessage})
 	}
+	// The inline :media chip is a media directive in inline position and
+	// spends its `path` exactly as the block forms do, so it reports
+	// through the same helper (see reportMediaSource).
+	v.c.reportMediaSource(n)
 	if ext, ok := n.(extension.Node); ok {
 		// Extension kinds encode themselves; the context carries the
 		// inherited marks for styled children (see EncodeInlinesStyled).
