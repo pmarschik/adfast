@@ -37,7 +37,7 @@ func PendingRefs(store Store, scope string, refs []string) []string {
 		if ref == "" || isRemoteURL(ref) {
 			continue
 		}
-		path := normalizeRef(ref)
+		path := NormalizeRef(ref)
 		if seen[path] {
 			continue
 		}
