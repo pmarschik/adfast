@@ -442,11 +442,54 @@ func (c *inlineRenderContext) WriteTextDirective(name string, attrs map[string]s
 // byte-exact are mutually exclusive there, and the round trip wins. See
 // the re-pin note in docs/design.md and TestDirectiveLabelRoundTrips.
 //
-// Trailing whitespace in a label is still lost: the label parse trims
-// it, so no backslash reaches it. That one needs the character reference
-// escapeLabelIndent writes for the leading case, and is tracked
-// separately.
+// TRAILING WHITESPACE is the one case a backslash cannot carry, and
+// escapeLabelTrailingSpace handles it after the byte pass below.
 func escapeDirectiveLabel(s string) string {
+	return escapeLabelTrailingSpace(escapeLabelBytes(s))
+}
+
+// escapeLabelTrailingSpace keeps a label's last whitespace byte by writing
+// it as a character reference, which the label parse decodes back to the
+// byte.
+//
+// The label parse trims the trailing whitespace of its content, so no
+// backslash reaches it — a backslash before a space is not even an escape
+// in CommonMark. Measured on the ADF expand title "trailing  ": the render
+// wrote ":::expand[trailing  ]" and the re-parse read back "trailing ", so
+// the title was not a fixpoint and a second format wrote ":::expand[trailing
+// ]" — a title a consumer addresses a page by no longer matched the page.
+// (A tab loses the whole run rather than one byte, and an all-whitespace
+// label empties out.) This is the trailing half of what escapeLabelIndent
+// does for a leading run, and it takes the same instrument for the same
+// reason.
+//
+// One byte is enough, and that is the point of escaping the LAST one rather
+// than the run: with a character reference at the end the label no longer
+// ends in whitespace at all, so nothing is trimmed and the run in front of
+// the reference is ordinary content. It also cannot push the label into
+// indented-code territory the way an escape at the front could — the
+// reference is written where no indent is measured.
+//
+// The text form does not need this and does not get it: its label is a run
+// of inline content written by the inline escaper, which already keeps its
+// trailing whitespace (measured: ":sup[trailing  ]" is a fixpoint).
+func escapeLabelTrailingSpace(s string) string {
+	if s == "" || !isLabelSpace(s[len(s)-1]) {
+		return s
+	}
+	return s[:len(s)-1] + hexRef(rune(s[len(s)-1]))
+}
+
+// isLabelSpace reports whether c is a byte the label parse reads as
+// whitespace, which is goldmark's own space set (util.IsSpace) minus the
+// line endings no single-line label can hold.
+func isLabelSpace(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\v' || c == '\f'
+}
+
+// escapeLabelBytes is escapeDirectiveLabel's byte pass; see its doc comment
+// for every rule below.
+func escapeLabelBytes(s string) string {
 	if !strings.ContainsAny(s, "[]\\:*_`~<&") {
 		return s
 	}

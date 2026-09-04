@@ -67,11 +67,31 @@ var directiveLabelProbes = []string{
 	// The corpus title whose recorded remark spelling is itself lossy
 	// (see the re-pin in docs/design.md).
 	`With *chars* [x] back\slash`,
+	// TRAILING WHITESPACE, the one case no backslash reaches: the leaf and
+	// container label parse trims it. The ADF expand title "trailing  "
+	// rendered ":::expand[trailing  ]" and read back as "trailing ", so
+	// the title was not a fixpoint and a title addressed by its label
+	// stopped matching. A tab loses its whole run rather than one byte,
+	// and an all-whitespace label empties out, so those are here too. See
+	// escapeLabelTrailingSpace.
+	"trailing  ",
+	"trailing ",
+	"trailing\t",
+	"  both  ",
+	" ",
+	"    ",
+	"     ",
 	// The good cases: ordinary titles, which must round-trip without
-	// picking up an escape.
+	// picking up an escape. The leading-whitespace ones are the sharp
+	// half of the trailing fix — a leading run needs NO reference in the
+	// leaf and container forms, so an escaper that reached for one at
+	// both ends fails here.
 	"plain",
 	"A Perfectly Ordinary Page Title",
 	"Release 1.2.3 (2026)",
+	" leading",
+	"    leading",
+	"\tleading",
 }
 
 // labelForm is one of the three directive shapes, each building a
@@ -168,6 +188,24 @@ func directiveLabelForms() []labelForm {
 // escaping) and the label scan ended at the first ']' whatever preceded
 // it, so those bytes came back as a paragraph of literal text and a page
 // title with a square bracket published as prose instead of as a macro.
+//
+// With escapeLabelTrailingSpace removed, so the trailing probes go out
+// bare again (the "text" form passes throughout — its label keeps its own
+// trailing whitespace):
+//
+//	--- FAIL: TestDirectiveLabelRoundTrips/leaf (0.01s)
+//	    label "trailing  " rendered "::includePage[trailing  ]\n", which re-parses with the label "trailing "
+//	    label "trailing  " is not a render fixpoint:
+//	         first:  "::includePage[trailing  ]\n"
+//	         second: "::includePage[trailing ]\n"
+//	    label "trailing\t" rendered "::includePage[trailing\t]\n", which re-parses with the label "trailing"
+//	    label " " rendered "::includePage[ ]\n", which re-parses with the label ""
+//	    label " " is not a render fixpoint:
+//	         first:  "::includePage[ ]\n"
+//	         second: "::includePage\n"
+//	--- FAIL: TestDirectiveLabelRoundTrips/container (0.01s)
+//	    label "trailing  " rendered ":::sidebar[trailing  ]\nbody\n:::\n", which re-parses with the label "trailing "
+//	    label "  both  " rendered ":::sidebar[  both  ]\nbody\n:::\n", which re-parses with the label "  both "
 func TestDirectiveLabelRoundTrips(t *testing.T) {
 	t.Parallel()
 	for _, form := range directiveLabelForms() {
