@@ -201,16 +201,19 @@ func WithPreserveLocalImages() Option {
 }
 
 // WithImageDimsResolver supplies the resolver used to re-derive intrinsic
-// media dimensions from downloaded asset files during encoding
-// (dimensions that match the file are omitted from adf: image titles).
-// Read by ToADF.
+// media dimensions from downloaded asset files (dimensions that match
+// the file are omitted from adf: image titles). Read by ToADF and by
+// NormalizeFormat, which performs the same recovery over its own media
+// shape so a path-addressed ::media directive reads the same on both
+// legs.
 func WithImageDimsResolver(r ImageDimsResolver) Option {
 	return func(c *config) { c.resolveImageDims = r }
 }
 
 // WithAssetIDResolver supplies the asset-store lookup used to convert
-// ![alt](assets/name) references back to ADF media nodes during
-// encoding. Read by ToADF.
+// ![alt](assets/name) references back to ADF media nodes. Read by ToADF
+// and by NormalizeFormat, which needs it to recognize the picture a
+// path-addressed ::media directive names.
 func WithAssetIDResolver(r AssetIDResolver) Option {
 	return func(c *config) { c.resolveAssetID = r }
 }

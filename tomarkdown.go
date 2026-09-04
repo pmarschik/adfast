@@ -33,8 +33,8 @@ import (
 // WithPrettierFormat, WithoutSignificantSpaceEscapes, and (in the format
 // mode only) the convert.Normalize
 // options WithSmartLinks, WithMediaAssets or WithMediaAssetResolver,
-// WithCodeLanguages, WithPreserveLocalImages, WithExtensions
-// and WithDiagnostics.
+// WithAssetIDResolver, WithImageDimsResolver, WithCodeLanguages,
+// WithPreserveLocalImages, WithExtensions and WithDiagnostics.
 func ToMarkdown(n ast.Node, opts ...Option) string {
 	o := newOptions(opts)
 	if o.prettier {

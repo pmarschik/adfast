@@ -49,6 +49,7 @@ import (
 	"github.com/pmarschik/adfast/ast"
 	"github.com/pmarschik/adfast/dialect"
 	"github.com/pmarschik/adfast/extension"
+	"github.com/pmarschik/adfast/internal/mediasrc"
 	"github.com/pmarschik/adfast/internal/mediaurl"
 )
 
@@ -110,6 +111,8 @@ func normalizeWith(n ast.Node, keepGenericDirectives bool, opts []Option) ast.No
 		diagnostics:           cfg.diagnostics,
 		codeLangs:             cfg.codeLanguages,
 		preserveLocalImages:   cfg.preserveLocalImages,
+		resolveAssetID:        cfg.resolveAssetID,
+		resolveImageDims:      cfg.resolveImageDims,
 		keepGenericDirectives: keepGenericDirectives,
 	}
 	root, ok := n.(*ast.Root)
@@ -127,6 +130,15 @@ type normalizer struct {
 	decodeSL    SmartLinks // render-side resolver (KeyFromURL)
 	diagnostics func(Diagnostic)
 	codeLangs   map[string]bool
+	// resolveAssetID and resolveImageDims are the asset-store entry
+	// points a PATH-ADDRESSED media directive is read through — the
+	// same two the ADF leg reaches as
+	// extension.EncodeContext.AssetID/AssetDims. Without them here this
+	// leg looked a media up by id alone and gave up on a directive that
+	// carried only a path, so `::media[alt]{path=…}` was a picture on
+	// the ADF leg and an opaque directive on this one (see mediaShape).
+	resolveAssetID   AssetIDResolver
+	resolveImageDims ImageDimsResolver
 	// preserveLocalImages carries WithPreserveLocalImages, the SAME
 	// option the ADF leg reads through
 	// extension.DecodeContext.PreserveLocalImages. It reaches
@@ -1154,7 +1166,7 @@ func (fn *normalizer) encodeDialectBlock(node ast.Node) ([]encItem, bool) {
 		}
 		return []encItem{{kind: encColwidths, widths: widths}}, true
 	case *dialect.Media:
-		m := mediaFromAttrs(v.Attrs, ast.PlainText(v.Children))
+		m := fn.mediaShape(v.Attrs, ast.PlainText(v.Children))
 		if v.Attrs["group"] == "true" {
 			return []encItem{{kind: encMediaGroup, medias: []*fmtMedia{m}}}, true
 		}
@@ -2008,6 +2020,25 @@ func mediaFromAttrs(attrs map[string]string, alt string) *fmtMedia {
 	return m
 }
 
+// mediaShape reads one media directive's payload into the shape this leg
+// projects from: mediaFromAttrs, then the asset-store recovery a
+// PATH-ADDRESSED directive needs.
+//
+// A downloaded attachment renders as `::media[alt]{path=assets/a.png}`
+// and spells neither its id nor its intrinsic size, because the store
+// holds both. Recovering them is how such a directive is read at all,
+// not a projection rule this leg may decide for itself, so it goes
+// through mediasrc — the same two functions dialect's Media.EncodeADF
+// calls. This leg used to skip the recovery entirely and look the asset
+// up by id, which no path-addressed directive has, so the picture
+// reached image form on the ADF leg and stayed an opaque directive here.
+func (fn *normalizer) mediaShape(attrs map[string]string, alt string) *fmtMedia {
+	m := mediaFromAttrs(attrs, alt)
+	m.id = mediasrc.ID(m.id, m.path, fn.resolveAssetID)
+	m.width, m.height = mediasrc.Dims(m.width, m.height, m.path, fn.resolveImageDims)
+	return m
+}
+
 // applySingle mirrors dialect's mediaSingleFromAttrs.
 func (m *fmtMedia) applySingle(attrs map[string]string) {
 	m.hasSingle = true
@@ -2033,7 +2064,7 @@ func (fn *normalizer) encodeMediaCaption(v *dialect.MediaCaption) []encItem {
 		alt = ast.PlainText(p.Children)
 		children = children[1:]
 	}
-	m := mediaFromAttrs(v.Attrs, alt)
+	m := fn.mediaShape(v.Attrs, alt)
 	m.applySingle(v.Attrs)
 	var caption []fmtAtom
 	for _, block := range children {
@@ -2123,15 +2154,27 @@ func setImageTitle(n ast.Node, title string) {
 	}
 }
 
-// singleBlocksImage mirrors dialect's singleBlocksImage.
+// singleBlocksImage mirrors dialect's singleBlocksImage, the no-op
+// resize included: a display width the canonical directive omits as
+// redundant may not block the image form, or the directive this leg
+// writes would project to an image on the next pass and the formatter
+// would change its own output.
 func (m *fmtMedia) singleBlocksImage(defaultLayout string) bool {
 	if !m.hasSingle {
 		return false
 	}
-	if m.layoutWidth != nil || m.widthType != nil {
+	if (m.layoutWidth != nil || m.widthType != nil) && !m.naturalDisplayWidth() {
 		return true
 	}
 	return m.layout != nil && *m.layout != defaultLayout
+}
+
+// naturalDisplayWidth mirrors dialect's naturalDisplayWidth: a pixel
+// display width equal to the picture's own intrinsic width is a no-op
+// resize.
+func (m *fmtMedia) naturalDisplayWidth() bool {
+	return m.layoutWidth != nil && m.width != nil && *m.layoutWidth == *m.width &&
+		m.widthType != nil && *m.widthType == "pixel"
 }
 
 // blocksImage mirrors dialect's mediaBlocksImage: the half the file and
@@ -2232,9 +2275,10 @@ func (fn *normalizer) mediaOmissionsOf(m *fmtMedia) mediaOmissions {
 		float64(om.asset.Width) == *m.width && float64(om.asset.Height) == *m.height
 	// A pixel display width equal to the intrinsic width is a no-op resize;
 	// drop the redundant layoutWidth/widthType (mirrors dialect's
-	// mediaLeafNode natural-width normalization).
-	om.naturalWidth = m.layoutWidth != nil && m.width != nil &&
-		*m.layoutWidth == *m.width && m.widthType != nil && *m.widthType == "pixel"
+	// mediaLeafNode natural-width normalization). The same answer excuses it
+	// in singleBlocksImage, so the projection cannot call it redundant here
+	// and content there.
+	om.naturalWidth = m.naturalDisplayWidth()
 	return om
 }
 

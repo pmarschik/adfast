@@ -499,16 +499,28 @@ func decodeMediaNode(media *adf.Media, single *adf.MediaSingle, ctx extension.De
 }
 
 // singleBlocksImage reports whether a mediaSingle wrapper carries
-// properties the plain-image markdown form cannot hold: any display
-// width or widthType, or a layout other than the given default.
-func singleBlocksImage(single *adf.MediaSingle, defaultLayout string) bool {
+// properties the plain-image markdown form cannot hold: a display width
+// or widthType, or a layout other than the given default.
+//
+// naturalWidth is naturalDisplayWidth's answer for the wrapper's own
+// media, and it excuses the display width: a no-op resize is ALREADY
+// omitted from the canonical ::media (see mediaOmissionsOf), so letting
+// it block the image form here would mean the projection both declares
+// it redundant and treats it as content. The directive it produced would
+// then project to an image on the NEXT pass — the formatter changing its
+// own output, which is the one thing an idempotent formatter may not do.
+func singleBlocksImage(single *adf.MediaSingle, defaultLayout string, naturalWidth bool) bool {
 	if single == nil {
 		return false
 	}
-	if single.Width != nil || adf.HasExtra(single, "width") {
-		return true
+	if !naturalWidth {
+		if single.Width != nil || single.WidthType != nil {
+			return true
+		}
 	}
-	if single.WidthType != nil || adf.HasExtra(single, "widthType") {
+	// A non-numeric width or non-string widthType (kept in Extra) is not a
+	// value naturalDisplayWidth could have compared, so it still blocks.
+	if adf.HasExtra(single, "width") || adf.HasExtra(single, "widthType") {
 		return true
 	}
 	if single.Layout != nil && *single.Layout != defaultLayout {
@@ -516,6 +528,15 @@ func singleBlocksImage(single *adf.MediaSingle, defaultLayout string) bool {
 	}
 	// A non-string layout value (kept in Extra) never equals the default.
 	return adf.HasExtra(single, "layout")
+}
+
+// naturalDisplayWidth reports whether the wrapper's display width is a
+// no-op resize: a pixel width equal to the picture's own intrinsic
+// width, so the image renders at its natural size (the ~68%
+// Jira-default case).
+func naturalDisplayWidth(media *adf.Media, single *adf.MediaSingle) bool {
+	return single != nil && single.Width != nil && media.Width != nil &&
+		*single.Width == *media.Width && strDeref(single.WidthType) == "pixel"
 }
 
 // mediaBlocksImage reports whether the media node (or its mediaSingle
@@ -533,7 +554,7 @@ func mediaBlocksImage(media *adf.Media, single *adf.MediaSingle, defaultLayout s
 	if adf.HasMark(media.Marks, "border") {
 		return true
 	}
-	return singleBlocksImage(single, defaultLayout)
+	return singleBlocksImage(single, defaultLayout, naturalDisplayWidth(media, single))
 }
 
 // imageParagraph wraps a plain ![alt](url) image in its own paragraph,
@@ -684,15 +705,14 @@ func mediaOmissionsOf(media *adf.Media, single *adf.MediaSingle, ctx extension.D
 	om.dimsMatch = om.isLocal && om.asset.HasDim &&
 		media.Width != nil && media.Height != nil &&
 		float64(om.asset.Width) == *media.Width && float64(om.asset.Height) == *media.Height
-	// A pixel display width equal to the intrinsic width is a no-op resize
-	// (the image renders at its own size, the ~68% Jira-default case). Drop
-	// the redundant layoutWidth/widthType; the plain-size media is
-	// reconstructed on encode without them. This normalizes an explicit
-	// natural width to the no-width form (a one-time, visually-identical
-	// change on the next push), matching the many media that carry no
-	// display width at all.
-	om.naturalWidth = single != nil && single.Width != nil && media.Width != nil &&
-		*single.Width == *media.Width && strDeref(single.WidthType) == "pixel"
+	// A no-op resize (see naturalDisplayWidth) lets us drop the redundant
+	// layoutWidth/widthType; the plain-size media is reconstructed on encode
+	// without them. This normalizes an explicit natural width to the
+	// no-width form (a one-time, visually-identical change on the next
+	// push), matching the many media that carry no display width at all.
+	// The same answer excuses it in singleBlocksImage, so the projection
+	// cannot call it redundant here and content there.
+	om.naturalWidth = naturalDisplayWidth(media, single)
 	return om
 }
 
