@@ -13,105 +13,215 @@ import (
 // stale — and until UnlocatedDefinitions/UnlocatedLinks/UnlocatedImages the
 // pass had no way to notice, or to decline to call the rewrite complete.
 //
-// The shape that provokes it is a container prefix ending in a TAB on a
-// CONTINUED line: goldmark consumes one column of the tab and records the
-// rest as padding on the line's segment, spaces that stand for no byte of
-// the source. Every case below therefore comes in two, a tab and a SPACE
-// prefix that is otherwise identical, because a count that reacts to the
-// space case is over-reporting and no better than the silence it replaced.
+// The shape that used to provoke it is a container prefix ending in a TAB:
+// goldmark consumes one column of the tab and records the rest as padding on
+// the line's segment, spaces that stand for no byte of the source, which then
+// turn up in the label and the title the definition parser recorded. That is
+// what matchesAsRead discounts, and the first table below is the proof. Every
+// case there comes in two, a tab and a SPACE prefix that is otherwise
+// identical, because a discount that also changes the space case is reading
+// something other than the padding.
+//
+// A count of zero is not the same claim as a count that cannot fire, so the
+// second table keeps a shape that still drops.
 
-// unlocatedCase is one document and what the three views must say about it.
+// unlocatedCase is one document and what the definitions view must say about
+// it, including the bytes each part of a located definition must select — a
+// definition reported with a span shifted by the padding it was supposed to
+// discount is worse than one left out.
 type unlocatedCase struct {
 	name string
 	src  string
-	// wantDefs is how many definitions the view must report.
-	wantDefs int
-	// wantDefsUnlocated is how many it must admit it could not locate.
+	// wantLabel and wantTitle are the source bytes those spans must select,
+	// per located definition, in the view's order. An empty string is the
+	// zero Span, which is how a definition with no title is reported.
+	wantLabel []string
+	wantTitle []string
+	// wantDefsUnlocated is how many definitions the view must admit it
+	// could not locate.
 	wantDefsUnlocated int
 }
 
-// TestUnlocated_CountTheDefinitionAPaddedTabHides is a DEFECT PROOF for the
-// count: before UnlocatedDefinitions existed, the tab rows below reported an
-// empty view and nothing else, which a caller cannot distinguish from a
-// document that has no definition at all.
+// TestUnlocated_APaddedTabHidesNothing is a DEFECT PROOF for the padding
+// discount: every tab row below was reported as an unlocated definition
+// before matchesAsRead, so the view returned nothing for it and a rewriter
+// had to decline the whole document.
 //
-// The space rows are the good cases. They are the same definitions written
-// with a space where the tab is, they must be located, and their count must
-// stay zero — so a counter that fires on any continued line, rather than on
-// the padding, fails here.
-func TestUnlocated_CountTheDefinitionAPaddedTabHides(t *testing.T) {
+// The space rows are the good cases — the same definitions with a space
+// where the tab is — and so is the destination row, which is a tab case that
+// resolved all along because the parser skips leading whitespace before it
+// reads a destination. A discount keyed on the tab rather than on the
+// recorded value gets those wrong.
+func TestUnlocated_APaddedTabHidesNothing(t *testing.T) {
 	cases := []unlocatedCase{
 		{
-			name:              "title on the next line, blockquote, tab",
-			src:               "> [a]: x.md\n>\t\"t\"\n",
-			wantDefs:          0,
-			wantDefsUnlocated: 1,
+			name:      "title on the next line, blockquote, tab",
+			src:       "> [a]: x.md\n>\t\"t\"\n",
+			wantLabel: []string{"a"},
+			wantTitle: []string{"t"},
 		},
 		{
-			name:              "title on the next line, blockquote, space",
-			src:               "> [a]: x.md\n>  \"t\"\n",
-			wantDefs:          1,
-			wantDefsUnlocated: 0,
+			name:      "title on the next line, blockquote, space",
+			src:       "> [a]: x.md\n>  \"t\"\n",
+			wantLabel: []string{"a"},
+			wantTitle: []string{"t"},
 		},
 		{
-			name:              "title on the next line, list item, tab",
-			src:               "- [a]: x.md\n\t\"t\"\n",
-			wantDefs:          0,
-			wantDefsUnlocated: 1,
+			name:      "title on the next line, list item, tab",
+			src:       "- [a]: x.md\n\t\"t\"\n",
+			wantLabel: []string{"a"},
+			wantTitle: []string{"t"},
 		},
 		{
-			name:              "title on the next line, list item, space",
-			src:               "- [a]: x.md\n  \"t\"\n",
-			wantDefs:          1,
-			wantDefsUnlocated: 0,
+			name:      "title on the next line, list item, space",
+			src:       "- [a]: x.md\n  \"t\"\n",
+			wantLabel: []string{"a"},
+			wantTitle: []string{"t"},
 		},
 		{
-			name:              "label folded across a line, blockquote, tab",
-			src:               "> [a\n>\tb]: x.md\n",
-			wantDefs:          0,
-			wantDefsUnlocated: 1,
+			// The padding reaches the title TWICE over here: once for the
+			// line it opens on, and once more because the parser reads it
+			// as two segments and the first one picks up the padding of the
+			// line the second one is on.
+			name:      "title folded across a line, blockquote, tab",
+			src:       "> [a]: x.md\n>\t\"t\n> u\"\n",
+			wantLabel: []string{"a"},
+			wantTitle: []string{"t\n> u"},
 		},
 		{
-			name:              "label folded across a line, blockquote, space",
-			src:               "> [a\n>  b]: x.md\n",
-			wantDefs:          1,
-			wantDefsUnlocated: 0,
+			name:      "label folded across a line, blockquote, tab",
+			src:       "> [a\n>\tb]: x.md\n",
+			wantLabel: []string{"a\n>\tb"},
+			wantTitle: []string{""},
+		},
+		{
+			name:      "label folded across a line, blockquote, space",
+			src:       "> [a\n>  b]: x.md\n",
+			wantLabel: []string{"a\n>  b"},
+			wantTitle: []string{""},
+		},
+		{
+			name:      "label folded across two lines, blockquote, tab",
+			src:       "> [a\n>\tb\n>\tc]: x.md\n",
+			wantLabel: []string{"a\n>\tb\n>\tc"},
+			wantTitle: []string{""},
+		},
+		{
+			// The definition's OWN first line: the parser skips the padding
+			// before it reads the label, so the segment the definition node
+			// keeps records none — yet the label it recorded has the padding
+			// in front of it anyway, because the reader that valued it was
+			// built over the paragraph's segments, which do.
+			name:      "whole definition on a padded line, blockquote, tab",
+			src:       ">\t[a]: x.md \"t\"\n",
+			wantLabel: []string{"a"},
+			wantTitle: []string{"t"},
 		},
 		{
 			// The padding is leading whitespace the parser skips before it
-			// reads a destination, so this one resolves. It is a good case
-			// with a tab in it, which is the row a fix that keys off the
-			// tab rather than the padding gets wrong.
-			name:              "destination on the next line, blockquote, tab",
-			src:               "> [a]:\n>\tx.md\n",
-			wantDefs:          1,
-			wantDefsUnlocated: 0,
+			// reads a destination, so this one resolved before the discount
+			// too. It is a good case with a tab in it, which is the row a
+			// fix that keys off the tab rather than the padding gets wrong.
+			name:      "destination on the next line, blockquote, tab",
+			src:       "> [a]:\n>\tx.md\n",
+			wantLabel: []string{"a"},
+			wantTitle: []string{""},
 		},
 		{
-			name:              "destination on the next line, blockquote, space",
-			src:               "> [a]:\n>  x.md\n",
-			wantDefs:          1,
-			wantDefsUnlocated: 0,
+			name:      "destination on the next line, blockquote, space",
+			src:       "> [a]:\n>  x.md\n",
+			wantLabel: []string{"a"},
+			wantTitle: []string{""},
 		},
 		{
-			name:              "two definitions, one hidden by a tab",
-			src:               "> [a]: x.md\n>\t\"t\"\n\n[b]: y.md\n",
-			wantDefs:          1,
-			wantDefsUnlocated: 1,
+			name:      "two definitions, one behind a tab",
+			src:       "> [a]: x.md\n>\t\"t\"\n\n[b]: y.md\n",
+			wantLabel: []string{"a", "b"},
+			wantTitle: []string{"t", ""},
 		},
 		{
-			name:              "no definition at all",
-			src:               "plain text\n",
-			wantDefs:          0,
-			wantDefsUnlocated: 0,
+			name: "no definition at all",
+			src:  "plain text\n",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := markdown.NewSource([]byte(tc.src))
-			if got := len(s.Definitions()); got != tc.wantDefs {
-				t.Errorf("len(Definitions()) = %d, want %d", got, tc.wantDefs)
+			checkDefinitionParts(t, tc, s.Definitions())
+			if got := s.UnlocatedDefinitions(); got != tc.wantDefsUnlocated {
+				t.Errorf("UnlocatedDefinitions() = %d, want %d",
+					got, tc.wantDefsUnlocated)
 			}
+		})
+	}
+}
+
+// checkDefinitionParts fails when the view did not report the definitions the
+// case names, or when a reported label or title selects other bytes.
+func checkDefinitionParts(t *testing.T, tc unlocatedCase, got []markdown.Definition) {
+	t.Helper()
+	if len(got) != len(tc.wantLabel) {
+		t.Fatalf("len(Definitions()) = %d, want %d", len(got), len(tc.wantLabel))
+	}
+	for i, d := range got {
+		for _, part := range []struct {
+			name string
+			want string
+			span markdown.Span
+		}{
+			{"Label", tc.wantLabel[i], d.Label},
+			{"Title", tc.wantTitle[i], d.Title},
+		} {
+			if part.want == "" {
+				if part.span != (markdown.Span{}) {
+					t.Errorf("definition %d %s = %v, want the zero Span",
+						i, part.name, part.span)
+				}
+				continue
+			}
+			if sel := tc.src[part.span.Start:part.span.Stop]; sel != part.want {
+				t.Errorf("definition %d %s selects %q, want %q",
+					i, part.name, sel, part.want)
+			}
+		}
+	}
+}
+
+// TestUnlocated_CountTheDefinitionAnUnwritableTitleHides is the DEFECT PROOF
+// for the count itself, on the shape that still drops: goldmark records a
+// title it read from a line it then leaves OUT of the definition's extent,
+// so the definition it describes and the definition it delimits are not the
+// same one and no span can be trusted. Before UnlocatedDefinitions a caller
+// saw an empty view and nothing else, which is what a document with no
+// definition at all looks like.
+//
+// (The parse is wrong about the title as well — CommonMark ends the
+// definition at the destination when the title's line has trailing content,
+// and the reference parser reports no title — but a view over spans is not
+// where that is fixed. Dropping is the safe direction, and the count is what
+// makes the drop visible.)
+//
+// The good case is the same document with the trailing content removed: the
+// title is then part of the definition, the definition locates, and the
+// count stays zero — so a counter that fires on any title written on its own
+// line fails here.
+func TestUnlocated_CountTheDefinitionAnUnwritableTitleHides(t *testing.T) {
+	for _, tc := range []unlocatedCase{
+		{
+			name:              "title line with trailing content",
+			src:               "[a]: x.md\n\"t\" tail\n",
+			wantDefsUnlocated: 1,
+		},
+		{
+			name:      "title line without it",
+			src:       "[a]: x.md\n\"t\"\n",
+			wantLabel: []string{"a"},
+			wantTitle: []string{"t"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := markdown.NewSource([]byte(tc.src))
+			checkDefinitionParts(t, tc, s.Definitions())
 			if got := s.UnlocatedDefinitions(); got != tc.wantDefsUnlocated {
 				t.Errorf("UnlocatedDefinitions() = %d, want %d",
 					got, tc.wantDefsUnlocated)
@@ -121,33 +231,64 @@ func TestUnlocated_CountTheDefinitionAPaddedTabHides(t *testing.T) {
 }
 
 // TestUnlocated_LocatedDefinitionsStillCarryTheirParts is the other half of
-// the good case: a located definition's spans must be untouched by the
-// counting, so a change that reports a count by widening or dropping a span
-// fails here rather than passing quietly.
+// the good case: a located definition's FOUR spans must all select the bytes
+// that were written, so a change that reports one more definition by widening
+// or shifting a span fails here rather than passing quietly.
 //
-// It is a PRESERVED-BEHAVIOR PIN. It passes on the implementation before the
-// count as well, which is the point — nothing about the spans changed.
+// The space row is a PRESERVED-BEHAVIOR PIN — it passes on the implementation
+// before the padding discount too, which is the point, since nothing about an
+// unpadded definition changed. The tab row is the one the discount added, and
+// it is where a span that swallowed the padding it discounted would show up:
+// the extent still reaches over the `>\t` prefix, because that is bytes the
+// author wrote, while the label and the title do not.
 func TestUnlocated_LocatedDefinitionsStillCarryTheirParts(t *testing.T) {
-	const src = "> [a]: x.md\n>  \"t\"\n"
-	s := markdown.NewSource([]byte(src))
-	defs := s.Definitions()
-	if len(defs) != 1 {
-		t.Fatalf("len(Definitions()) = %d, want 1", len(defs))
-	}
-	got := defs[0]
-	for _, part := range []struct {
-		name string
-		want string
-		span markdown.Span
+	for _, tc := range []struct {
+		name  string
+		src   string
+		span  string
+		label string
+		dest  string
+		title string
 	}{
-		{"Span", "[a]: x.md\n>  \"t\"", got.Span},
-		{"Label", "a", got.Label},
-		{"Dest", "x.md", got.Dest},
-		{"Title", "t", got.Title},
+		{
+			name:  "space prefix",
+			src:   "> [a]: x.md\n>  \"t\"\n",
+			span:  "[a]: x.md\n>  \"t\"",
+			label: "a",
+			dest:  "x.md",
+			title: "t",
+		},
+		{
+			name:  "tab prefix",
+			src:   "> [a]: x.md\n>\t\"t\"\n",
+			span:  "[a]: x.md\n>\t\"t\"",
+			label: "a",
+			dest:  "x.md",
+			title: "t",
+		},
 	} {
-		if slice := src[part.span.Start:part.span.Stop]; slice != part.want {
-			t.Errorf("%s selects %q, want %q", part.name, slice, part.want)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			s := markdown.NewSource([]byte(tc.src))
+			defs := s.Definitions()
+			if len(defs) != 1 {
+				t.Fatalf("len(Definitions()) = %d, want 1", len(defs))
+			}
+			got := defs[0]
+			for _, part := range []struct {
+				name string
+				want string
+				span markdown.Span
+			}{
+				{"Span", tc.span, got.Span},
+				{"Label", tc.label, got.Label},
+				{"Dest", tc.dest, got.Dest},
+				{"Title", tc.title, got.Title},
+			} {
+				if slice := tc.src[part.span.Start:part.span.Stop]; slice != part.want {
+					t.Errorf("%s selects %q, want %q", part.name, slice, part.want)
+				}
+			}
+		})
 	}
 }
 
@@ -179,7 +320,7 @@ func TestUnlocated_AccessorForcesItsOwnView(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := markdown.NewSource([]byte("> [a]: x.md\n>\t\"t\"\n"))
+			s := markdown.NewSource([]byte("[a]: x.md\n\"t\" tail\n"))
 			if got := tc.got(s); got != tc.want {
 				t.Errorf("accessor before its view = %d, want %d", got, tc.want)
 			}

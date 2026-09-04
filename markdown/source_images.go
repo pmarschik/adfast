@@ -585,23 +585,23 @@ func scanClosure(src []byte, i int, opener, closer byte) (int, bool) {
 // views must never produce.
 //
 // This function reads a segment's Start and Stop and IGNORES its Padding,
-// which is the deliberate limit of the bridge and the one place a construct
-// is lost. Padding is how goldmark records a container prefix ending in a
-// TAB it only partly consumed: `>\t` at the start of a line takes ONE column
-// of the tab's expansion to the next tab stop and records the columns left
-// over as a count of spaces on the segment, spaces that stand for no byte of
-// the source. A value the parser read through such a segment therefore
-// contains bytes no span can address, and adding them here would be worse
-// than dropping the construct — it would make a span whose bytes differ from
-// the source it indexes compare EQUAL.
+// which is the deliberate limit of the bridge. Padding is how goldmark
+// records a container prefix ending in a TAB it only partly consumed: `>\t`
+// at the start of a line takes ONE column of the tab's expansion to the next
+// tab stop and records the columns left over as a count of spaces on the
+// segment, spaces that stand for no byte of the source. A value the parser
+// read through such a segment therefore contains bytes no span can address,
+// and adding them here would be worse than leaving them out — it would make
+// a span whose bytes differ from the source it indexes compare EQUAL.
 //
 // Which view pays for that is measurable rather than a matter of taste, and
 // it is one: a paragraph's parser trims every line's leading whitespace,
 // padding included, when it closes, so the segments Links and Images resolve
 // against never carry any. A LinkReferenceDefinition keeps the paragraph's
-// lines as they stood BEFORE that trim, so its segments do — see
-// Source.Definitions, which names the two parts of a definition the padding
-// reaches and the one it does not.
+// lines as they stood BEFORE that trim, so its segments do, and the
+// definition resolver handles it one level up — see matchesAsRead, which
+// discounts the padding in the comparison instead of adding it to the bytes
+// this function hands back.
 func bytesAsRead(src []byte, lines *text.Segments, sp Span) []byte {
 	if lines == nil || lines.Len() == 1 {
 		return src[sp.Start:sp.Stop]

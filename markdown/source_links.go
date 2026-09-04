@@ -114,13 +114,13 @@ func Links(src []byte) []Link { return NewSource(src).Links() }
 // that link's own closing `]`, never at a later bracket pair's. See
 // bracketedTail for why the second half of that sentence needs saying.
 //
-// A TAB in the container prefix of such a continued line is not a limitation
-// here, which is worth saying because it IS one for Definitions: the block
-// whose lines this view resolves against is a paragraph (or the text block a
-// tight list item turns one into), and its parser trims each line's leading
-// whitespace — the padding a partly consumed tab leaves included — before
-// this view ever sees a segment. See bytesAsRead for the mechanism and
-// Source.Definitions for the view that keeps the padding.
+// A TAB in the container prefix of such a continued line needs no handling
+// here, which is worth saying because Definitions has to handle it: the
+// block whose lines this view resolves against is a paragraph (or the text
+// block a tight list item turns one into), and its parser trims each line's
+// leading whitespace — the padding a partly consumed tab leaves included —
+// before this view ever sees a segment. See bytesAsRead for the mechanism
+// and matchesAsRead for what the definition resolver does about it.
 func (s *Source) Links() []Link {
 	if s.linksDone {
 		return s.links
