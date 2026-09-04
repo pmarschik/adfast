@@ -213,7 +213,10 @@ func (r *mdRenderer) escapesToken(s string, i int, nextLead byte, st *inlineCont
 	switch s[i] {
 	case '|':
 		return r.escapeTablePipe(s, i, nextLead, st)
-	case '.', ')':
+	case '.':
+		return r.escapeOrderedMarker(s, i, nextLead, nodeAtLineStart) ||
+			r.dotAfterWwwEscapes(s, i, nextLead, st)
+	case ')':
 		return r.escapeOrderedMarker(s, i, nextLead, nodeAtLineStart)
 	case '&':
 		return r.escapeAmpersand(s, i, nextLead)
@@ -544,6 +547,83 @@ func (r *mdRenderer) colonBeforeSlashEscapes(next byte, st *inlineContext) bool 
 		return false
 	}
 	return (st.prev == 'p' || st.prev == 's') && next == '/'
+}
+
+// dotAfterWwwEscapes reports whether a '.' needs a backslash because the
+// reference renderer's unsafe table writes one there. It is the sibling row
+// of the ':' rule above: the same GFM autolink-literal extension contributes
+//
+//	{character: '.', before: '[Ww]', after: '[\\-.\\w]', inConstruct: 'phrasing',
+//	 notInConstruct: ['autolink', 'link', 'image', 'label']}
+//
+// The intent is a "www." host that would linkify on a later parse. AS WITH
+// THE ':' ROW, THE RULE IS FAR CRUDER THAN ITS INTENT — one 'w' is enough,
+// and no part of it has to look like a host. Measured against the frozen
+// reference by stringifying a hand-built mdast text node, so no parse step
+// could reinterpret the string first:
+//
+//	"see www.x b"  ->  "see www\.x b"
+//	"see w.x b"    ->  "see w\.x b"     ONE 'w' is enough
+//	"see W.x b"    ->  "see W\.x b"     either case, unlike the ':' row
+//	"see xw.x b"   ->  "see xw\.x b"    the run need not start the word
+//	"see v.x b"    ->  "see v.x b"      'v' is not 'w'
+//	"a b.c d"      ->  "a b.c d"
+//	"see www.0 b"  ->  "see www\.0 b"   after: a digit
+//	"see www.- b"  ->  "see www\.- b"   after: a '-'
+//	"see w.. b"    ->  "see w\.. b"     after: another '.'
+//	"see www. x b" ->  "see www. x b"   no after, no escape
+//	"trailing w."  ->  "trailing w."
+//	"see w.! b"    ->  "see w.! b"
+//
+// So the condition is exactly: the previous byte is 'w' or 'W', and the next
+// byte is one of [-.0-9A-Za-z].
+//
+// A '_' after the dot is the one byte of the after class that depends on
+// WHERE it comes from, and both sides are measured:
+//
+//	text "see www._ b"                ->  "see www.\_ b"    dot BARE
+//	text "see www." + emphasis "q"    ->  "see www\._q_"    dot ESCAPED
+//
+// The reason is not the pattern (whose \w admits '_' either way) but a
+// general rule in the reference's escaper — mdast-util-to-markdown's safe()
+// skips an escape that is conditional on the next character when that next
+// character is being escaped unconditionally anyway. A '_' in a text VALUE
+// is such a character in phrasing, so it cancels this dot's escape; a '_'
+// that is the emphasis MARKER of the next sibling is syntax, not an escaped
+// position, so it does not. Hence the check below asks whether the '_' is
+// this node's own byte or the lookahead's. Of the whole after class only '_'
+// is ever canceled this way: a '-' after the dot keeps the escape, because
+// remark's '-' rule is atBreak-conditional rather than unconditional
+// (measured: "see www.- b" -> "see www\.- b").
+//
+// REMARK MODE ONLY, for the reason spelled out at colonBeforeSlashEscapes:
+// this mirrors mdast-util-to-markdown's table, which is what remark mode IS.
+// Prettier has no such rule — measured on the frozen prettier install, which
+// leaves a bare "see www.x b" bare and, being a source-slice printer,
+// preserves an authored "see www\.x b" as written. Adding the escape in
+// prettier mode would rewrite ordinary prose: "W.C. Fields" would come back
+// as "W\.C. Fields".
+//
+// Not reachable inside a link label, matching the rule's notInConstruct: the
+// label context turns markdown escaping off in remark mode (inlineContext's
+// escape field), so needsEscape is never consulted there.
+func (r *mdRenderer) dotAfterWwwEscapes(s string, i int, nextLead byte, st *inlineContext) bool {
+	if r.cfg.prettierText || !st.hasPrev {
+		return false
+	}
+	if st.prev != 'w' && st.prev != 'W' {
+		return false
+	}
+	next := byteAt(s, i+1, nextLead)
+	if next == '_' {
+		return i+1 >= len(s)
+	}
+	return next == '-' || next == '.' || isASCIILetter(next) || isASCIIDigit(next)
+}
+
+// isASCIIDigit reports whether c is an ASCII decimal digit.
+func isASCIIDigit(c byte) bool {
+	return c >= '0' && c <= '9'
 }
 
 // labelEscapes reports whether s[i] needs a backslash inside a link
