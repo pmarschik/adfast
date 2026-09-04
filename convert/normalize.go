@@ -810,6 +810,13 @@ func normalizeMediaInline(v *dialect.MediaInline) ast.Node {
 			attrs["hrefTitle"] = title
 		}
 	}
+	// The inline-comment anchor, under the same names and the same
+	// id-or-nothing rule the block form uses. An id-less anchor names no
+	// thread, so the encode builds no mark from it either.
+	if id, annotationType := annotationFromAttrs(v.Attrs); id != "" {
+		attrs["annotationId"] = id
+		attrs["annotationType"] = annotationType
+	}
 	var children []ast.Node
 	if alt := strings.TrimSpace(ast.PlainText(v.Children)); alt != "" {
 		children = []ast.Node{&ast.Text{Value: alt}}
@@ -1977,10 +1984,16 @@ type fmtMedia struct {
 	href string
 	// hrefTitle is that link mark's title: the advisory text spelled
 	// after the destination, [![alt](url)](href "hrefTitle").
-	hrefTitle  string
-	borderSize int
-	hasBorder  bool
-	hasSingle  bool
+	hrefTitle string
+	// annotationID and annotationType are the annotation mark: the
+	// Confluence inline-comment anchor sitting on the picture. Only an
+	// anchor with an id is carried, the same rule the ADF leg applies (see
+	// dialect's mediaAnnotationAttrs).
+	annotationID   string
+	annotationType string
+	borderSize     int
+	hasBorder      bool
+	hasSingle      bool
 }
 
 // mediaFromAttrs mirrors dialect's mediaFromAttrs.
@@ -2024,6 +2037,7 @@ func mediaFromAttrs(attrs map[string]string, alt string) *fmtMedia {
 			m.borderSize = size
 		}
 	}
+	m.annotationID, m.annotationType = annotationFromAttrs(attrs)
 	m.href = attrs["href"]
 	// No href, no link mark on the ADF leg, so no title either (see
 	// dialect's linkMarkFromAttrs); reading it here regardless would let
@@ -2193,8 +2207,12 @@ func (m *fmtMedia) naturalDisplayWidth() bool {
 
 // blocksImage mirrors dialect's mediaBlocksImage: the half the file and
 // the external image paths share — an occurrence key, a non-empty
-// collection, a border, or a wrapper richer than the given default
-// layout. Each path adds its own type-specific checks on top.
+// collection, a border or annotation mark, or a wrapper richer than the
+// given default layout. Each path adds its own type-specific checks on
+// top.
+//
+// The link mark is the one member of the media mark union that does NOT
+// block: markdown has the [![alt](url)](href) wrapper for it.
 //
 // It exists as one predicate for the reason dialect factored its own
 // out: these three checks used to be restated inside mediaAsImage AND
@@ -2209,6 +2227,9 @@ func (m *fmtMedia) blocksImage(defaultLayout string) bool {
 		return true
 	}
 	if m.hasBorder {
+		return true
+	}
+	if m.annotationID != "" {
 		return true
 	}
 	return m.singleBlocksImage(defaultLayout)
@@ -2296,6 +2317,34 @@ func (fn *normalizer) mediaOmissionsOf(m *fmtMedia) mediaOmissions {
 	// and content there.
 	om.naturalWidth = m.naturalDisplayWidth()
 	return om
+}
+
+// annotationFromAttrs reads the annotation mark out of a media
+// directive's attributes: the id, and the type it defaults to. It is the
+// read half of mediaAnnotationAttrs, shared by the block leaf and the
+// inline chip so the id-or-nothing rule and the default cannot drift
+// between them. Mirrors dialect's annotationMarkFromAttrs, which builds
+// the mark itself from the same pair.
+func annotationFromAttrs(attrs map[string]string) (id, annotationType string) {
+	id = attrs["annotationId"]
+	if id == "" {
+		return "", ""
+	}
+	annotationType = attrs["annotationType"]
+	if annotationType == "" {
+		annotationType = "inlineComment"
+	}
+	return id, annotationType
+}
+
+// mediaAnnotationAttrs writes the annotation mark's attributes, mirroring
+// dialect's function of the same name.
+func mediaAnnotationAttrs(m *fmtMedia, attrs map[string]string) {
+	if m.annotationID == "" {
+		return
+	}
+	attrs["annotationId"] = m.annotationID
+	attrs["annotationType"] = m.annotationType
 }
 
 // mediaBorderAttrs writes the border attributes.
@@ -2398,6 +2447,7 @@ func mediaSourceAttrs(m *fmtMedia, om mediaOmissions, attrs map[string]string) {
 func (fn *normalizer) mediaLeafNode(m *fmtMedia, group bool) *dialect.Media {
 	om := fn.mediaOmissionsOf(m)
 	attrs := map[string]string{}
+	mediaAnnotationAttrs(m, attrs)
 	mediaBorderAttrs(m, attrs)
 	mediaLinkAttrs(m, attrs)
 	mediaShapeAttrs(m, om, group, attrs)

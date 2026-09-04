@@ -176,6 +176,41 @@ func parityAgreeing() []parityCase {
 		{"rich caption on path-addressed media", ":::media[alt]{path=assets/a.png}\nA **bold** caption\n:::", assets},
 		{"file media with href", "::media[alt]{id=AID width=10 height=20 href=https://home/}", assets},
 		{"bordered media", "::media[alt]{type=external url=https://x/a.png borderColor=#000 borderSize=2}", nil},
+		// The third member of the media mark union. Like the border it has
+		// no markdown form, so it blocks the image projection on BOTH legs
+		// — a leg that collapsed this to ![alt](url) would drop the
+		// inline-comment anchor and orphan the thread on the next push.
+		{
+			"annotated media",
+			"::media[alt]{type=external url=https://x/a.png annotationId=ann-1 annotationType=inlineComment}",
+			nil,
+		},
+		// The anchor beside the destination: the link alone would fit the
+		// [![alt](url)](href) wrapper, the anchor forbids it, so both have
+		// to survive as attributes on the same directive.
+		{
+			"annotated media with href and hrefTitle",
+			"::media[alt]{type=external url=https://x/a.png href=https://home/ hrefTitle=Home " +
+				"annotationId=ann-1 annotationType=inlineComment}",
+			nil,
+		},
+		// An annotationType with no id: an anchor that names no thread is
+		// not carried and does not block, so both legs must reach the plain
+		// image rather than one keeping a half-anchor.
+		{
+			"annotationType without an id",
+			"::media[alt]{type=external url=https://x/a.png annotationType=inlineComment}",
+			nil,
+		},
+		// A store-resolvable attachment: the anchor has to beat the store's
+		// answer on both legs, or the ADF leg keeps a directive while the
+		// formatter collapses it to an image.
+		{"annotated file media", "::media[alt]{id=AID width=10 height=20 annotationId=ann-1}", assets},
+		{
+			"annotated caption container",
+			":::media[alt]{type=external url=https://x/a.png annotationId=ann-1}\nA caption\n:::",
+			nil,
+		},
 		{"wide layout", "::media[alt]{type=external url=https://x/a.png layout=wide}", nil},
 		{"no-op resize", "::media[alt]{id=AID width=10 height=20 layoutWidth=10 widthType=pixel}", assets},
 		{"occurrence key", "::media[alt]{type=external url=https://x/a.png occurrenceKey=k}", nil},
