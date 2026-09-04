@@ -84,6 +84,21 @@ func remarkTitle(s string) string {
 // form for a title holding a '(' — which this dialect's parser rejects as
 // a title, demoting the construct on the next parse — so the guard below
 // covers both parentheses.
+//
+// That last one is a PARSE divergence from micromark, and the escape
+// above is its consequence rather than a preference. CommonMark's
+// parenthesized title admits a '(' or a ')' "only if it is
+// backslash-escaped", and goldmark enforces it; micromark's title
+// scanner takes the first ')' as the closer and lets an unescaped '('
+// through as content. Measured on '[a]: ./a.md (a ( b)': micromark
+// yields definition(title: "a ( b"), goldmark yields no definition at
+// all — the line stays a paragraph and every reference that paired with
+// the label loses its link. Escape the paren ('[a]: ./a.md (a \( b)')
+// and both read the same title. The stricter side is the
+// spec-conforming one, so this is not a bug to fix here; but a parser
+// that accepted micromark's shape would let prettierTitle drop the
+// "()" half of its guard and pick the delimiter by prettier's rule
+// alone, which is the only reason to want it relaxed.
 func prettierTitle(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	if strings.Contains(s, "\"") && strings.Contains(s, "'") && !strings.ContainsAny(s, "()") {

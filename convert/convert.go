@@ -180,7 +180,16 @@ func WithIncrementListMarkers() Option {
 // WithPreserveLocalImages keeps a document-relative image reference
 // (![alt](assets/x.png)) as external media carrying the path when the
 // asset store cannot resolve it to an uploaded media id, instead of
-// dropping it (the remark-reference default).
+// giving up the picture (the remark-reference default).
+//
+// Off is not a deletion. The PICTURE has no node to live in, so it
+// goes, but the label stays — as a link to the path, or as plain text
+// when there is nothing to click — with an unresolved-asset diagnostic
+// naming it (see CodeUnresolvedAsset). And the option only reaches the
+// media forms that can hold an external url, i.e. an image on its own
+// line: an inline image is byte-identical either way and still reports
+// unresolved-asset, because mediaInline has no external variant (see
+// inlineFlattener.degradeUnplaceableImage).
 //
 // One option, three legs, one answer: ToADF's singleImageChild,
 // FromADF's decode of that media, and NormalizeFormat's own md→md
@@ -193,9 +202,9 @@ func WithIncrementListMarkers() Option {
 // Use it for store-aware
 // round-trips and diff normalization where a not-yet-uploaded local image
 // must survive — a later push upload then resolves it to file media. Do
-// NOT use it for the final Jira push encode: an image left unresolved
-// there should drop with an unresolved-asset diagnostic rather than send
-// invalid external media to Jira.
+// NOT use it for the final Jira push encode: rather than send Jira
+// external media pointing at a path no reader can fetch, let the image
+// degrade to the link plus the unresolved-asset diagnostic.
 func WithPreserveLocalImages() Option {
 	return func(c *config) { c.preserveLocalImages = true }
 }

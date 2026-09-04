@@ -182,6 +182,39 @@ func TestTitleDelimiterChoice(t *testing.T) {
 	}
 }
 
+// TestParenTitleRejectsAnUnescapedParen is a PRESERVED-BEHAVIOR PIN for
+// the parse premise prettierTitle's "()" guard rests on, and a record of
+// the divergence documented in render_title.go: CommonMark admits a "("
+// or ")" inside a parenthesized title only backslash-escaped, and
+// goldmark enforces that, while micromark's title scanner closes at the
+// first ")" and lets an unescaped "(" through as content. Measured with
+// mdast-util-from-markdown 2.x, "[a]: ./a.md (a ( b)" yields
+// definition(title: "a ( b") there and no definition at all here.
+//
+// Nothing in the parser changed. The pin exists so that if goldmark ever
+// accepts the lenient form, this test fails and points at the guard that
+// could then be dropped, rather than the guard quietly outliving its
+// reason.
+func TestParenTitleRejectsAnUnescapedParen(t *testing.T) {
+	// The GOOD case first: escaped, the same title parses fine, so the
+	// rejection below is about the escape and not about parens at all.
+	if def, ok := findNode[*ast.Definition](Parse([]byte(`[a]: ./a.md (a \( b)` + "\n"))); !ok {
+		t.Fatal("the escaped form did not parse as a definition; the rejection below would prove nothing")
+	} else if def.Title != "a ( b" {
+		t.Errorf("escaped paren title = %q, want %q", def.Title, "a ( b")
+	}
+
+	for _, src := range []string{
+		"[a]: ./a.md (a ( b)\n",
+		"[a]: ./a.md (both \" and ' ()\n",
+	} {
+		if def, ok := findNode[*ast.Definition](Parse([]byte(src))); ok {
+			t.Errorf("%q parsed as a definition with title %q; this dialect rejects "+
+				"an unescaped paren, and prettierTitle's guard depends on it", src, def.Title)
+		}
+	}
+}
+
 // findNode returns the first node of type T in document order.
 func findNode[T ast.Node](n ast.Node) (T, bool) {
 	if hit, ok := n.(T); ok {
