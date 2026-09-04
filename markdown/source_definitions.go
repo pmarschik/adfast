@@ -390,6 +390,59 @@ func definitionTitleOutsideItsLines(def *gast.LinkReferenceDefinition, src []byt
 	return skipMarkdownSpaces(src, next, lines) >= stop
 }
 
+// definitionPartsAsWritten reports the label and the title of def as the
+// SOURCE writes them, in place of the values goldmark recorded — which carry
+// PADDING, spaces that stand for no byte of the file.
+//
+// matchesAsRead has where the padding comes from and its three routes. What
+// matters here is that a recorded value is not usable as a value: `>\t[a]:
+// x.md "t"` records the label `"  a"` and the title `"  t"`, and the
+// reference implementation (commonmark.js 0.31.2) resolves the same source to
+// `<a href="x.md" title="t">a</a>` — label `a`, title `t`, no spaces
+// anywhere. A consumer that copies the recorded title writes a title the
+// author never wrote; a consumer that copies the recorded label writes an
+// identifier nobody typed, and while CommonMark still matches it (label
+// matching folds whitespace runs), the bytes reach whatever reads the tree.
+//
+// The correction is to read the parts back off the source through the SPAN
+// RESOLVER, because the spans are already right: each one is anchored on a
+// delimiter this file matched in the source itself, so slicing the source at
+// them yields what was written, container prefixes between two lines excluded
+// (bytesAsRead) and nothing else added. That is also why the correction
+// cannot overreach. definitionSpan reports a definition only when
+// matchesAsRead accepted every part, and matchesAsRead accepts either
+// EXACTLY — in which case the written bytes ARE the recorded value and this
+// changes nothing — or once line-leading spaces are discounted, which is the
+// padding case and the only case. Measured on v1.8.5: `>\t"  t"` on a padded
+// line yields `  t`, keeping the two spaces the author did write inside the
+// quotes and dropping only the two the tab left over, which is again what
+// commonmark.js reports.
+//
+// ok is false when the definition could not be resolved to a written extent
+// at all, and the caller then keeps the recorded values: a shape this
+// resolver merely fails to understand must not lose content, the same
+// conservative bias definitionTitleOutsideItsLines takes. The one shape known
+// to land there is that function's own — a recorded title read from a line
+// outside the extent — and the two answers do not collide, because a
+// definition with no title written inside its extent is one definitionTitle
+// refuses to resolve.
+func definitionPartsAsWritten(
+	def *gast.LinkReferenceDefinition, src []byte,
+) (label, title []byte, ok bool) {
+	written, ok := definitionSpan(def, src)
+	if !ok {
+		return nil, nil, false
+	}
+	lines := def.Lines()
+	label = bytesAsRead(src, lines, written.Label)
+	// The zero Span is "no title written" (see Definition.Title); a title
+	// written empty has a span of its own and yields empty bytes.
+	if written.Title != (Span{}) {
+		title = bytesAsRead(src, lines, written.Title)
+	}
+	return label, title, true
+}
+
 // matchesAsRead reports whether the bytes sp covers are the value the parser
 // recorded for that part of the definition — exactly, or once the spaces at
 // the start of each line are discounted on both sides.
@@ -417,7 +470,11 @@ func definitionTitleOutsideItsLines(def *gast.LinkReferenceDefinition, src []byt
 // byte past a '[' this resolver already matched against the node's own
 // position, and both parts end where goldmark's own closure scan stops. What
 // the looser reading gives up is the ability to notice a mismatch made
-// ENTIRELY of spaces at a line start, which is the padding case itself.
+// ENTIRELY of spaces at a line start, which is the padding case itself. A
+// caller that needs the VALUE rather than the span therefore does not read it
+// off the node either: definitionPartsAsWritten slices the source at these
+// spans instead, and the two readings of this comparison are exactly what
+// bounds how far that can move a value.
 //
 // Tabs are left in place. Padding is spaces, so a tab written at the start of
 // a continued line is content, and it is content on both sides of this

@@ -378,6 +378,103 @@ func TestLinkRef_ExcludedTitleIsNotOnTheNode(t *testing.T) {
 	}
 }
 
+// TestLinkRef_PaddingIsNotPartOfTheValue is the FIX PROOF for the second
+// recorded value that cannot be copied unchecked (see
+// definitionPartsAsWritten): inside a container whose prefix ends in a TAB,
+// goldmark v1.8.5 hands out a label and a title with the leftover tab columns
+// expanded into real spaces, and the lift wrote those spaces into the
+// document. A title is a VALUE, so `"  t"` is a title the author never typed
+// and it survives into whatever reads the tree.
+//
+// Every "want" here is the reference implementation's answer, checked against
+// commonmark.js 0.31.2 on the same source:
+//
+//	> [a]: x.md      >\t[a]: x.md "t"      > [a]: x.md
+//	>\t"t"           >                     >\t"  t"
+//	  → title="t"      → title="t"           → title="  t"
+//	                     text a               (the two written spaces stay)
+//
+// The rows above the padded ones are the GOOD CASES, and they are what keeps
+// the fix from being "strip the leading spaces off every value": a title
+// written WITH leading spaces, and a label folded across a line that begins
+// with spaces of its own, both keep every byte. The padded-line row with a
+// tab inside the quotes pins the boundary from the other end — the padding
+// goes, the author's tab stays.
+func TestLinkRef_PaddingIsNotPartOfTheValue(t *testing.T) {
+	tests := []struct {
+		name, src, wantLabel, wantTitle, wantMD string
+	}{
+		// --- good cases: no partly consumed tab, nothing to correct ---
+		{
+			"a title on its own line in a blockquote",
+			"> [a]: x.md\n> \"t\"\n>\n> [a]\n",
+			"a", "t",
+			"> [a]: x.md \"t\"\n>\n> [a]\n",
+		},
+		{
+			"the author's own leading spaces inside the title",
+			"[a]: x.md \"  t  \"\n\n[a]\n",
+			"a", "  t  ",
+			"[a]: x.md \"  t  \"\n\n[a]\n",
+		},
+		{
+			"a folded label whose second line begins with spaces",
+			"[a\n   b]: x.md\n\n[a\nb]\n",
+			"a\n   b", "",
+			"[a    b]: x.md\n\n[a b]\n",
+		},
+		// --- the padded routes, one row each ---
+		{
+			"the title sits on a line a tab prefixed",
+			"> [a]: x.md\n>\t\"t\"\n>\n> [a]\n",
+			"a", "t",
+			"> [a]: x.md \"t\"\n>\n> [a]\n",
+		},
+		{
+			"the whole definition sits on a line a tab prefixed",
+			">\t[a]: x.md \"t\"\n>\n> [a]\n",
+			"a", "t",
+			"> [a]: x.md \"t\"\n>\n> [a]\n",
+		},
+		{
+			"the label folds onto a line a tab prefixed",
+			"> [a\n>\tb]: x.md\n>\n> [a\nb]\n",
+			"a\nb", "",
+			"> [a b]: x.md\n>\n> [a b]\n",
+		},
+		// --- both at once: the padding goes, the written bytes stay ---
+		{
+			"a padded line carrying a title with its own spaces",
+			"> [a]: x.md\n>\t\"  t\"\n>\n> [a]\n",
+			"a", "  t",
+			"> [a]: x.md \"  t\"\n>\n> [a]\n",
+		},
+		{
+			"a padded line carrying a title that starts with a tab",
+			"> [a]: x.md\n>\t\"\tt\"\n>\n> [a]\n",
+			"a", "\tt",
+			"> [a]: x.md \"\tt\"\n>\n> [a]\n",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			def := firstDefinition(Parse([]byte(tc.src)))
+			if def == nil {
+				t.Fatalf("%q produced no definition node", tc.src)
+			}
+			if def.Label != tc.wantLabel {
+				t.Errorf("label of %q = %q, want %q", tc.src, def.Label, tc.wantLabel)
+			}
+			if def.Title != tc.wantTitle {
+				t.Errorf("title of %q = %q, want %q", tc.src, def.Title, tc.wantTitle)
+			}
+			if got := renderMD(t, tc.src); got != tc.wantMD {
+				t.Errorf("render of %q\n got %q\nwant %q", tc.src, got, tc.wantMD)
+			}
+		})
+	}
+}
+
 // firstDefinition returns the first link reference definition of the tree,
 // or nil when it holds none.
 func firstDefinition(n ast.Node) *ast.Definition {
