@@ -545,18 +545,30 @@ func convertStructuredBlock(node gast.Node, src []byte, lc *liftCtx, depth int) 
 		// CommonMark escapes the same way an inline link's do, so they
 		// decode here like convertLinkInline's.
 		//
-		// The TITLE is the one recorded value that has to be checked
-		// before it is copied: goldmark v1.8.5 hands out a title it read
-		// from a line it then left OUT of the definition — see
-		// definitionTitleOutsideItsLines — and copying that one invents a
-		// title the author never wrote AND duplicates the line, which
-		// stays a paragraph.
-		title := n.Title
+		// Neither the recorded LABEL nor the recorded TITLE can be
+		// copied unchecked, for two separate reasons, both measured on
+		// goldmark v1.8.5:
+		//
+		//   - it hands out a title it read from a line it then left OUT
+		//     of the definition — see definitionTitleOutsideItsLines —
+		//     and copying that one invents a title the author never
+		//     wrote AND duplicates the line, which stays a paragraph;
+		//   - it records both values with PADDING in them, spaces left
+		//     over from a container prefix ending in a tab that stand
+		//     for no byte of the file — see definitionPartsAsWritten,
+		//     which reads the two back off the source instead.
+		//
+		// The destination escapes both: the parser reads it off an
+		// already-space-skipped line, and a title outside the extent
+		// does not touch it.
+		label, title := n.Label, n.Title
 		if definitionTitleOutsideItsLines(n, src) {
 			title = nil
+		} else if l, t, ok := definitionPartsAsWritten(n, src); ok {
+			label, title = l, t
 		}
 		return &ast.Definition{
-			Label: string(n.Label),
+			Label: string(label),
 			URL:   decodeMarkdownEscapes(string(n.Destination), ""),
 			Title: decodeMarkdownEscapes(string(title), ""),
 		}, true
