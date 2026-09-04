@@ -152,18 +152,38 @@ func TestVisitReferenceFallback(t *testing.T) {
 	}
 }
 
-// TestNormalizeLabelIsMicromarksIdentifier pins the pairing rule the
+// TestNormalizeLabelIsTheParsersIdentifier pins the pairing rule the
 // three kinds share with GFM footnotes: whitespace runs collapse, the
-// ends are trimmed, and the case folds twice so the characters whose
-// lower case is not a round trip still pair.
-func TestNormalizeLabelIsMicromarksIdentifier(t *testing.T) {
+// ends are trimmed, and the case FULLY folds — goldmark's own
+// util.ToLinkReference, because goldmark decides whether a reference node
+// exists at all and a fold that disagrees with the parser drops the link
+// the parser paired (see NormalizeLabel, and the ADF-leg measurement in
+// the root package's linkref_test.go).
+//
+// The identifier string itself is pinned, not just the equivalence
+// classes, because it is exported: full folding is lowercase-directed
+// ("A" is "a"), where the fold this replaced ran lower-then-upper and
+// returned "A".
+//
+// The last two cases are the accepted divergence from micromark, whose
+// normalizeIdentifier maps BOTH "ı" and "I" to "I" and would pair them.
+func TestNormalizeLabelIsTheParsersIdentifier(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"A", "A"},
-		{" a ", "A"},
-		{"the  spec", "THE SPEC"},
-		{"the\n\tspec", "THE SPEC"},
-		{"ẛ", "Ṡ"}, // ẛ folds to Ṡ only via lower-then-upper
+		{"A", "a"},
+		{" a ", "a"},
+		{"the  spec", "the spec"},
+		{"the\n\tspec", "the spec"},
 		{"", ""},
+		// Full folding maps these onto sequences a simple case mapping
+		// leaves alone, which is what makes "[ss]" pair with "[ẞ]".
+		{"ẞ", "ss"},
+		{"ß", "ss"},
+		{"ﬁ", "fi"},
+		{"ẛ", "ṡ"},
+		{"Σ", "σ"},
+		{"ς", "σ"},
+		{"ı", "ı"},
+		{"I", "i"},
 	}
 	for _, tc := range cases {
 		if got := NormalizeLabel(tc.in); got != tc.want {

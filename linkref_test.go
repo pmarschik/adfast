@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pmarschik/adfast/ast"
 	"github.com/pmarschik/adfast/convert"
 )
 
@@ -130,6 +131,142 @@ func TestLinkRefADFIsTheInlineFormsADF(t *testing.T) {
 			}
 		})
 	}
+}
+
+// labelFoldPairs are use/definition label spellings whose pairing is
+// decided by the case fold, with what the parser does about each. The
+// three folding pairs are the ones full case folding maps together and
+// Go's simple case mappings do not: ẞ and ﬁ fold to multi-character
+// sequences, and ß upper-cases to "SS" only under full mappings.
+var labelFoldPairs = []struct {
+	name, use, def string
+	pairs          bool
+}{
+	{"eszett capital against ss", "ss", "ẞ", true},
+	{"eszett against SS", "SS", "ß", true},
+	{"fi ligature", "FI", "ﬁ", true},
+	{"long s", "ẛ", "Ṡ", true},
+	{"final sigma", "Σ", "ς", true},
+	{"whitespace and simple case", "A", " a ", true},
+	// The Turkish dotless i is the fold's one divergence from micromark,
+	// which pairs it with "I" (.toLowerCase().toUpperCase()); full case
+	// folding does not, so goldmark does not pair these and no reference
+	// node exists. See ast.NormalizeLabel.
+	{"turkish dotless i", "I", "ı", false},
+	{"turkish dotless i reversed", "ı", "I", false},
+	// Two ordinary labels that must stay in different classes, so a fold
+	// that collapsed everything fails here.
+	{"distinct labels", "alpha", "beta", false},
+}
+
+// TestLinkRefResolvesEveryPairTheParserMade is the invariant behind the
+// fold: goldmark decides whether a reference EXISTS — it pairs the use
+// with the definition during the parse and copies the destination across
+// — so a LinkRef node in the tree is a promise this leg has to keep. If
+// the lookup in convert folds differently from the parser, the promise
+// breaks in the worst available way: the link becomes the literal text
+// the author typed, and the definition that fed it is reported as unused.
+//
+// Measured with ast.NormalizeLabel back on its hand-rolled fold,
+// strings.ToUpper(strings.ToLower(s)):
+//
+//	--- FAIL: TestLinkRefResolvesEveryPairTheParserMade (0.00s)
+//	    --- FAIL: TestLinkRefResolvesEveryPairTheParserMade/eszett_capital_against_ss (0.00s)
+//	        the parser paired [ss] with [ẞ] and this leg did not: {"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"See "},{"type":"text","text":"[ss]"},{"type":"text","text":" here."}]}],"version":1}
+//	        want no diagnostics for a definition the parser used, got [unused-definition-dropped]
+//	    --- FAIL: TestLinkRefResolvesEveryPairTheParserMade/eszett_against_SS (0.00s)
+//	        the parser paired [SS] with [ß] and this leg did not: {"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"See "},{"type":"text","text":"[SS]"},{"type":"text","text":" here."}]}],"version":1}
+//	        want no diagnostics for a definition the parser used, got [unused-definition-dropped]
+//	    --- FAIL: TestLinkRefResolvesEveryPairTheParserMade/fi_ligature (0.00s)
+//	        the parser paired [FI] with [ﬁ] and this leg did not: {"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"See "},{"type":"text","text":"[FI]"},{"type":"text","text":" here."}]}],"version":1}
+//	        want no diagnostics for a definition the parser used, got [unused-definition-dropped]
+//
+// The pairs=false rows PASSED on both folds and are pins rather than
+// proof, which is itself the measurement: the old fold's opposite error —
+// it put "ı" and "I" in one class where the parser does not — is
+// unreachable through a parse, because the tree holds no reference node
+// for either spelling and there is nothing for this leg to resolve. They
+// stay in the table because they are reachable for a fold that widens
+// the classes further, and because "distinct labels" is the row that
+// fails if a fold collapses everything.
+func TestLinkRefResolvesEveryPairTheParserMade(t *testing.T) {
+	for _, tc := range labelFoldPairs {
+		t.Run(tc.name, func(t *testing.T) {
+			src := "See [" + tc.use + "] here.\n\n[" + tc.def + "]: https://e.com/x\n"
+			var codes []string
+			got := adfJSON(t, mdToADF(src,
+				WithDiagnostics(func(d convert.Diagnostic) { codes = append(codes, d.Code) })))
+
+			if refs := countLinkRefs(FromMarkdown(src)); (refs > 0) != tc.pairs {
+				t.Fatalf("the parser built %d reference nodes for [%s]/[%s], want pairs=%v",
+					refs, tc.use, tc.def, tc.pairs)
+			}
+			if !tc.pairs {
+				if strings.Contains(got, `"href"`) {
+					t.Errorf("[%s] and [%s] are not a pair, but the reference resolved anyway: %s", tc.use, tc.def, got)
+				}
+				return
+			}
+			if !strings.Contains(got, `{"attrs":{"href":"https://e.com/x"},"type":"link"}`) {
+				t.Errorf("the parser paired [%s] with [%s] and this leg did not: %s", tc.use, tc.def, got)
+			}
+			if len(codes) != 0 {
+				t.Errorf("want no diagnostics for a definition the parser used, got %v", codes)
+			}
+		})
+	}
+}
+
+// TestLinkRefFoldKeepsDistinctLabelsApart is the fold's other half in ONE
+// document: two definitions whose labels must not join a class, and two
+// uses that must reach their own destinations. A fold that over-applied
+// — collapsing everything, or emptying the identifier — resolves both
+// uses to the first definition and passes every pairing test above.
+//
+// Measured with ast.NormalizeLabel returning "" for every label, which is
+// the over-applying fold in its purest form:
+//
+//	--- FAIL: TestLinkRefFoldKeepsDistinctLabelsApart (0.00s)
+//	    want {"attrs":{"href":"https://e.com/a"},"type":"link"}],"text":"alpha" in:
+//	    {"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"See "},{"type":"text","marks":[{"attrs":{"href":"https://e.com/x"},"type":"link"}],"text":"ss"},{"type":"text","text":" and "},{"type":"text","marks":[{"attrs":{"href":"https://e.com/x"},"type":"link"}],"text":"alpha"},{"type":"text","text":"."}]}],"version":1}
+//
+// and with the hand-rolled fold restored, where the same document loses
+// the other half:
+//
+//	--- FAIL: TestLinkRefFoldKeepsDistinctLabelsApart (0.00s)
+//	    want {"attrs":{"href":"https://e.com/x"},"type":"link"}],"text":"ss" in:
+//	    {"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"See "},{"type":"text","text":"[ss]"},{"type":"text","text":" and "},{"type":"text","marks":[{"attrs":{"href":"https://e.com/a"},"type":"link"}],"text":"alpha"},{"type":"text","text":"."}]}],"version":1}
+//	    want no diagnostics, got [unused-definition-dropped]
+func TestLinkRefFoldKeepsDistinctLabelsApart(t *testing.T) {
+	var codes []string
+	got := adfJSON(t, mdToADF("See [ss] and [alpha].\n\n[ẞ]: https://e.com/x\n[alpha]: https://e.com/a\n",
+		WithDiagnostics(func(d convert.Diagnostic) { codes = append(codes, d.Code) })))
+
+	for _, want := range []string{
+		`{"attrs":{"href":"https://e.com/x"},"type":"link"}],"text":"ss"`,
+		`{"attrs":{"href":"https://e.com/a"},"type":"link"}],"text":"alpha"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("want %s in:\n%s", want, got)
+		}
+	}
+	if len(codes) != 0 {
+		t.Errorf("want no diagnostics, got %v", codes)
+	}
+}
+
+// countLinkRefs reports how many reference nodes the parse produced,
+// which is the parser's own verdict on whether the two label spellings
+// pair.
+func countLinkRefs(n ast.Node) int {
+	count := 0
+	if _, ok := n.(*ast.LinkRef); ok {
+		count++
+	}
+	for _, c := range ast.Children(n) {
+		count += countLinkRefs(c)
+	}
+	return count
 }
 
 // The store-backed image path is the one the push side actually uses: a
