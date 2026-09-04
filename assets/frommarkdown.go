@@ -119,15 +119,25 @@ func collectImageNodes(n ast.Node, out map[string]bool) {
 // collectLocalDest records one destination when it is a local path.
 func collectLocalDest(url string, out map[string]bool) {
 	if url != "" && !isRemoteURL(url) {
-		out[normalizeRef(url)] = true
+		out[NormalizeRef(url)] = true
 	}
 }
 
-// normalizeRef reduces a reference path to one spelling per file, so an
-// author's "./assets/x.png" meets the worklist's "assets/x.png". Pending
-// reports the path the store builds itself — always clean — while a
-// document says whatever its author typed.
-func normalizeRef(ref string) string {
+// NormalizeRef reduces a reference path to ONE spelling per file: slashes
+// forward, and the path cleaned. An author's "./assets/x.png",
+// "assets//x.png" and "assets/x.png" are one file, and this is where they
+// become one string. Pending reports the path the store builds itself —
+// always clean — while a document says whatever its author typed.
+//
+// It is exported because it is a RULE, not a helper, and a second
+// implementation of it drifts. The store itself is content-addressed and so
+// tolerates any spelling; what does not tolerate one is every map an
+// embedder keys by a reference — a reference-to-media-id fallback, a
+// reference-to-attachment-title correspondence, a "have I already offered
+// this file" set. Those meet paths this package produced, so they have to
+// spell a reference the way this package does. Asking for the rule is the
+// only way to be sure they still agree after it changes.
+func NormalizeRef(ref string) string {
 	return path.Clean(filepath.ToSlash(ref))
 }
 
