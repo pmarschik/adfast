@@ -121,19 +121,21 @@ func Definitions(src []byte) []Definition { return NewSource(src).Definitions() 
 // caller that rewrites definitions can tell an empty view from an incomplete
 // one instead of claiming a rewrite it did not make.
 //
-// The one shape known to be dropped is a definition whose LABEL or TITLE sits
-// on a continued line the block parser reached over a TAB — `> [a]: x.md`
-// followed by `>\t"t"`, or a label folded across `>\t`. This view is the only
-// one of the three with the problem, and PADDING is why: goldmark strips a
-// container prefix by expanding a tab it only partly consumes into a padding
-// count on the line's segment, and the definition node keeps the paragraph's
-// lines as they were BEFORE the paragraph parser trimmed that padding away.
-// The label and the title bytes the parser recorded therefore carry spaces
-// that stand for no byte of the source, so the written form cannot be
-// compared to them and the candidate fails. A DESTINATION on such a line is
-// unaffected, because the padding is leading whitespace the parser skips
-// before it reads one. Links and Images resolve against a paragraph's
-// trimmed lines and never meet a padded segment at all.
+// The comparison for the label and the title discounts the spaces at the
+// start of each line, because goldmark v1.8.5 records both with PADDING in
+// them — spaces that stand for no byte of the source, left over from a
+// container prefix ending in a tab. matchesAsRead has the three ways they get
+// there and why discounting them cannot move a span. This view is the only
+// one of the three that has to: Links and Images resolve against a
+// paragraph's lines, which the paragraph parser trims when it closes, so they
+// never meet a padded segment at all.
+//
+// The shape known to be dropped is a definition goldmark describes with a
+// TITLE it read from a line it then left OUT of the definition's extent —
+// `[a]: x.md` followed by `"t" tail`, where CommonMark ends the definition at
+// the destination because the title's line has trailing content. The node's
+// own extent and the node's own title then disagree, and there is no span
+// that can be right, so the definition is dropped and counted.
 func (s *Source) Definitions() []Definition {
 	if s.definitionsDone {
 		return s.definitions
@@ -267,7 +269,7 @@ func definitionLabel(
 		return Span{}, 0, false
 	}
 	label := Span{Start: pos + 1, Stop: closer - 1}
-	if !bytes.Equal(bytesAsRead(src, lines, label), def.Label) {
+	if !matchesAsRead(src, lines, label, def.Label) {
 		return Span{}, 0, false
 	}
 	// CommonMark allows no space between the label and its colon.
@@ -283,6 +285,12 @@ func definitionLabel(
 // The destination may sit on the line AFTER the colon, which is why the space
 // skip is the container-aware one: `[a]:\n  x.md` inside a list item resumes
 // past the continuation indent, and inside a blockquote past the `>`.
+//
+// This is the one part compared EXACTLY: a destination never crosses a line
+// (the parser scans it inside one peeked line) and the parser reads it off
+// that line after skipping its spaces, padding included, rather than through
+// text.Reader.Value — so none of the phantom spaces matchesAsRead has to
+// discount for a label or a title can reach it.
 func definitionDest(
 	def *gast.LinkReferenceDefinition, src []byte, lines *text.Segments, from int,
 ) (Span, int, bool) {
@@ -318,8 +326,67 @@ func definitionTitle(
 		return Span{}, from, len(def.Title) == 0
 	}
 	title := Span{Start: i + 1, Stop: end - 1}
-	if !bytes.Equal(bytesAsRead(src, lines, title), def.Title) {
+	if !matchesAsRead(src, lines, title, def.Title) {
 		return Span{}, from, len(def.Title) == 0
 	}
 	return title, end, true
+}
+
+// matchesAsRead reports whether the bytes sp covers are the value the parser
+// recorded for that part of the definition — exactly, or once the spaces at
+// the start of each line are discounted on both sides.
+//
+// The second reading is what PADDING forces. goldmark strips a container
+// prefix ending in a tab it only partly consumes by expanding the leftover
+// columns into a padding count on the line's segment, and the definition
+// parser reads its label and its title through text.Reader.Value, which turns
+// that count back into spaces. Measured on v1.8.5 those spaces reach the
+// recorded value three ways, and no span can address any of them:
+//
+//   - a title on a padded line comes back with the padding in front of it
+//     (`> [a]: x.md` then `>\t"t"` records the title `"  t"`);
+//   - a label folded across a padded line comes back with the padding TWICE,
+//     because Value adds the next line's padding to the segment before it as
+//     well (`> [a` then `>\tb]: x.md` records the label `"a\n    b"`);
+//   - a label on a line whose own padding was already consumed still gets it,
+//     because the reader Value asks is built over the paragraph's segments
+//     while the definition node keeps a first line with the padding stripped
+//     (`>\t[a]: x.md` records the label `"  a"`, and the node's first segment
+//     records no padding at all — so the count is not even recoverable here).
+//
+// Discounting line-leading spaces is therefore the only comparison that can
+// hold, and it is safe because it cannot move a span: the label begins one
+// byte past a '[' this resolver already matched against the node's own
+// position, and both parts end where goldmark's own closure scan stops. What
+// the looser reading gives up is the ability to notice a mismatch made
+// ENTIRELY of spaces at a line start, which is the padding case itself.
+//
+// Tabs are left in place. Padding is spaces, so a tab written at the start of
+// a continued line is content, and it is content on both sides of this
+// comparison.
+//
+// A DESTINATION is compared exactly (see definitionDest): it cannot cross a
+// line, and the parser reads it off an already-space-skipped line rather than
+// through Value, so no padding reaches it.
+func matchesAsRead(src []byte, lines *text.Segments, sp Span, want []byte) bool {
+	got := bytesAsRead(src, lines, sp)
+	if bytes.Equal(got, want) {
+		return true
+	}
+	return bytes.Equal(trimLineLeadingSpaces(got), trimLineLeadingSpaces(want))
+}
+
+// trimLineLeadingSpaces returns v without the spaces that begin each of its
+// lines.
+func trimLineLeadingSpaces(v []byte) []byte {
+	out := make([]byte, 0, len(v))
+	lineStart := true
+	for _, c := range v {
+		if lineStart && c == ' ' {
+			continue
+		}
+		lineStart = c == '\n'
+		out = append(out, c)
+	}
+	return out
 }

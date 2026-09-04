@@ -115,8 +115,8 @@ func (s *Source) Autolinks() []Autolink {
 // result. A caller can tell an empty view from an incomplete one with it.
 //
 // NO INPUT IS KNOWN TO MAKE IT NONZERO, and that is reported here rather
-// than left as an implied guarantee. The shape that hides a DEFINITION from
-// its view — a container prefix ending in a partly consumed tab, whose
+// than left as an implied guarantee. The shape a DEFINITION's resolver has
+// to discount — a container prefix ending in a partly consumed tab, whose
 // leftover columns the parser pads with spaces that stand for no byte — does
 // not reach an autolink, for the reason UnlocatedDefinitions' test records:
 // an autolink is an inline of a paragraph or a heading, and those trim each
