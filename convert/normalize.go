@@ -2270,8 +2270,32 @@ func (m *fmtMedia) blocksImage(defaultLayout string) bool {
 // included: both legs ask mediaurl.ProjectsToImage, so
 // WithPreserveLocalImages lets a document-relative external url reach
 // the plain image form here exactly as it does on the ADF leg.
+//
+// It adds one check dialect's copy does not have, and cannot need: an
+// author's own path blocks the projection. This pass runs on the
+// AUTHOR'S document, where a picture may spell BOTH addresses — an
+// external url for the reader and a markdown-relative path for the
+// store — and an ast.Image has one destination, so degrading such a
+// media to ![alt](url) had nowhere to put the path and simply deleted
+// it. No leg of this library may do that: the format leg is total (see
+// NormalizeFormat), and the encode leg loses nothing here either,
+// because ToADF projects the kept directive to the same media node it
+// would have projected the image to. Keeping the directive is also the
+// rule the inline chip already follows for the same attribute (see
+// normalizeMediaInline).
+//
+// dialect's copy runs on ADF, which has no path field on a media node at
+// all: its decode writes a path only for a store-known FILE attachment
+// (see its mediaSourceAttrs), never for external media. So this check
+// can only ever differ from dialect's on an input dialect's copy cannot
+// receive — and the divergence it does produce, the format leg keeping a
+// directive the ADF round trip renders as an image, is divergence by
+// contract, pinned in the media parity table.
 func (fn *normalizer) mediaAsImage(m *fmtMedia) ast.Node {
 	if m.mtype != "external" {
+		return nil
+	}
+	if m.path != "" {
 		return nil
 	}
 	if !mediaurl.ProjectsToImage(m.url, fn.preserveLocalImages) {
