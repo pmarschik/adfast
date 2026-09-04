@@ -122,12 +122,26 @@ func mediaFromAttrs(ctx extension.EncodeContext, attrs map[string]string, alt st
 // documents and the one the markdown [![alt](img)](href) form encodes to,
 // so a linked image reaches the same ADF whichever markdown spelling it
 // arrived in.
+//
+// hrefTitle is the link's advisory title, the "Home" of
+// [![alt](img)](href "Home"). It is a compound attribute name for the
+// same reason borderColor and borderSize are: it belongs to the href, and
+// a bare `title` beside `url` would read as the picture's own caption,
+// which the block form spells as a mediaSingle caption instead.
+//
+// No href, no mark, so no title either: a title for a destination that is
+// not there has nothing to be advisory about, and the md→md leg drops it
+// in the same place so both legs write one document.
 func linkMarkFromAttrs(attrs map[string]string) adf.Mark {
 	href := attrs["href"]
 	if href == "" {
 		return nil
 	}
-	return &adf.Link{Href: &href}
+	mark := &adf.Link{Href: &href}
+	if title := attrs["hrefTitle"]; title != "" {
+		mark.Title = &title
+	}
+	return mark
 }
 
 // borderMarkFromAttrs builds the ADF border mark carried as

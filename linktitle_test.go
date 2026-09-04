@@ -151,31 +151,112 @@ func TestALinkTitleSurvivesOnACodeLabel(t *testing.T) {
 	}
 }
 
-// PIN, and a deliberate asymmetry rather than a gap this change forgot: a
-// link wrapped around a BLOCK image keeps its destination on the media
-// node's link mark, and that mark still carries no title.
+// The last place the title used to stay behind: a link wrapped around a
+// BLOCK image. MEASURED before this fix — [![alt](url)](href "Home")
+// through md → ADF → md came back as [![alt](url)](href), because
+// withMediaLink wrote the href onto the media node's link mark and
+// nothing else.
 //
-// The media projection's decode is written twice — dialect's decode hooks
-// and normalize.go's hand-written mirror of them — and only the pair of
-// them can bring an attribute back to "[![alt](url)](href \"title\")". A
-// title written on the encode side alone would be a loss dressed as a
-// gain: it would sit in the ADF payload with neither leg reading it.
-// Recorded as a remaining limit in docs/adf-coverage.md.
+// media takes a (link | border | annotation) mark set and its
+// LinkAttributes is the same type as a text link's, so the title was
+// never unrepresentable — what was missing was the READ side. The media
+// projection's decode is written twice (dialect's decode hooks and
+// normalize.go's mirror of them), and until both wrote the attribute a
+// title on the encode side alone would have sat in the payload unread.
+// Both write it now, so the destination and its title travel together in
+// either spelling.
 //
-// The good case rides along: the IMAGE title is not affected, because the
-// block form spells that one as a mediaSingle caption child, a sibling
-// node rather than an attribute on the mark.
-func TestALinkedBlockImageStillDropsTheLinkTitle(t *testing.T) {
+// The good case rides along in the same document: the IMAGE title is a
+// different fact and lands somewhere else entirely — the block form
+// spells it as a mediaSingle caption child, a sibling node rather than an
+// attribute on the mark — so a fix that confused the two fails here.
+//
+// Mutation, with the title dropped from withMediaLink, mediaLinkMark and
+// linkMarkFromAttrs again (the pre-fix encode). The three tests below
+// fail exactly here — the mark, the round trip, the inline mark and its
+// read-back — while the caption assertion and the titleless rows stay
+// green. MEASURED:
+//
+//	--- FAIL: TestALinkedBlockImageKeepsTheLinkTitle
+//	    want the titled media link mark
+//	      want "marks":[{"attrs":{"href":"https://home/","title":"Home"},"type":"link"}]
+//	      got  {"type":"doc","content":[{"type":"mediaSingle","attrs":{"layout":"center"},"content":[{"type":"media","attrs":{"alt":"alt","type":"external","url":"https://x/a.png"},"marks":[{"attrs":{"href":"https://home/"},"type":"link"}]},{"type":"caption","content":[{"type":"text","text":"A caption"}]}]}],"version":1}
+//	--- FAIL: TestALinkedBlockImageTitleSurvivesTheADFLeg
+//	    the media link title did not survive md → ADF → md
+//	      in:  "[![alt](https://x/a.png \"A caption\")](https://home/ \"Home\")\n\n[![plain](https://x/b.png)](https://elsewhere.example/)\n"
+//	      out: "[![alt](https://x/a.png \"A caption\")](https://home/)\n\n[![plain](https://x/b.png)](https://elsewhere.example/)\n"
+//	--- FAIL: TestALinkedInlineImageKeepsTheLinkTitle
+//	    want the titled mediaInline link mark
+//	      want {"type":"mediaInline","attrs":{"alt":"shot","collection":"","id":"abc-123","type":"file"},"marks":[{"attrs":{"href":"https://home/","title":"Home"},"type":"link"}]}
+//	      got  {"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"See "},{"type":"mediaInline","attrs":{"alt":"shot","collection":"","id":"abc-123","type":"file"},"marks":[{"attrs":{"href":"https://home/"},"type":"link"}]},{"type":"text","text":" and "},{"type":"mediaInline","attrs":{"alt":"shot","collection":"","id":"abc-123","type":"file"},"marks":[{"attrs":{"href":"https://elsewhere.example/"},"type":"link"}]},{"type":"text","text":" here."}]}],"version":1}
+//	    the inline link title did not read back: "See :media[shot]{#abc-123 collection href=\"https://home/\"} and\n:media[shot]{#abc-123 collection href=\"https://elsewhere.example/\"} here.\n"
+//	    want one hrefTitle across the pair, got 0: "See :media[shot]{#abc-123 collection href=\"https://home/\"} and\n:media[shot]{#abc-123 collection href=\"https://elsewhere.example/\"} here.\n"
+//
+// The READ half has its own mutation proof next door, in the convert
+// package: convert.TestALinkedImageKeepsTheLinkTitleOnBothLegs drops
+// hrefTitle from normalize.go instead and watches the two projection legs
+// disagree.
+func TestALinkedBlockImageKeepsTheLinkTitle(t *testing.T) {
 	got := adfJSON(t, mdToADF("[![alt](https://x/a.png \"A caption\")](https://home/ \"Home\")\n"))
 
-	if strings.Contains(got, `"title":"Home"`) {
-		t.Errorf("the media link mark is not meant to carry a title yet:\n%s", got)
-	}
-	want := `"marks":[{"attrs":{"href":"https://home/"},"type":"link"}]`
+	want := `"marks":[{"attrs":{"href":"https://home/","title":"Home"},"type":"link"}]`
 	if !strings.Contains(got, want) {
-		t.Errorf("want the titleless media link mark\n  want %s\n  got  %s", want, got)
+		t.Errorf("want the titled media link mark\n  want %s\n  got  %s", want, got)
 	}
 	if !strings.Contains(got, `{"type":"caption","content":[{"type":"text","text":"A caption"}]}`) {
 		t.Errorf("the image title must still be the mediaSingle caption:\n%s", got)
+	}
+}
+
+// The round trip, with the titleless linked image beside it: the title
+// has to come back on the LINK, and a link that spelled none may not grow
+// one.
+func TestALinkedBlockImageTitleSurvivesTheADFLeg(t *testing.T) {
+	md := "[![alt](https://x/a.png \"A caption\")](https://home/ \"Home\")\n\n" +
+		"[![plain](https://x/b.png)](https://elsewhere.example/)\n"
+
+	once := roundTrip(t, md)
+	twice := roundTrip(t, once)
+
+	if once != md {
+		t.Errorf("the media link title did not survive md → ADF → md\n  in:  %q\n  out: %q", md, once)
+	}
+	if once != twice {
+		t.Errorf("a titled linked image is not a fixpoint:\n  once:  %q\n  twice: %q", once, twice)
+	}
+}
+
+// The inline half of the same mark. An image the asset store can place
+// becomes a real mediaInline, whose mark set is the same union, and its
+// decode has its own copy of the read — a :media[…] label is not a link,
+// so the destination and its title ride as attributes there.
+func TestALinkedInlineImageKeepsTheLinkTitle(t *testing.T) {
+	const md = "See [![shot](assets/shot.png)](https://home/ \"Home\") and " +
+		"[![shot](assets/shot.png)](https://elsewhere.example/) here.\n"
+	opts := storeWithOnePath()
+
+	got := adfJSON(t, mdToADF(md, opts...))
+	want := `{"type":"mediaInline","attrs":{"alt":"shot","collection":"","id":"abc-123","type":"file"},` +
+		`"marks":[{"attrs":{"href":"https://home/","title":"Home"},"type":"link"}]}`
+	if !strings.Contains(got, want) {
+		t.Errorf("want the titled mediaInline link mark\n  want %s\n  got  %s", want, got)
+	}
+	wantBare := `"marks":[{"attrs":{"href":"https://elsewhere.example/"},"type":"link"}]`
+	if !strings.Contains(got, wantBare) {
+		t.Errorf("a titleless inline link must write no title\n  want %s\n  got  %s", wantBare, got)
+	}
+
+	// And the title reads back, as the directive attribute the inline form
+	// carries it on. (A mediaInline has no markdown image form to return
+	// to: the trip lands on :media[…], which is why this pins the
+	// attribute rather than the original markdown.)
+	back := adfToMD(mdToADF(md, opts...), opts...)
+	if !strings.Contains(back, `hrefTitle="Home"`) {
+		t.Errorf("the inline link title did not read back: %q", back)
+	}
+	// Exactly one, counted across the pair: two would mean the titleless
+	// link grew a title of its own, none that the read side lost it.
+	if n := strings.Count(back, "hrefTitle"); n != 1 {
+		t.Errorf("want one hrefTitle across the pair, got %d: %q", n, back)
 	}
 }

@@ -801,9 +801,14 @@ func normalizeMediaInline(v *dialect.MediaInline) ast.Node {
 	}
 	// The link mark's destination is the caller's to keep, like the
 	// collection: an inline attachment that links somewhere may not lose
-	// where (mirrors dialect's decodeMediaInline).
+	// where, nor the title spelled after it (mirrors dialect's
+	// decodeMediaInline). The title needs the href beside it, because the
+	// encode rebuilds the mark from the pair (see linkMarkFromAttrs).
 	if href := v.Attrs["href"]; href != "" {
 		attrs["href"] = href
+		if title := v.Attrs["hrefTitle"]; title != "" {
+			attrs["hrefTitle"] = title
+		}
 	}
 	var children []ast.Node
 	if alt := strings.TrimSpace(ast.PlainText(v.Children)); alt != "" {
@@ -1969,7 +1974,10 @@ type fmtMedia struct {
 	occurrenceKey string
 	borderColor   string
 	// href is the link mark's destination: what the picture links to.
-	href       string
+	href string
+	// hrefTitle is that link mark's title: the advisory text spelled
+	// after the destination, [![alt](url)](href "hrefTitle").
+	hrefTitle  string
 	borderSize int
 	hasBorder  bool
 	hasSingle  bool
@@ -2017,6 +2025,12 @@ func mediaFromAttrs(attrs map[string]string, alt string) *fmtMedia {
 		}
 	}
 	m.href = attrs["href"]
+	// No href, no link mark on the ADF leg, so no title either (see
+	// dialect's linkMarkFromAttrs); reading it here regardless would let
+	// this leg keep an attribute the other one drops.
+	if m.href != "" {
+		m.hrefTitle = attrs["hrefTitle"]
+	}
 	return m
 }
 
@@ -2217,7 +2231,7 @@ func (fn *normalizer) mediaAsImage(m *fmtMedia) ast.Node {
 	if m.blocksImage("center") {
 		return nil
 	}
-	return imageParagraph(m.url, m.alt, m.href)
+	return imageParagraph(m.url, m.alt, m.href, m.hrefTitle)
 }
 
 // fileMediaAsImage mirrors dialect's fileMediaAsImage against the
@@ -2237,20 +2251,22 @@ func (fn *normalizer) fileMediaAsImage(m *fmtMedia) ast.Node {
 	if m.blocksImage("align-start") {
 		return nil
 	}
-	return imageParagraph(asset.Path, m.alt, m.href)
+	return imageParagraph(asset.Path, m.alt, m.href, m.hrefTitle)
 }
 
 // imageParagraph mirrors dialect's imageParagraph: the plain
-// ![alt](url) image in its own paragraph, or the [![alt](url)](href)
-// linked form when the media carries a destination.
-func imageParagraph(url, alt, href string) ast.Node {
+// ![alt](url) image in its own paragraph, or the
+// [![alt](url)](href "hrefTitle") linked form when the media carries a
+// destination. The title belongs to the LINK; the image's own title is
+// the caption setImageTitle writes one level down.
+func imageParagraph(url, alt, href, hrefTitle string) ast.Node {
 	img := &ast.Image{URL: url}
 	if alt != "" {
 		img.Children = []ast.Node{&ast.Text{Value: alt}}
 	}
 	var child ast.Node = img
 	if href != "" {
-		child = &ast.Link{URL: href, Explicit: true, Children: []ast.Node{img}}
+		child = &ast.Link{URL: href, Title: hrefTitle, Explicit: true, Children: []ast.Node{img}}
 	}
 	return &ast.Paragraph{Children: []ast.Node{child}}
 }
@@ -2296,11 +2312,15 @@ func mediaBorderAttrs(m *fmtMedia, attrs map[string]string) {
 }
 
 // mediaLinkAttrs mirrors dialect's mediaLinkAttrs: the link mark's
-// destination rides as an attribute on the directive forms, which have
-// no room for a markdown link around them.
+// destination, and the title spelled after it, ride as attributes on the
+// directive forms, which have no room for a markdown link around them.
 func mediaLinkAttrs(m *fmtMedia, attrs map[string]string) {
-	if m.href != "" {
-		attrs["href"] = m.href
+	if m.href == "" {
+		return
+	}
+	attrs["href"] = m.href
+	if m.hrefTitle != "" {
+		attrs["hrefTitle"] = m.hrefTitle
 	}
 }
 

@@ -307,18 +307,35 @@ disagree, **the media node wins** — a picture with two different
 destinations has no markdown form (a link cannot nest), and the media
 node's is the placement adfast itself writes.
 
-**On a media node, only the href travels.** A media `link` mark's other
-attributes — the id/collection it may carry, and its title — do not come
-back: the decode of this projection is written twice (dialect's decode
-hooks and `convert/normalize.go`'s hand-written mirror of them), and only
-the pair of them can bring an attribute back to
-`[![alt](url)](href "title")`. Writing a title on the encode side alone
-would be a loss dressed as a gain — it would sit in the payload with
-neither leg reading it — so `[![alt](url)](href "title")` still loses the
-OUTER title. The image's own title is unaffected: the block form spells
-that one as a `mediaSingle` caption child, a sibling node rather than an
-attribute on the mark. See the text-link title below for the projection
-that does carry one.
+**The link mark's title travels too.** A media `link` mark's
+`LinkAttributes` is the same type as a text link's, so the advisory title
+is representable there as well, and **it survives both legs**:
+
+| Markdown                                  | ADF `link` mark attrs on the `media` node |
+| ----------------------------------------- | ----------------------------------------- |
+| `[![alt](url)](href "Home")`              | `{"href": "href", "title": "Home"}`       |
+| `::media[alt]{href="…" hrefTitle="Home"}` | the same mark — both spellings agree      |
+| `[![alt](url)](href)`                     | `{"href": "href"}` — no title attribute   |
+
+The directive forms carry it as `hrefTitle`, a compound name for the same
+reason `borderColor`/`borderSize` are compound: it belongs to the `href`,
+and a bare `title` beside `url` would read as the picture's own caption.
+**No `href`, no title:** the encode builds no `link` mark from a title
+alone, so both legs drop an `hrefTitle` with no destination beside it.
+
+The IMAGE's own title is a different fact and lands elsewhere — the block
+form spells it as a `mediaSingle` caption child, a sibling node rather
+than an attribute on the mark — so the two ride together as
+`[![alt](url "caption")](href "Home")`.
+
+Reading a title back needs BOTH decodes to write it (dialect's decode
+hooks and `convert/normalize.go`'s hand-written mirror of them), which is
+why the encode side carried the href alone at first: an attribute one leg
+writes and neither reads is a loss dressed as a gain. What still does not
+come back is the rest of the mark — the id, collection and occurrenceKey a
+`link` mark may carry have no place in a markdown link, and the text-link
+projection drops them the same way. See the text-link title below for the
+evidence trail on the attribute itself.
 
 **Still dropped in silence:** an `annotation` mark on the same node. It
 is the third member of the media mark union and has no markdown form at
@@ -346,8 +363,10 @@ came, because the field is a pointer.
 All three reference spellings reach the same place — a definition's title
 (`[spec]: ./spec.md "Title"`) rides onto the inline form the trip
 produces — and so does a title on an inline-code label,
-``[`spec`](./spec.md "Title")``. The remaining limit is the media one
-above: `[![alt](url)](href "title")` loses the outer title.
+``[`spec`](./spec.md "Title")``. A link wrapped around an image carries
+one as well — `[![alt](url)](href "Title")`, on the `link` mark of the
+`media` node; see the media section above for that spelling and its
+`hrefTitle` directive form.
 
 **The attribute is spelled `title`**, on three independent sources:
 

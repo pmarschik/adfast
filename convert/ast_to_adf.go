@@ -694,10 +694,11 @@ func (c *astConverter) convertParagraph(node *ast.Paragraph) adf.Node {
 	// A lone image wrapped in a link is a LINKED image (a logo that links
 	// home, a badge that links to a build). It promotes exactly like the
 	// bare one — the picture is the same block media — and the destination
-	// rides along as the link mark ADF puts on the media node.
-	if inner, href, ok := c.loneLinkedImage(node); ok {
+	// with its title rides along as the link mark ADF puts on the media
+	// node.
+	if inner, href, title, ok := c.loneLinkedImage(node); ok {
 		if media, promoted := c.loneImageMedia(inner); promoted {
-			return withMediaLink(media, href)
+			return withMediaLink(media, href, title)
 		}
 	}
 	return &adf.Paragraph{Content: c.convertInlines(node.Children)}
@@ -735,16 +736,13 @@ func (c *astConverter) loneImageMedia(node *ast.Paragraph) (adf.Node, bool) {
 // to click and nothing to lose, and a link mark without an href is not a
 // shape any product accepts.
 //
-// The TITLE the enclosing link spelled does NOT ride along, unlike the
-// one on a text link mark (see linkTitleAttr). The schema would hold it
-// — LinkAttributes is the same type on a media node — but the media
-// projection is written twice, in dialect's decode hooks and again in
-// normalize.go's mirror of them, and only the pair of them can bring an
-// attribute back to "[![alt](img)](href \"title\")". Writing it here
-// alone would put a title into the ADF payload that neither decode
-// reads, which is a loss dressed as a gain. Recorded as a remaining
-// limit in docs/adf-coverage.md instead.
-func withMediaLink(n adf.Node, href string) adf.Node {
+// The TITLE the enclosing link spelled rides along on the same mark, the
+// way it does on a text link (see linkTitleAttr): LinkAttributes is one
+// type, so the media node holds it without a special case. Both halves of
+// the media projection's decode read it back — dialect's decode hooks and
+// normalize.go's mirror of them — so it is a value that returns rather
+// than one parked in the payload unread.
+func withMediaLink(n adf.Node, href, title string) adf.Node {
 	if href == "" {
 		return n
 	}
@@ -756,7 +754,7 @@ func withMediaLink(n adf.Node, href string) adf.Node {
 	if !ok {
 		return n
 	}
-	media.Marks = append(media.Marks, &adf.Link{Href: new(href)})
+	media.Marks = append(media.Marks, &adf.Link{Href: new(href), Title: linkTitleAttr(title)})
 	return single
 }
 
@@ -991,24 +989,25 @@ func (c *astConverter) attachmentImageToMedia(img *ast.Image, id string) adf.Nod
 
 // loneLinkedImage reports a paragraph whose sole child is a link wrapping
 // a single image ("[![alt](img)](href)") as the paragraph that image alone
-// would have formed, plus the destination of the link. The caller promotes
-// that paragraph exactly as it promotes a bare lone image and puts the
-// destination back with withMediaLink, so the two forms cannot drift.
+// would have formed, plus the destination of the link and the advisory
+// title it spelled after it. The caller promotes that paragraph exactly as
+// it promotes a bare lone image and puts both back with withMediaLink, so
+// the two forms cannot drift.
 //
 // Every reference spelling answers too — the outer link, the inner image
 // or both written as "[label]" — because resolveLinkedImage resolves them
 // (see linkref.go).
-func (c *astConverter) loneLinkedImage(node *ast.Paragraph) (*ast.Paragraph, string, bool) {
+func (c *astConverter) loneLinkedImage(node *ast.Paragraph) (inner *ast.Paragraph, href, title string, ok bool) {
 	if len(node.Children) != 1 {
-		return nil, "", false
+		return nil, "", "", false
 	}
 	link, img, ok := c.resolveLinkedImage(node.Children[0])
 	if !ok {
-		return nil, "", false
+		return nil, "", "", false
 	}
 	out := *node
 	out.Children = []ast.Node{img}
-	return &out, c.linkHref(link), true
+	return &out, c.linkHref(link), link.Title, true
 }
 
 // linkHref answers the href a link publishes with: the destination it
@@ -1288,15 +1287,14 @@ func imageLabel(url, alt string) string {
 // is not a shape any product accepts. Text keeps an empty link mark for
 // remark parity (see buildMarks); media has no such reason to.
 //
-// The link's TITLE stays behind here too, for withMediaLink's reason:
-// the media projection's decode is mirrored across dialect and
-// normalize.go, so an attribute this side writes alone would never come
-// back.
+// The link's TITLE travels with the destination, as it does on the block
+// form (see withMediaLink): both halves of the media projection's decode
+// read it back, so the whole markdown link fits the mark.
 func mediaLinkMark(ctx markCtx) []adf.Mark {
 	if !ctx.hasLink || ctx.link == "" {
 		return nil
 	}
-	return []adf.Mark{&adf.Link{Href: new(ctx.link)}}
+	return []adf.Mark{&adf.Link{Href: new(ctx.link), Title: linkTitleAttr(ctx.linkTitle)}}
 }
 
 // degradeInlineImage rewrites an external inline image as the link it
