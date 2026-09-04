@@ -382,6 +382,20 @@ provider can also report a block as _malformed_, which means that the
 block opens the convention but does not close validly. The bytes are then
 kept as body and a `malformed-frontmatter` diagnostic fires.
 
+`SplitFrontmatter(md, ...Option)` answers the boundary question on its
+own, for a caller who wants the block and the body and no conversion. It
+runs the same code path `FromMarkdown` runs — the byte order mark peel,
+the line-ending normalization, then the provider — and returns a
+`FrontmatterSplit` holding `Front`, `Body`, the `Outcome`, and whether the
+source opened with a byte order mark. `Front+Body` is the normalized
+source, so nothing is dropped and nothing is added. It reads
+`WithFrontmatterProvider` and `WithDiagnostics` and ignores every other
+option, because no parse runs. Use it instead of hand-rolling a `---`
+scan, which has to agree with adfast on a byte order mark, a CR line
+ending, an indented fence, an unterminated block and a leading `---` that
+is really a thematic break, and instead of a full md → ADF → md round trip
+taken only to read the block back off the tree.
+
 The core stays YAML-neutral. The front block is opaque bytes, kept
 verbatim on `ast.Frontmatter.Value`, delimiters included. A consumer who
 wants _structured_ access to a YAML block opts into the

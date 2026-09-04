@@ -74,6 +74,23 @@ func ExampleToADF_diagnostics() {
 	// [colwidths-orphan]
 }
 
+// SplitFrontmatter answers where the leading metadata block ends without
+// converting anything, on the same code path FromMarkdown uses. Here the
+// source opens with a byte order mark and uses CRLF line endings, and the
+// split still lands on the fence: Front carries the block verbatim and
+// Body is what the parser would have seen.
+func ExampleSplitFrontmatter() {
+	md := "\ufeff---\r\nstatus: Open\r\n---\r\nQueen spotted in Hive B.\r\n"
+	split := adfast.SplitFrontmatter(md)
+	fmt.Printf("found=%v mark=%v\n", split.Found(), split.ByteOrderMark)
+	fmt.Printf("front=%q\n", split.Front)
+	fmt.Printf("body=%q\n", split.Body)
+	// Output:
+	// found=true mark=true
+	// front="---\nstatus: Open\n---\n"
+	// body="Queen spotted in Hive B.\n"
+}
+
 // Ordinary labeled links can use a product-facing href in ADF while keeping
 // a stable author-facing destination in Markdown.
 func ExampleWithLinkResolver() {
