@@ -317,6 +317,18 @@ func TestMediaProjectionLegsDivergeAsMeasured(t *testing.T) {
 				"enclosing destination wins, because that is the one the reader clicks.",
 		},
 		{
+			name:   "external media that spells both addresses",
+			row:    "::media[alt]{path=assets/a.png type=external url=https://x/a.png}",
+			format: "::media[alt]{path=\"assets/a.png\" type=\"external\" url=\"https://x/a.png\"}" + good,
+			adf:    "![alt](https://x/a.png)" + good,
+			why: "An ADF media node has no path field, so the round trip through ADF " +
+				"keeps only the url and reads it back as the plain image. The formatter " +
+				"may not: an ast.Image has one destination, and degrading here deleted " +
+				"the author's path outright (see mediaAsImage). This is the same " +
+				"asymmetry the two path pins in this file describe, in the one shape " +
+				"where it changes which FORM renders and not just which attribute.",
+		},
+		{
 			name:   "a mid-sentence external image",
 			row:    "text ![alt](https://x/a.png) tail",
 			format: "text ![alt](https://x/a.png) tail" + good,
