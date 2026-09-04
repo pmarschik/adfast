@@ -541,9 +541,14 @@ func naturalDisplayWidth(media *adf.Media, single *adf.MediaSingle) bool {
 
 // mediaBlocksImage reports whether the media node (or its mediaSingle
 // wrapper) carries a property the plain-image markdown form cannot hold:
-// an occurrenceKey, a non-empty collection, a border mark, or a wrapper
-// richer than the given default layout. It is the half the file and the
-// external image paths share; each adds its own type-specific checks.
+// an occurrenceKey, a non-empty collection, a border or annotation mark,
+// or a wrapper richer than the given default layout. It is the half the
+// file and the external image paths share; each adds its own
+// type-specific checks.
+//
+// The link mark is the one member of the media mark union that does NOT
+// block: markdown has a form for it, the [![alt](url)](href) wrapper
+// imageParagraph writes.
 func mediaBlocksImage(media *adf.Media, single *adf.MediaSingle, defaultLayout string) bool {
 	if media.OccurrenceKey != nil || adf.HasExtra(media, "occurrenceKey") {
 		return true
@@ -552,6 +557,9 @@ func mediaBlocksImage(media *adf.Media, single *adf.MediaSingle, defaultLayout s
 		return true
 	}
 	if adf.HasMark(media.Marks, "border") {
+		return true
+	}
+	if _, ok := mediaAnnotationMark(media.Marks); ok {
 		return true
 	}
 	return singleBlocksImage(single, defaultLayout, naturalDisplayWidth(media, single))
@@ -729,6 +737,53 @@ func mediaOmissionsOf(media *adf.Media, single *adf.MediaSingle, ctx extension.D
 	return om
 }
 
+// mediaAnnotationAttrs writes the annotation mark's attributes: the
+// third member of the media mark union, a Confluence inline-comment
+// anchor sitting on the picture. It has no markdown form of its own —
+// :annotation[…] wraps inline CONTENT, and a block media leaf is not
+// content it can wrap — so it rides as attributes the way the border
+// mark does, under a compound name because a bare id on a ::media node
+// is already the media's own.
+//
+// Pushing a body without the anchor orphans the comment thread on the
+// remote, which is why this is carried rather than reported: a
+// diagnostic would name the loss without preventing it.
+//
+// An annotation with no id anchors nothing and is not written back. That
+// is the same answer the inline projection gives (an :annotation with no
+// id dissolves to its children), so a picture is not degraded out of its
+// image form for a mark that could never find its thread.
+func mediaAnnotationAttrs(marks []adf.Mark, attrs map[string]string) {
+	ann, ok := mediaAnnotationMark(marks)
+	if !ok {
+		return
+	}
+	attrs["annotationId"] = ann.ID
+	attrs["annotationType"] = annotationTypeOr(ann.AnnotationType)
+}
+
+// mediaAnnotationMark answers a media node's usable annotation mark: one
+// that carries an id, the only kind that anchors a comment thread and
+// therefore the only kind worth blocking the image form for. It reads
+// the mark slice rather than the node so the block leaf and the inline
+// chip share it, as they share the link mark's reader.
+func mediaAnnotationMark(marks []adf.Mark) (*adf.Annotation, bool) {
+	ann, ok := adf.FindMark[*adf.Annotation](marks)
+	if !ok || ann.ID == "" {
+		return nil, false
+	}
+	return ann, true
+}
+
+// annotationTypeOr defaults an empty annotation type to the one value
+// the schema defines, matching decodeAnnotationMark on the inline side.
+func annotationTypeOr(annotationType string) string {
+	if annotationType == "" {
+		return "inlineComment"
+	}
+	return annotationType
+}
+
 // mediaBorderAttrs writes the border mark's attributes.
 func mediaBorderAttrs(media *adf.Media, attrs map[string]string) {
 	border, ok := adf.FindMark[*adf.Border](media.Marks)
@@ -833,6 +888,7 @@ func mediaSourceAttrs(media *adf.Media, om mediaOmissions, attrs map[string]stri
 func mediaLeafNode(media *adf.Media, single *adf.MediaSingle, group bool, ctx extension.DecodeContext) *Media {
 	om := mediaOmissionsOf(media, single, ctx)
 	attrs := map[string]string{}
+	mediaAnnotationAttrs(media.Marks, attrs)
 	mediaBorderAttrs(media, attrs)
 	mediaLinkAttrs(media, single, attrs)
 	mediaShapeAttrs(media, om, group, attrs)
@@ -1055,6 +1111,10 @@ func decodeMediaInline(n adf.Node, _ extension.DecodeContext) ([]ast.Node, bool)
 			attrs["hrefTitle"] = title
 		}
 	}
+	// An inline-comment anchor rides along too, under the same names the
+	// block form uses (see mediaAnnotationAttrs). The inline chip has no
+	// image form to be degraded out of, so nothing else changes here.
+	mediaAnnotationAttrs(mi.Marks, attrs)
 	var children []ast.Node
 	if mi.Alt != "" {
 		children = []ast.Node{&ast.Text{Value: mi.Alt}}

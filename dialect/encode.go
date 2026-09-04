@@ -104,6 +104,9 @@ func mediaFromAttrs(ctx extension.EncodeContext, attrs map[string]string, alt st
 	if mark := linkMarkFromAttrs(attrs); mark != nil {
 		media.Marks = append(media.Marks, mark)
 	}
+	if mark := annotationMarkFromAttrs(attrs); mark != nil {
+		media.Marks = append(media.Marks, mark)
+	}
 	// A local asset omits its id + intrinsic dimensions (decode drops them);
 	// resolve them back from the markdown-relative path via the asset store.
 	// mediasrc owns that recovery for every leg of the projection — the
@@ -142,6 +145,26 @@ func linkMarkFromAttrs(attrs map[string]string) adf.Mark {
 		mark.Title = &title
 	}
 	return mark
+}
+
+// annotationMarkFromAttrs builds the ADF annotation mark carried as
+// annotationId/annotationType attributes on the media directive forms:
+// the Confluence inline-comment anchor a pulled picture arrived with (see
+// mediaAnnotationAttrs for why it rides as attributes at all).
+//
+// No id, no mark. An anchor names the comment thread it belongs to, so
+// one without an id has nothing to re-attach on the push, and the decode
+// never writes the type alone.
+func annotationMarkFromAttrs(attrs map[string]string) adf.Mark {
+	id := attrs["annotationId"]
+	if id == "" {
+		return nil
+	}
+	annotationType := attrs["annotationType"]
+	if annotationType == "" {
+		annotationType = "inlineComment"
+	}
+	return &adf.Annotation{ID: id, AnnotationType: annotationType}
 }
 
 // borderMarkFromAttrs builds the ADF border mark carried as
@@ -336,6 +359,9 @@ func (n *MediaInline) EncodeADF(_ extension.EncodeContext) []adf.Node {
 		mi.Alt = label
 	}
 	if mark := linkMarkFromAttrs(n.Attrs); mark != nil {
+		mi.Marks = append(mi.Marks, mark)
+	}
+	if mark := annotationMarkFromAttrs(n.Attrs); mark != nil {
 		mi.Marks = append(mi.Marks, mark)
 	}
 	return []adf.Node{mi}

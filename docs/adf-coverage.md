@@ -337,10 +337,39 @@ come back is the rest of the mark — the id, collection and occurrenceKey a
 projection drops them the same way. See the text-link title below for the
 evidence trail on the attribute itself.
 
-**Still dropped in silence:** an `annotation` mark on the same node. It
-is the third member of the media mark union and has no markdown form at
-all, so a pulled inline comment anchor on a picture leaves without a
-diagnostic. `link` surviving does not fix that; it is a separate gap.
+### The `annotation` mark: an inline comment anchor on a picture
+
+The third member of the media mark union is `annotation`, the anchor that
+ties a picture to a Confluence inline comment thread. It has **no
+markdown form at all** — `:annotation[…]` wraps inline CONTENT, and a
+block media leaf is not content it can wrap — so, like `border`, it rides
+as directive attributes:
+
+| ADF `annotation` mark attrs on the media node | Markdown                                                         |
+| --------------------------------------------- | ---------------------------------------------------------------- |
+| `{"id": "ann-1", "annotationType": "…"}`      | `::media[alt]{annotationId="ann-1" annotationType="…" …}`        |
+| the same, on a `mediaInline`                  | `see :media[alt]{#id annotationId="ann-1" annotationType="…"} …` |
+| the same, on a `mediaGroup` member            | `::media{… group="true" annotationId="ann-1" …}`                 |
+| `{"annotationType": "…"}` — no id             | nothing; the anchor is dropped                                   |
+
+The names are compound for the same reason `hrefTitle` is: a bare `#id`
+on a `::media` node is already the media's own. `annotationType` is
+always written, defaulting to `inlineComment` — the same default the
+inline `:annotation` projection applies.
+
+**The anchor blocks the image form**, exactly as a border does: a
+`![alt](url)` has nowhere to put an attribute, so an annotated picture
+falls back to the directive even when the asset store could resolve it to
+a path. This is where `annotation` differs from `link`, the one union
+member that does NOT block — markdown has `[![alt](url)](href "title")`,
+so a destination and its title fit the wrapper while an anchor does not.
+
+**Why it is carried rather than reported.** A diagnostic would name the
+loss without preventing it: pushing a body whose picture lost its anchor
+ORPHANS the comment thread on the remote. An anchor with no `id`,
+however, names no thread, so there is nothing to re-attach and nothing
+worth degrading a picture for — it is dropped and does not block, which
+mirrors an id-less `:annotation` dissolving to its children.
 
 ## A link title: `title` on a text link mark
 
