@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -139,6 +140,118 @@ func TestWWWLiteralLinksThroughAnAuthoredDotEscape(t *testing.T) {
 	want := []string{"http://www.x"}
 	if got := linkURLsOf(Parse([]byte(src))); !equalStrings(got, want) {
 		t.Errorf("link URLs of %q = %v, want %v", src, got, want)
+	}
+}
+
+// TestWWWLiteralIsReportedAsARawAutolinkSpan is the RAW-SPAN half, and it
+// is a different question from the two tests above.
+//
+// Those read the TREE, and the tree is not goldmark's answer alone:
+// relinkifyTexts rescans the decoded text with urlLiteralRe afterwards and
+// puts back whatever goldmark declined. So a widening that only ever
+// reached urlLiteralRe still produced the link — and Source.Autolinks,
+// which reports goldmark's verdict and NOTHING else, still reported no
+// span. Measured before this test existed, with the tree agreeing in both
+// rows and the spans disagreeing:
+//
+//	"see www.x b\n"       autolinks []                     links [http://www.x]
+//	"see www.ex.com b\n"  autolinks [{… Span:{4 14} …}]    links [http://www.ex.com]
+//
+// A caller driving off spans — a linter naming a location, a rewriter
+// splicing the source — therefore lost the link for exactly the hosts the
+// widening was meant to add, while the payload said it was there.
+//
+// ONE DOCUMENT HOLDS BOTH, so the row that changed is measured next to the
+// row that must not: "www.x" is the dotless host the widening adds, and
+// "www.ex.com" is the dotted host that always reported a span, at the
+// offset it always had.
+func TestWWWLiteralIsReportedAsARawAutolinkSpan(t *testing.T) {
+	t.Parallel()
+	const src = "see www.x and www.ex.com b\n"
+	want := []Autolink{
+		{Target: "http://www.x", Span: Span{4, 9}, Text: Span{4, 9}, Bare: true},
+		{Target: "http://www.ex.com", Span: Span{14, 24}, Text: Span{14, 24}, Bare: true},
+	}
+	got := NewSource([]byte(src)).Autolinks()
+	if !slices.Equal(got, want) {
+		t.Errorf("Autolinks(%q) = %+v, want %+v", src, got, want)
+	}
+}
+
+// TestWWWLiteralRawRecognizerMatchesThePattern closes the loop the test
+// above opens: rather than pinning two hand-picked rows, it drives EVERY
+// row of wwwLiteralCases through the parser and asserts the raw span is
+// exactly what urlLiteralRe reads at that offset.
+//
+// This is the property that makes one pattern one verdict. goldmark ships
+// its own scheme-less pattern (`www\.…{1,256}\.[a-z]+`), and while the
+// parser was left on it the raw recognizer and the decoded-text scan could
+// disagree about any row here without a single existing test moving. The
+// rows with a nonempty want that goldmark's pattern also accepted are the
+// PRESERVED-BEHAVIOR half; the dotless ones are the half that changed.
+func TestWWWLiteralRawRecognizerMatchesThePattern(t *testing.T) {
+	t.Parallel()
+	for _, c := range wwwLiteralCases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			// The candidate sits mid-line so the reader reaches it through
+			// the linkify parser's ' ' trigger, which is the path prose
+			// takes; "see " is four bytes, so a match starts at offset 4.
+			src := "see " + c.src + " b\n"
+			var want []Autolink
+			if c.want != "" {
+				stop := 4 + len(c.want)
+				want = []Autolink{{
+					Target: "http://" + c.want,
+					Span:   Span{4, stop},
+					Text:   Span{4, stop},
+					Bare:   true,
+				}}
+			}
+			if got := NewSource([]byte(src)).Autolinks(); !slices.Equal(got, want) {
+				t.Errorf("Autolinks(%q) = %+v, want %+v", src, got, want)
+			}
+		})
+	}
+}
+
+// TestWWWLiteralUppercasePrefixStaysProse is a PRESERVED-BEHAVIOR PIN on a
+// DIVERGENCE, not on a fix: it records what this package does with an
+// uppercase "WWW." prefix, which is not what the reference does.
+//
+// Measured against the frozen reference, whole bodies:
+//
+//	"see WWW.ex.com b"   ref links "http://WWW.ex.com"   here prose
+//	"see WWW.x b"        ref links "http://WWW.x"        here prose
+//	"see Www.Ex.Com b"   ref links "http://Www.Ex.Com"   here prose
+//
+// BOTH of the reference's recognizers are case-insensitive here, so this is
+// a link-versus-text divergence with a payload difference: a push sends
+// prose where the reference sends a link.
+//
+// IT IS NOT A PATTERN PROBLEM, which is why the pin sits here rather than a
+// widened urlLiteralWWW. goldmark's linkify parser reaches its WWW pattern
+// only after a hard-coded, case-SENSITIVE `bytes.HasPrefix(line, "www.")`
+// that no option can replace — the schemed branch's equivalent pre-gate IS
+// replaceable, and NewParser already opens it for both cases. Spelling the
+// prefix `[wW][wW][wW]\.` would therefore change nothing about the raw
+// verdict while making the decoded-text scan accept what the raw one still
+// refuses, which is the inversion TestURLLiteralRawPatternIsTheWiderOne
+// forbids for the schemed literal. Closing it needs an inline parser of
+// this package's own.
+//
+// The lowercase row is in the same document deliberately: it is what makes
+// the uppercase rows read as a case rule rather than as a broken prefix.
+func TestWWWLiteralUppercasePrefixStaysProse(t *testing.T) {
+	t.Parallel()
+	const src = "see WWW.ex.com and WWW.x and Www.Ex.Com and www.ex.com b\n"
+	want := []string{"http://www.ex.com"}
+	if got := linkURLsOf(Parse([]byte(src))); !equalStrings(got, want) {
+		t.Errorf("link URLs of %q = %v, want %v", src, got, want)
+	}
+	autolinks := NewSource([]byte(src)).Autolinks()
+	if len(autolinks) != 1 || autolinks[0].Target != "http://www.ex.com" {
+		t.Errorf("Autolinks(%q) = %+v, want the lowercase host alone", src, autolinks)
 	}
 }
 

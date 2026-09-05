@@ -242,6 +242,30 @@ const (
 	// prefix is a middle segment, which the header records as truncating in
 	// the schemed form too ("https://www.點看.com"). Adding it here would
 	// move that row for the scheme-less spelling alone.
+	//
+	// THE PREFIX IS SPELLED LOWERCASE, and unlike urlLiteralScheme — which
+	// writes its case-insensitivity out per letter as `[hH][tT][tT][pP]` —
+	// this one is NOT widened to `[wW][wW][wW]`, even though BOTH of the
+	// reference's recognizers are case-insensitive here too. Measured
+	// against the frozen reference:
+	//
+	//	"see WWW.ex.com b"   ref links "http://WWW.ex.com"   here prose
+	//	"see WWW.x b"        ref links "http://WWW.x"        here prose
+	//	"see Www.Ex.Com b"   ref links "http://Www.Ex.Com"   here prose
+	//
+	// THE PATTERN IS NOT THE GATE for that divergence, which is why
+	// widening it would buy nothing and cost the invariant. goldmark's
+	// linkify parser reaches its WWW pattern only through a hard-coded
+	// `bytes.HasPrefix(line, []byte("www."))`, spelled case-SENSITIVELY in
+	// the extension and not configurable — unlike the schemed branch, whose
+	// equivalent pre-gate IS configurable and which NewParser therefore
+	// opens for both cases (see WithLinkifyAllowedProtocols there). A
+	// `[wW][wW][wW]\.` here would leave the raw recognizer refusing "WWW."
+	// exactly as before while the DECODED-TEXT scan started accepting it,
+	// which inverts the relationship TestURLLiteralRawPatternIsTheWiderOne
+	// states. Closing this divergence needs an inline parser of this
+	// package's own, not a wider pattern, so the prefix stays lowercase
+	// until that lands.
 	urlLiteralWWW = `www\.(?:` + urlLiteralHostDotted +
 		`|[a-zA-Z0-9]` + urlLiteralHostByte + `{0,255})` + urlLiteralPath
 )
@@ -254,6 +278,38 @@ const (
 var urlLiteralRe = regexp.MustCompile(
 	`(?:` + urlLiteralScheme + urlLiteralHostDotted + urlLiteralPath +
 		`|` + urlLiteralWWW + `)`)
+
+// urlLiteralWWWAnchoredRe matches a SCHEME-LESS "www." literal at the head
+// of the input, which is the form goldmark's linkify extension needs: it
+// takes the pattern through WithLinkifyWWWRegexp and drops any match not at
+// offset 0.
+//
+// IT EXISTS BECAUSE THE RAW RECOGNIZER HAD BEEN LEFT BEHIND. urlLiteralWWW
+// widened the scheme-less host — a dotless "www.x" is a literal, as both of
+// the reference's recognizers read it — but only relinkifyTexts, which
+// scans DECODED TEXT, was built from it. goldmark kept its own
+// `www\.…{1,256}\.[a-z]+`, so the two disagreed about the same bytes, and
+// the disagreement was visible through the RAW-SPAN API: Source.Autolinks
+// reports goldmark's verdict and nothing else, so "see www.x b" produced a
+// link in the tree and NO autolink span at all, while "see www.ex.com b"
+// produced both. A caller driving off spans — a linter naming a location,
+// a rewriter splicing the source — saw the link vanish for exactly the
+// hosts the widening was meant to add.
+//
+// WHY THE SAME PATTERN AND NOT A SECOND ONE: this is the raw-source side,
+// and urlLiteralWWW is what the decoded-text side already uses, so pointing
+// both at it is what makes the two verdicts one verdict. The scheme-less
+// literal is the one shape where the two sides may share a pattern: unlike
+// the schemed host, whose raw and decoded rules genuinely differ (see
+// urlLiteralHost against urlLiteralHostDotted), the "www." prefix supplies
+// the dot the decoded-text recognizer demands, so both halves of the
+// reference accept the same set.
+//
+// NOT CASE-INSENSITIVE, and that is NOT an oversight — see the note on
+// urlLiteralWWW. goldmark gates this pattern behind its own hard-coded
+// `bytes.HasPrefix(line, []byte("www."))`, so a pattern that also accepted
+// "WWW." would never be reached with one.
+var urlLiteralWWWAnchoredRe = regexp.MustCompile(`^(?:` + urlLiteralWWW + `)`)
 
 // urlLiteralAnchoredRe matches a schemed literal at the head of the input,
 // with the raw-source host rule. This is the form an inline parser needs:
