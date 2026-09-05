@@ -1286,12 +1286,28 @@ func (v *inlineFlattener) degradeUnplaceableImage(n *ast.Image, alt string) []ad
 // because a consumer shows this sentence to the author who wrote the
 // image and the two halves are not the same news: the picture will not
 // be on the page, and the label will.
+//
+// It says "no media id yet" and NOT "not in the asset store", which is
+// what it used to say. This branch is reached on assetID returning
+// not-ok, and that answers one question only: whether a media id is
+// known. The encode has no view of the filesystem, so a file sitting
+// under assets/ that simply has not been uploaded reaches here too — and
+// the old parenthetical sent that author to the folder to look for a
+// file that was already there, to conclude the tool was broken. The
+// remaining resolver that does touch the file, ImageDimsResolver, is not
+// a substitute: the store repairs a missing friendly file on a read, so
+// probing it for presence would write to the working tree from inside a
+// diagnostic.
+//
+// Naming the upload is what both cases have in common and is the action
+// either one needs, so the sentence is true whether the file is missing
+// or merely unuploaded.
 func unplaceableImageMessage(url, href string) string {
 	kept := "its label stays as plain text"
 	if href != "" {
 		kept = "its label stays as a link to " + href
 	}
-	return "image " + url + " has no media id (not in the asset store); " +
+	return "image " + url + " has no media id yet (nothing has uploaded it); " +
 		"the picture is dropped from the ADF payload and " + kept
 }
 
@@ -1301,8 +1317,13 @@ func unplaceableImageMessage(url, href string) string {
 // replaced by a label here, the media node stays in the payload — with
 // no id, so nothing on the page can find the attachment, and the path
 // that said where it is has no ADF field to travel in.
+//
+// It carries the same "no media id yet" wording, and for the same
+// reason unplaceableImageMessage records: a path whose file is present
+// but unuploaded reaches here too, so claiming the asset store does not
+// hold it would be a guess.
 func unresolvedMediaPathMessage(ref string) string {
-	return "media directive path " + ref + " has no media id (not in the asset store); " +
+	return "media directive path " + ref + " has no media id yet (nothing has uploaded it); " +
 		"the media node is written without one, so the attachment cannot be " +
 		"addressed, and the path does not travel in ADF"
 }
