@@ -1030,6 +1030,10 @@ func (p *cellProjector) push(node ast.Node) {
 		// reference serializer writes for a break inside a cell.
 		p.boundary()
 	default:
+		if form, ok := cellAttrOnlyLeaf(node); ok {
+			p.emit(form)
+			return
+		}
 		if cellBlockNode(node) {
 			p.children(ast.Children(node))
 			return
@@ -1046,6 +1050,73 @@ func (p *cellProjector) emitValue(value string) {
 	}
 	p.emit(&ast.InlineCode{Value: foldCellLines(value)})
 }
+
+// cellAttrOnlyLeaf answers the one case where flattening a foreign node to
+// its content deletes the node outright: a registered kind that spells the
+// LEAF directive form (::name[label]{attrs}) and whose whole payload sits
+// in the attributes, because it has no content to flatten to.
+//
+// Two separate mechanisms both end in that deletion, and this catches both.
+// A kind that records block spacing is flattened here to children it does
+// not have. A kind that does not is handed to the renderer instead, which
+// writes NOTHING for it: extension.RenderContext.WriteLeafDirective is a
+// no-op in inline position, so the leaf form has no spelling there at all.
+// Measured 2026-09-05 on the wire-ADF path, a table cell holding an ADF
+// extension, a syncBlock or a media node arrived as "|   |" — the table
+// renders, one cell is merely blank, and nothing reports the loss.
+//
+// The repair is the inline directive form of the same name, which a row
+// CAN spell and which carries the attributes the flatten dropped. For the
+// two kinds the dialect gives a text form (media, extension) it reads back
+// as the typed inline node; for the rest it reads back as a generic text
+// directive, which is still the payload in the document rather than gone.
+//
+// The rule is deliberately confined to a leaf that projects to nothing, so
+// no cell that renders content today changes: a leaf whose label survives
+// (a link card's URL, a decision's text) keeps flattening to that label.
+// The empty-attrs guard excludes the companion markers, whose payload is
+// the SIBLING they annotate rather than themselves — ::decisions is
+// emitted ahead of the plain list it marks, exactly like ::colwidths above
+// it, and writing ":decisions" into the row would be noise, not recovery.
+func cellAttrOnlyLeaf(node ast.Node) (ast.Node, bool) {
+	ext, ok := node.(extension.Node)
+	if !ok {
+		return nil, false
+	}
+	var form cellLeafForm
+	ext.RenderMarkdown(&form)
+	if !form.written || len(form.attrs) == 0 {
+		return nil, false
+	}
+	probe := &cellProjector{}
+	probe.children(ast.Children(node))
+	if len(probe.out) > 0 {
+		return nil, false
+	}
+	return &ast.TextDirective{Name: form.name, Attrs: form.attrs}, true
+}
+
+// cellLeafForm is the extension.RenderContext that asks a node which
+// directive form it spells without rendering anything: the projection
+// needs the name and the attributes, which no other part of the extension
+// contract exposes. Only the leaf form is recorded — a container form has
+// block children to flatten, and a text form already rides in a row.
+type cellLeafForm struct {
+	attrs   map[string]string
+	name    string
+	written bool
+}
+
+// WriteLeafDirective implements extension.RenderContext.
+func (f *cellLeafForm) WriteLeafDirective(name string, attrs map[string]string, _ []ast.Node) {
+	f.name, f.attrs, f.written = name, attrs, true
+}
+
+// WriteContainerDirective implements extension.RenderContext.
+func (*cellLeafForm) WriteContainerDirective(string, map[string]string, []ast.Node) {}
+
+// WriteTextDirective implements extension.RenderContext.
+func (*cellLeafForm) WriteTextDirective(string, map[string]string, []ast.Node) {}
 
 // cellBlockNode reports whether a node owns whole lines in markdown. That
 // is the projection's one classification: it decides both that the node's

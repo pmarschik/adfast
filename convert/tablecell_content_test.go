@@ -40,6 +40,24 @@ func cellDoc(t *testing.T, cellJSON string) adf.Doc {
 	return doc
 }
 
+// blockDoc puts the SAME content array at the top level of a document,
+// where it is in block position. It is the control for every cell
+// assertion that a kind's block spelling is untouched by what the cell
+// projection does with it.
+func blockDoc(t *testing.T, cellJSON string) adf.Doc {
+	t.Helper()
+	src := `{"version":1,"type":"doc","content":` + cellJSON + `}`
+	var v any
+	if err := json.Unmarshal([]byte(src), &v); err != nil {
+		t.Fatalf("test ADF is not valid JSON: %v", err)
+	}
+	doc, ok := adf.DecodeDoc(v)
+	if !ok {
+		t.Fatalf("test ADF did not decode: %s", src)
+	}
+	return doc
+}
+
 // cellMarkdown renders the document cellDoc built.
 func cellMarkdown(t *testing.T, cellJSON string, opts ...adfast.Option) string {
 	t.Helper()
@@ -130,6 +148,7 @@ var cellShapes = map[string]string{
 	"a nested table":     `[{"type":"table","content":[{"type":"tableRow","content":[{"type":"tableCell","attrs":{"colwidth":[79,320]},"content":[{"type":"paragraph","content":[{"type":"text","text":"inner"}]}]}]}]}]`,
 	"a rule":             `[{"type":"rule"}]`,
 	"an extension":       `[{"type":"extension","attrs":{"extensionType":"com.x","extensionKey":"k"}}]`,
+	"a sync block":       `[{"type":"syncBlock","attrs":{"resourceId":"r","localId":"l"}}]`,
 	"an unsupportedomit": `[{"type":"unsupportedBlock","attrs":{"originalValue":{"type":"weird"}}}]`,
 
 	"a blockquote holding a pipe":      `[{"type":"blockquote","content":[{"type":"paragraph","content":[{"type":"text","text":"a|b"}]}]}]`,
@@ -248,11 +267,6 @@ func TestTableCellDropsWhatItCannotCarry(t *testing.T) {
 		// A rule has no content at all. Written out it would be the literal
 		// text "***", which re-parses as text and carries nothing.
 		"a rule": "a rule holds no content",
-		// An ADF extension block decodes to ::extension{…}, a LEAF
-		// directive: extension.RenderContext's leaf primitive is a no-op in
-		// inline position, so there is no one-line form to write and the
-		// node carries no text of its own to fall back on.
-		"an extension": "a block leaf directive has no inline form",
 		// unsupportedBlock drops on decode, in a cell and at the top level
 		// alike — measured; it is not a cell defect.
 		"an unsupportedomit": "unsupportedBlock drops everywhere, not only in a cell",
@@ -266,6 +280,90 @@ func TestTableCellDropsWhatItCannotCarry(t *testing.T) {
 				t.Errorf("the plain paragraph neighbor = %q, want %q", got, "ok")
 			}
 		})
+	}
+}
+
+// TestTableCellRecoversAnAttributeOnlyLeaf is a FIX test.
+//
+// A registered kind that spells the LEAF directive form and carries its
+// whole payload in the attributes used to vanish from a table cell, by
+// either of two routes. A kind recording block spacing was flattened to
+// children it does not have; a kind not recording it was handed to the
+// renderer, whose leaf primitive is a no-op in inline position. Measured
+// 2026-09-05 on the wire-ADF path: an ADF extension, a syncBlock and a
+// media node all arrived as "|   |". The table rendered, one cell was
+// merely blank, and nothing reported the loss.
+//
+// Each case carries two controls: the plain-paragraph neighbor in the same
+// row, and the SAME node in block position at the top level of the same
+// document, which must keep its untouched "::name{…}" spelling. A fix that
+// simply stopped emitting the block form would fail the second.
+func TestTableCellRecoversAnAttributeOnlyLeaf(t *testing.T) {
+	for name, want := range map[string]struct{ inCell, atTopLevel string }{
+		"an extension": {
+			inCell:     `:extension{key="k" type="com.x"}`,
+			atTopLevel: `::extension{key="k" type="com.x"}`,
+		},
+		"a sync block": {
+			inCell:     `:syncBlock{localId="l" resourceId="r"}`,
+			atTopLevel: `::syncBlock{localId="l" resourceId="r"}`,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			md := cellMarkdown(t, cellShapes[name])
+			if got := cellText(t, md); got != want.inCell {
+				t.Errorf("cell content = %q, want %q\nfull table:\n%s", got, want.inCell, md)
+			}
+			// GOOD, control 1: the neighbor cell is untouched.
+			if got := strings.TrimSpace(splitRowCells(bodyRow(t, md))[0]); got != "ok" {
+				t.Errorf("the plain paragraph neighbor = %q, want %q", got, "ok")
+			}
+			// GOOD, control 2: block position still spells the block form.
+			block := adfast.ToMarkdown(adfast.FromADF(blockDoc(t, cellShapes[name])))
+			if got := strings.TrimSpace(block); got != want.atTopLevel {
+				t.Errorf("block position = %q, want %q", got, want.atTopLevel)
+			}
+		})
+	}
+}
+
+// TestTableCellRecoveryReadsBackAsANode pins the half that makes the
+// recovery worth having: the one-line form the cell now holds is not just
+// visible text, it re-parses inside the row. An ADF extension recovered as
+// ":extension{…}" comes back as the inlineExtension carrying the same
+// extensionKey and extensionType, so the payload survives the whole
+// md → ADF leg rather than merely surviving as prose.
+func TestTableCellRecoveryReadsBackAsANode(t *testing.T) {
+	md := cellMarkdown(t, cellShapes["an extension"])
+	back, err := json.Marshal(adfast.ToADF(adfast.FromMarkdown(md)))
+	if err != nil {
+		t.Fatalf("re-encode: %v", err)
+	}
+	for _, want := range []string{`"type":"inlineExtension"`, `"extensionKey":"k"`, `"extensionType":"com.x"`} {
+		if !strings.Contains(string(back), want) {
+			t.Errorf("the recovered cell did not read back as a node: %s missing from\n%s\nrendered:\n%s", want, back, md)
+		}
+	}
+}
+
+// TestTableCellDropsADecisionListsCompanion is a PIN, not a fix test: it
+// passed before the recovery above and still does. It is here because it
+// marks that recovery's boundary — a companion marker is a leaf directive
+// too, so it is the shape the change could most easily start writing into
+// a row by accident. Its payload is the SIBLING it annotates rather than
+// itself, so writing it into the row would be noise, not recovery.
+// convertAdfBlocks emits ::decisions ahead of
+// the plain list a decisionList decodes to; the marker carries no
+// attributes, which is what keeps it out.
+func TestTableCellDropsADecisionListsCompanion(t *testing.T) {
+	md := cellMarkdown(t, cellShapes["a decision list"])
+	if got := cellText(t, md); strings.Contains(got, "decisions") {
+		t.Errorf("the companion marker leaked into the cell: %q\nfull table:\n%s", got, md)
+	}
+	// GOOD: the list's own text is still recovered, so the drop is scoped
+	// to the companion rather than to the whole list.
+	if got := cellText(t, md); got != "decided" {
+		t.Errorf("cell content = %q, want %q\nfull table:\n%s", got, "decided", md)
 	}
 }
 
