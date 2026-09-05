@@ -40,6 +40,25 @@ import (
 // needs no storage-format parser, and it is the same document the
 // submission carried.
 //
+// # Why only the bodiless form
+//
+// The bodiless extension is the only form observed carrying these attrs,
+// and it is also the only form the expansion FITS, so widening the match
+// to the two siblings is not the one-line change it looks like:
+//
+//   - bodiedExtension holds its own content. It already carries a body,
+//     so replacing the node with nestedContent would either drop that
+//     body or duplicate it, and which of the two is the original is not
+//     decidable from the node alone.
+//   - inlineExtension sits in inline position, and nestedContent is a
+//     whole DOCUMENT of blocks. Substituting one for the other would put
+//     paragraphs inside a paragraph — an ADF shape no product emits and
+//     the renderer has no form for.
+//
+// Settling either one needs a live page that actually carries the attrs
+// on that node type, plus a decision about what the replacement is; a
+// widened match without both is a new defect, not a fix.
+//
 // This is an expansion and not a conversion. It replaces one node with
 // the content that node was standing in for, and it removes nothing:
 // anything the payload cannot supply — an absent, unparsable, empty, or
