@@ -376,9 +376,19 @@ func UnresolvedMediaPath(n ast.Node, resolve func(ref string) (mediaID string, o
 // says so, which is the same bargain UnresolvedMediaPath strikes above.
 //
 // Refusing the directive at parse time was the alternative, and it costs
-// more than it buys: it would make the directive parse depend on
+// more than it buys HERE: it would make the directive parse depend on
 // attribute semantics, and it would turn a half-written line into literal
 // prose on a leg that today round-trips it untouched.
+//
+// The parse DOES refuse one shape, and the boundary is worth stating so
+// the two do not drift: a TEXT directive that carries no label and no
+// attribute block at all is prose (see bare.go). That is not attribute
+// semantics — it is "the author wrote nothing but a name" — and it is
+// not a half-written line, because ":media" alone is spelled exactly
+// like the word ":media" in a sentence, which is the collision the text
+// form has and the leaf and container forms do not. Everything this
+// predicate answers for still parses: "::media[alt]{}" has a label, and
+// a directive carrying only a width has an attribute block.
 //
 // The two predicates are DISJOINT by construction — this one requires no
 // path, that one requires a path — so a media directive earns at most one

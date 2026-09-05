@@ -717,7 +717,11 @@ func TestNormalizeTextNewlines_AcrossTextNodes(t *testing.T) {
 		name, md, want string
 	}{
 		{"dropped empty link", "x []() y", "x |y"},
-		{"dropped empty directive", "*0aaa[0 :u ]*", "0aaa[0 |]"},
+		// The directive needs a payload to be a directive at all — a
+		// bare ":u" is prose now (dialect's bare-name rule) and would
+		// leave no junction. An attribute block the kind has no use for
+		// still converts to nothing, which is the junction wanted here.
+		{"dropped empty directive", "*0aaa[0 :u{a=b} ]*", "0aaa[0 |]"},
 		{"run of dropped constructs", "x []() []() y", "x |y"},
 	}
 	for _, tt := range tests {

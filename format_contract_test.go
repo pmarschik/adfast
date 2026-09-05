@@ -160,9 +160,12 @@ func TestHardBreakAtLineStartKeepsItsMeaning(t *testing.T) {
 	}{
 		{
 			// The fuzz repro: the emoji has no shortName to write, so
-			// the break is the paragraph's first rendered content.
+			// the break is the paragraph's first rendered content. The
+			// id attribute is what keeps it a directive at all — a bare
+			// ":emoji" is prose now (dialect's bare-name rule) and would
+			// render its own name before the break.
 			name: "after a directive that renders nothing",
-			md:   ":emoji  \n0",
+			md:   ":emoji{id=x}  \n0",
 			want: "\\\n0\n",
 		},
 		{
@@ -636,53 +639,56 @@ func TestEmailLiteralStaysUnlinkedAcrossFormat(t *testing.T) {
 		want string
 	}{
 		{
-			// The fuzz repro: the empty ':u' normalizes away and leaves the
-			// local part beside the domain, fusing into one literal.
+			// The fuzz repro: the contentless ':u' normalizes away and
+			// leaves the local part beside the domain, fusing into one
+			// literal. The attribute block is what keeps it a directive
+			// — a bare ':u' is prose now (dialect's bare-name rule), and
+			// prose between the halves is what keeps them apart.
 			name: "fused across a dropped directive",
-			md:   "0@A:u.A",
+			md:   "0@A:u{a=b}.A",
 			want: "0\\@A.A\n",
 		},
 		{
 			name: "fused after a word",
-			md:   "x a@b:u.com",
+			md:   "x a@b:u{a=b}.com",
 			want: "x a\\@b.com\n",
 		},
 		{
 			name: "fused inside parentheses",
-			md:   "(a@b:u.com)",
+			md:   "(a@b:u{a=b}.com)",
 			want: "(a\\@b.com)\n",
 		},
 		{
 			// The local part runs out of the node and into the emphasis
 			// closer, which the linkify scan reads as an address byte.
 			name: "fused with an emphasis closer",
-			md:   "*a*@b:u.com",
+			md:   "*a*@b:u{a=b}.com",
 			want: "_a_\\@b.com\n",
 		},
 		{
 			// An address opening on punctuation never linkifies, so the
 			// '@' stays bare.
 			name: "candidate opens on punctuation",
-			md:   ".a@b:u.com",
+			md:   ".a@b:u{a=b}.com",
 			want: ".a@b.com\n",
 		},
 		{
 			// No dot in the domain: not a literal.
 			name: "no domain dot",
-			md:   "a@b:u",
+			md:   "a@b:u{a=b}",
 			want: "a@b\n",
 		},
 		{
 			// A code span ends in a backtick, which is neither an address
 			// byte nor a linkify trigger.
 			name: "after a code span",
-			md:   "`a@b`:u.com",
+			md:   "`a@b`:u{a=b}.com",
 			want: "`a@b`.com\n",
 		},
 		{
 			// Inside a link label the text is atomic: no literal forms.
 			name: "inside a link label",
-			md:   "[a@b:u.com](x)",
+			md:   "[a@b:u{a=b}.com](x)",
 			want: "[a@b.com](x)\n",
 		},
 		{

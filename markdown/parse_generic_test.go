@@ -24,7 +24,11 @@ func TestParseWithGenericDirectives(t *testing.T) {
 		{"container, second name on the same kind", ":::warning\ntext\n:::\n", "warning", "panel"},
 		{"leaf", "::media[alt]{id=x}\n", "media", "media"},
 		{"text", "a :status[Done]{color=green} b", "status", "status"},
-		{"text, no label", "a :status b", "status", "status"},
+		// A payload is what makes the name a directive: dialect guards
+		// its text constructors so a name written alone stays the word
+		// it is spelled as. Attributes are payload, so this one is
+		// promoted with no label at all.
+		{"text, no label", "a :status{color=green} b", "status", "status"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
