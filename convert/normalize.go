@@ -1129,7 +1129,7 @@ func (fn *normalizer) encodeCoreBlock(node ast.Node) ([]encItem, bool) {
 		return normalItem(&ast.Definition{Label: v.Label, URL: v.URL, Title: v.Title}), true
 	case *ast.Code:
 		fn.checkCodeLanguage(v.Lang)
-		return normalItem(&ast.Code{Lang: v.Lang, Value: strings.TrimRight(v.Value, "\n")}), true
+		return normalItem(&ast.Code{Lang: v.Lang, Value: v.Value}), true
 	case *ast.HTML:
 		return normalItem(&ast.HTML{Value: v.Value}), true
 	case *ast.Frontmatter:
