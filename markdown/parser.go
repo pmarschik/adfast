@@ -114,9 +114,23 @@ func NewParser() parser.Parser {
 			// pattern ever saw it. The first letter of each accepted scheme,
 			// in both cases, is therefore the whole list: the pattern itself
 			// is what decides the scheme.
+			//
+			// The SCHEME-LESS "www." pattern is this package's own for the
+			// same reason, and it has to be passed here or the raw
+			// recognizer disagrees with the rest of the package: goldmark's
+			// stock pattern demands a SECOND dot after the prefix, so it
+			// read "www.x" as prose where urlLiteralWWW — the pattern the
+			// decoded-text scan already used — reads it as a literal. The
+			// tree still ended up with the link, because relinkifyTexts put
+			// it back; the RAW SPANS did not, and Source.Autolinks reports
+			// nothing but goldmark's verdict. There is no WWW equivalent of
+			// AllowedProtocols: goldmark's "www." pre-gate is hard-coded and
+			// case-sensitive, which is the whole of the remaining "WWW."
+			// divergence urlLiteralWWW records.
 			extension.NewLinkify(
 				extension.WithLinkifyEmailRegexp(gfmEmailRe),
 				extension.WithLinkifyURLRegexp(urlLiteralAnchoredRe),
+				extension.WithLinkifyWWWRegexp(urlLiteralWWWAnchoredRe),
 				extension.WithLinkifyAllowedProtocols([][]byte{
 					[]byte("h"), []byte("H"), []byte("f"), []byte("F"),
 				}),
