@@ -69,7 +69,27 @@ func SmartLinks(baseURL string) convert.SmartLinks {
 // blockTaskItem DOWNGRADED to a plain taskItem (its block body flattened
 // to inline). Only blockTaskItem is flagged here:
 //   - blockTaskItem: DOWNGRADED to a plain taskItem — the distinct kind
-//     is not preserved.
+//     is not preserved, and the block bodies are CONCATENATED WITH NO
+//     SEPARATOR AT ALL.
+//
+// The separator was measured on a live Cloud site (2026-09-05), because
+// "flattened to inline" leaves a reader guessing which bytes join the
+// pieces. A blockTaskItem whose body is two paragraphs, "FIRSTPARA" and
+// "SECONDPARA", is stored as a taskItem holding two ADJACENT TEXT NODES
+// with nothing between them — not a space, not "\n", not "\n\n", not a
+// hardBreak. The paragraph boundary survives structurally and renders as
+// nothing, so the stored text reads "FIRSTPARASECONDPARA": the last word
+// of one paragraph runs into the first word of the next. A caller that
+// hands Confluence a multi-block task item therefore publishes mangled
+// prose on a save that reports success.
+//
+// The downgrade is a DEFINED behavior of this kind, not schema leniency,
+// which is the second half of the same measurement: a plain taskItem
+// carrying paragraphs is refused outright, with HTTP 400 and
+// "Unsupported node type found inside Task node: paragraph". Confluence
+// knows blockTaskItem and demotes it on purpose. (Re-run the probe with
+// the literal kind "blockTaskItem"; sending taskItem-with-paragraphs
+// answers the other question, not this one.)
 //
 // fontSize is NOT listed: Confluence strips the mark, but adfast retires
 // it entirely (it never produces a fontSize mark — the directive drops to
