@@ -104,6 +104,21 @@ strikethrough. Every one of those is a surface adfast renders, so a rule
 measured on the wrong install lands as a parity regression rather than a
 parity fix.
 
+One consequence is worth stating outright, because it decides whether a
+divergence is a defect at all. The authority's markdown parser predates
+CommonMark and reads `_` exactly as it reads `*`, so it makes emphasis
+out of runs that CommonMark leaves as literal text: it formats
+`foo__bar__baz` to `foo**bar**baz`, `a_b_` to `a*b*`, and `***a***` to
+`**_a_**`. adfast parses with goldmark, which is CommonMark, and so
+agrees with the NEWER prettier at parse time on every one of those. The
+authority's answer there is not a target adfast is missing, it is a
+shape adfast cannot reach from markdown source at all, and rewriting the
+renderer to chase it would mean inventing emphasis the parse never saw.
+What remains reachable on those inputs is the escaping decision for the
+literal `_`, and adfast already matches the authority on it —
+`_bar_baz` renders as `\_bar_baz`, `a _ b` as `a \_ b`. Under the newer
+prettier all four of those read as over-escaping. They are not.
+
 Because the two sit side by side, a measurement quoted in a comment, a
 test, or a commit message must name the version it came from. A note
 that says only "measured against prettier" cannot be re-checked, and the
