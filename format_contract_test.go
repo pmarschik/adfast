@@ -159,13 +159,15 @@ func TestHardBreakAtLineStartKeepsItsMeaning(t *testing.T) {
 		want string
 	}{
 		{
-			// The fuzz repro: the emoji has no shortName to write, so
-			// the break is the paragraph's first rendered content. The
-			// id attribute is what keeps it a directive at all — a bare
-			// ":emoji" is prose now (dialect's bare-name rule) and would
-			// render its own name before the break.
-			name: "after a directive that renders nothing",
-			md:   ":emoji{id=x}  \n0",
+			// The fuzz repro: an empty link renders nothing, so the
+			// break is the paragraph's first rendered content. The node
+			// used to be ':emoji{id=x}', which is kept now — the format
+			// leg may not delete a directive whose payload the kind
+			// cannot read — so the drop this row needs comes from the
+			// one ADF itself motivates: a link with no content has no
+			// text for the mark to sit on.
+			name: "after a node that renders nothing",
+			md:   "[](x)  \n0",
 			want: "\\\n0\n",
 		},
 		{
@@ -639,56 +641,63 @@ func TestEmailLiteralStaysUnlinkedAcrossFormat(t *testing.T) {
 		want string
 	}{
 		{
-			// The fuzz repro: the contentless ':u' normalizes away and
-			// leaves the local part beside the domain, fusing into one
-			// literal. The attribute block is what keeps it a directive
-			// — a bare ':u' is prose now (dialect's bare-name rule), and
-			// prose between the halves is what keeps them apart.
-			name: "fused across a dropped directive",
-			md:   "0@A:u{a=b}.A",
+			// The fuzz repro: an empty link normalizes away and leaves
+			// the local part beside the domain, fusing into one literal.
+			// The vanishing node used to be a contentless ':u{a=b}',
+			// which is kept now — the format leg may not delete a
+			// directive whose payload the kind cannot read — so the drop
+			// this row needs comes from the one ADF itself motivates: a
+			// link with no content has no text for the mark to sit on.
+			name: "fused across a dropped node",
+			md:   "0@A[](x).A",
 			want: "0\\@A.A\n",
 		},
 		{
 			name: "fused after a word",
-			md:   "x a@b:u{a=b}.com",
+			md:   "x a@b[](x).com",
 			want: "x a\\@b.com\n",
 		},
 		{
 			name: "fused inside parentheses",
-			md:   "(a@b:u{a=b}.com)",
+			md:   "(a@b[](x).com)",
 			want: "(a\\@b.com)\n",
 		},
 		{
 			// The local part runs out of the node and into the emphasis
 			// closer, which the linkify scan reads as an address byte.
 			name: "fused with an emphasis closer",
-			md:   "*a*@b:u{a=b}.com",
+			md:   "*a*@b[](x).com",
 			want: "_a_\\@b.com\n",
 		},
 		{
 			// An address opening on punctuation never linkifies, so the
 			// '@' stays bare.
 			name: "candidate opens on punctuation",
-			md:   ".a@b:u{a=b}.com",
+			md:   ".a@b[](x).com",
 			want: ".a@b.com\n",
 		},
 		{
 			// No dot in the domain: not a literal.
 			name: "no domain dot",
-			md:   "a@b:u{a=b}",
+			md:   "a@b[](x)",
 			want: "a@b\n",
 		},
 		{
 			// A code span ends in a backtick, which is neither an address
 			// byte nor a linkify trigger.
 			name: "after a code span",
-			md:   "`a@b`:u{a=b}.com",
+			md:   "`a@b`[](x).com",
 			want: "`a@b`.com\n",
 		},
 		{
-			// Inside a link label the text is atomic: no literal forms.
+			// Inside a link label the text is atomic: no literal forms,
+			// so no escape is written even though the same bytes fuse
+			// into one in prose (the first row above). The label needs
+			// no dropped node to bring the halves together, and it may
+			// not have one: an empty link inside a link label stops the
+			// outer brackets being a link at all.
 			name: "inside a link label",
-			md:   "[a@b:u{a=b}.com](x)",
+			md:   "[a@b.com](x)",
 			want: "[a@b.com](x)\n",
 		},
 		{

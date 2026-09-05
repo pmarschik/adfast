@@ -423,12 +423,70 @@ func (fn *normalizer) flattenInline(n ast.Node, ctx fmtMarks) []fmtAtom {
 		return atoms
 	}
 	if atoms, ok := fn.flattenDialectMarkInline(n, ctx); ok {
-		return atoms
+		return fn.keepEmptiedDialectInline(n, atoms, ctx)
 	}
 	if atoms, ok := flattenDialectAtomInline(n); ok {
-		return atoms
+		return fn.keepEmptiedDialectInline(n, atoms, ctx)
 	}
 	return fn.flattenForeignInline(n, ctx)
+}
+
+// keepEmptiedDialectInline is the format leg's totality backstop over the
+// typed inline dialect kinds: a kind whose canonical re-derivation
+// produced NOTHING keeps the node the author wrote instead of vanishing.
+//
+// A typed kind reads its payload from the places its ADF node has room
+// for, and a directive that spells none of them re-derives to nothing:
+// dialect.Status takes its text from the label, so ":status{color=red}"
+// and ":status{text=Done color=green}" both have no text to encode;
+// ":u{a=b}" is a mark with no content to mark; ":emoji{id=x}" names no
+// shortName; ":mention{id=…}" no name; ":date{x=1}" no timestamp. Every
+// one of them formatted to nothing at all — "see :status{text=Done
+// color=green} in the log" came back as "see  in the log", a formatter
+// deleting an author's words, which is the one thing NormalizeFormat
+// exists to forbid.
+//
+// The fix is the leg's own rule applied consistently rather than any new
+// grammar. A directive name the dialect does NOT know already survives
+// this leg spelled exactly as written — ":foo{a=b}" formats to
+// ":foo{a="b"}" — and the bare-name rule (dialect's bareDirective)
+// already degrades a payload-LESS known name back to the word ":name".
+// Both say the same thing: what the formatter cannot turn into a node it
+// leaves as the author's own text. This is the remaining case, a payload
+// the kind cannot read, and the node itself is that text: every dialect
+// kind renders its directive form from its raw attribute map, so keeping
+// it writes back what was parsed, down to the attribute the kind ignores.
+// prettier 3.8.1, which has no directive grammar at all, likewise leaves
+// every one of these shapes untouched.
+//
+// Reading the ignored attributes instead was the alternative, and it
+// cannot carry the rule: ADF gives a mark like underline no attribute
+// that could hold content, so ":u{a=b}" would still have to degrade.
+// Where ADF DOES define an attribute for the text (status, mention and
+// placeholder all have attrs.text), the directive grammar spells it as
+// the label and the ADF decode emits it that way, so accepting a second
+// spelling would be new grammar, and it would promote an author's prose
+// into a chip — the opposite mistake from deleting it, and not one this
+// contract asks for.
+//
+// The keep is for the ENCODE leg's counterpart to refuse: Normalize
+// drops, because a directive that re-derives to nothing has no ADF node
+// to become, and ToADF drops it either way — which is what keeps
+// ToADF(NormalizeFormat(n)) == ToADF(n) true across this rule.
+//
+// Only a kind that declares an inline form takes the keep, for
+// flattenForeignInline's reason: the block dialect kinds listed in
+// flattenDialectAtomInline answer with no atoms on purpose, because they
+// have no inline ADF form and no inline markdown spelling either, and
+// they must go on dropping.
+func (fn *normalizer) keepEmptiedDialectInline(n ast.Node, atoms []fmtAtom, ctx fmtMarks) []fmtAtom {
+	if len(atoms) > 0 || !fn.keepGenericDirectives {
+		return atoms
+	}
+	if _, inline := n.(extension.InlineLead); !inline {
+		return atoms
+	}
+	return []fmtAtom{{node: n, m: ctx}}
 }
 
 // flattenLeafInline handles the core inline kinds that become one atom:
