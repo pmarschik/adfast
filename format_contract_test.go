@@ -628,6 +628,129 @@ func TestURLLiteralEndsWhereTheParserEndsIt(t *testing.T) {
 	}
 }
 
+// TestEmphasisDelimiterDoesNotBecomeAHost pins the shape where the formatter's
+// own delimiter choice fed the autolink recognizer, which is how a HOST RULE
+// turned into CONTENT LOSS.
+//
+// The fuzz repro is eight bytes. "*www.*.A" is emphasis around "www.", the
+// formatter prefers '_' as the emphasis delimiter, and the output "_www._.A"
+// holds a "www." literal whose host is "www._.A". Before the host rule the
+// re-parse read that literal, so the emphasis was GONE and a link the author
+// never wrote was in its place — and the second format then escaped the
+// delimiter, so the document did not even settle:
+//
+//	once   "_www._.A\n"
+//	twice  "\\_[www.\\_.A](http://www._.A)\n"
+//
+// The rule that refuses it is micromark's own: no underscore in either of the
+// host's last two segments, which here are "_" and "A" (see
+// markdown.urlLiteralHostAccepted). The two rows after it are the company that
+// makes this a host rule rather than a ban on the delimiter — a real host still
+// links, inside emphasis and out.
+func TestEmphasisDelimiterDoesNotBecomeAHost(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			name: "the delimiter lands in the host",
+			md:   "*www.*.A",
+			want: "_www._.A\n",
+		},
+		{
+			name: "emphasis around a real host",
+			md:   "*www.a.A*",
+			want: "_[www.a.A](http://www.a.A)_\n",
+		},
+		{
+			name: "the same host with no emphasis",
+			md:   "www.a.A",
+			want: "[www.a.A](http://www.a.A)\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
+// TestEscapedUnderscoreInAHostDoesNotLink is the other half of the host rule's
+// format leg, and it is the formatter's OWN escape that opens it.
+//
+// "https://例_x" is prose, because the host holds an underscore. The formatter
+// escapes an underscore after a non-ASCII letter, so it writes
+// "https://例\_x" — and a backslash is not a host byte, so the re-parse sees
+// the host "例", which is dotless and underscore-free and would link. The
+// document would gain a link to "https://例" by being formatted, and the
+// address is not even the one in the text.
+//
+// The rule therefore takes its verdict from the escape-free view of the
+// candidate (see markdown.urlLiteralHostAcceptedAt). The rows without a
+// backslash are the company that says this is about reading the host whole and
+// not about refusing escapes.
+func TestEscapedUnderscoreInAHostDoesNotLink(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		md   string
+		want string
+	}{
+		{
+			// The formatter writes the escape here, so the second format
+			// pass is the one that would see a link.
+			name: "an underscore after a non-ASCII host letter",
+			md:   "see https://例_x here",
+			want: "see https://例\\_x here\n",
+		},
+		{
+			// The authored spelling of the same address, which must reach
+			// the same verdict: an escape does not decide whether a URL is
+			// a link.
+			name: "an authored escape in the same host",
+			md:   "see https://例\\_x here",
+			want: "see https://例\\_x here\n",
+		},
+		{
+			name: "an authored escape in an ASCII host",
+			md:   "see https://ex\\_x here",
+			want: "see https://ex_x here\n",
+		},
+		{
+			name: "the ASCII host with no escape",
+			md:   "see https://ex_x here",
+			want: "see https://ex_x here\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := fmtMD(tt.md)
+			if got != tt.want {
+				t.Fatalf("format = %q, want %q", got, tt.want)
+			}
+			if twice := fmtMD(got); twice != got {
+				t.Fatalf("not idempotent:\n once:  %q\n twice: %q", got, twice)
+			}
+			if adfGot, adfWant := marshalADF(t, got), marshalADF(t, tt.md); adfGot != adfWant {
+				t.Errorf("format changed meaning:\n adf(fmt): %s\n adf(src): %s", adfGot, adfWant)
+			}
+		})
+	}
+}
+
 // TestEmailLiteralStaysUnlinkedAcrossFormat pins the escape the formatter
 // writes where its own output would otherwise re-parse as a GFM email
 // autolink literal. Prettier, whose text escaping the formatter mirrors,

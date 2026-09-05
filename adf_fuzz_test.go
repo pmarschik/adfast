@@ -48,6 +48,16 @@ var fuzzSeeds = []string{
 	"\\`bisearch:partner-sync-opt-out\\`",
 	// autolinks
 	"See <https://example.com> for details.",
+	// The formatter's emphasis delimiter landing inside an autolink
+	// literal's host: "_www._.A" holds a "www." literal whose host is
+	// "www._.A", so before the host rule the re-parse ate the emphasis and
+	// invented a link (see TestEmphasisDelimiterDoesNotBecomeAHost).
+	"*www.*.A",
+	// The same delimiter, landing in a domain that is nothing BUT
+	// punctuation: "_www.._" holds a literal whose domain is ".._", which
+	// trims to empty. A gate that trimmed the whole literal instead of the
+	// domain saw the clean host "www" and linked it.
+	"*www..*",
 	// task list
 	"- [x] done\n- [ ] todo",
 	// hard break

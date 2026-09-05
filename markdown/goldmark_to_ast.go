@@ -104,7 +104,7 @@ func mergeFoldRun(nodes []ast.Node, start, end int) (merged string, spans []dirS
 // whole — and reports whether it changed anything.
 func dissolveSpannedDirectives(nodes []ast.Node, merged string, spans []dirSpan) bool {
 	changed := false
-	for _, loc := range urlLiteralRe.FindAllStringIndex(merged, -1) {
+	for _, loc := range findURLLiterals(merged) {
 		// The literal ends where the parser would end it, not where the
 		// regexp does (see trimURLLiteralEnd).
 		stop := loc[0] + len(trimURLLiteralEnd(merged[loc[0]:loc[1]]))
@@ -208,7 +208,7 @@ func rawEscapeAt(raw string, i int, c byte) bool {
 // boundaries (start of text or after whitespace / '*' '_' '~' '(').
 func splitURLLiterals(node *ast.Text) []ast.Node {
 	value := node.Value
-	locs := urlLiteralRe.FindAllStringIndex(value, -1)
+	locs := findURLLiterals(value)
 	if locs == nil {
 		return []ast.Node{node}
 	}

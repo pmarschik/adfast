@@ -1,6 +1,10 @@
 package markdown
 
-import "regexp"
+import (
+	"bytes"
+	"regexp"
+	"strings"
+)
 
 // WHICH BYTES ARE A BARE URL. Three code paths in this package have to agree
 // on that answer or a round trip is unstable: goldmark's linkify extension
@@ -32,6 +36,12 @@ import "regexp"
 // fails it. So the two patterns here keep the same split: the RAW-SOURCE
 // parsers take urlLiteralAnchoredRe, whose host may be dotless, and the
 // DECODED-TEXT scan takes urlLiteralRe, whose host may not.
+//
+// THE PATTERNS ARE NOT THE WHOLE ANSWER. urlLiteralHostAccepted, at the foot
+// of this file, is the second half of it: micromark's domain rule refuses an
+// underscore in either of the host's last two dot-separated segments, and
+// that is a scanner over the segments rather than a character class, so no
+// pattern here can carry it. Every caller runs the pattern and then the gate.
 //
 // ONE KNOWN GAP, left open deliberately because closing it widens past what
 // was measured: THE PATH. goldmark's path must open on '/', '#' or '?' and
@@ -94,8 +104,25 @@ const (
 	// goldmark's ASCII `[a-zA-Z]+` stopped at "ex.co" and emitted THAT as the
 	// href, which is the one shape in this file where the wrong URL went out
 	// rather than none.
+	//
+	// THE TLD CLASS ALSO TAKES '_', and that byte is there for the GATE and
+	// not for the pattern: urlLiteralHostAccepted refuses every host with an
+	// underscore in its last two segments, so a TLD that uses this byte is
+	// rejected as a whole address rather than linked. Without it the pattern
+	// stopped at the underscore and the gate then saw a CLEAN shorter host —
+	// "https://ex.com_x" matched "https://ex.com" and went out as that href,
+	// where the reference reads the whole thing as prose. Reaching the
+	// underscore is what lets the gate see it.
+	//
+	// IT IS ALSO WHY THE GATE STRIPS THE "www." PREFIX BEFORE IT TRIMS. The
+	// byte lets this alternative match a domain that is nothing but
+	// punctuation — "www.._" is the prefix, an empty segment and the TLD "_"
+	// — and trimming that trailing run off the WHOLE literal leaves "www",
+	// which has no underscore left to refuse. Found by the format fuzzer:
+	// "*www..*" formats to "_www.._" and linked "http://www". The gate reads
+	// the domain the reference reads, so an empty one is refused there.
 	urlLiteralHostDotted = urlLiteralHostByte + `{0,256}\.` +
-		`(?:[a-zA-Z]|` + urlLiteralHostRune + `)+(?::\d+)?`
+		`(?:[a-zA-Z_]|` + urlLiteralHostRune + `)+(?::\d+)?`
 	// urlLiteralHostByte is goldmark's own host character class, spelled once
 	// so the three host alternatives below cannot drift apart. The bytes are
 	// goldmark's, unchanged.
@@ -164,12 +191,10 @@ const (
 	// pattern outrun the decoded-text one and break the same-extent invariant
 	// TestURLLiteralRawPatternIsTheWiderOne states.
 	//
-	// AN UNDERSCORE IN THE LAST TWO SEGMENTS is the one shape this alternative
-	// takes and the reference does not ("https://例_x"): micromark's
-	// domainAfter refuses it. The ASCII alternatives have carried the same
-	// hole since goldmark ("https://ex.com_x" is prose in both halves of the
-	// reference and "https://ex.com" here), so modeling the rule belongs to
-	// that divergence and not to this one.
+	// AN UNDERSCORE IN THE LAST TWO SEGMENTS is refused for this alternative
+	// as for the two ASCII ones, and not here: the pattern still matches
+	// "https://例_x" and urlLiteralHostAccepted is what rejects it. See that
+	// function for why the rule cannot live in a pattern.
 	urlLiteralHostUnicodeLed = urlLiteralHostRune +
 		`(?:` + urlLiteralHostByte + `|` + urlLiteralHostRune + `)*`
 	// urlLiteralHost is the raw-source host rule, and the widening: on top of
@@ -205,7 +230,10 @@ const (
 	// "See httpſ://ex.com/x end" comes back unlinked. Neither is the scheme a
 	// candidate for ast.NormalizeLabel's fold, which is a Unicode FULL fold
 	// over arbitrary label text and would widen this gate further still.
-	urlLiteralScheme = `(?:[hH][tT][tT][pP][sS]?|[fF][tT][pP])://`
+	// The `{2}` is the same per-letter class repeated, not a shortcut past
+	// one: gocritic's regexpSimplify asks for it, and it is the spelling and
+	// not the rule that changes.
+	urlLiteralScheme = `(?:[hH][tT]{2}[pP][sS]?|[fF][tT][pP])://`
 	// urlLiteralWWW is the scheme-less "www." literal. goldmark completes the
 	// scheme for it, so it is not a URL as written, and every caller of this
 	// package treats it separately.
@@ -318,3 +346,176 @@ var urlLiteralWWWAnchoredRe = regexp.MustCompile(`^(?:` + urlLiteralWWW + `)`)
 // bytes right after its ':'.
 var urlLiteralAnchoredRe = regexp.MustCompile(
 	`^(?:` + urlLiteralScheme + urlLiteralHost + urlLiteralPath + `)`)
+
+// urlLiteralSchemeRe strips the scheme off a candidate so the host can be
+// read. It is the scheme pattern above and nothing else, anchored, so the
+// two cannot drift; a plain search for "://" would also find one inside a
+// path ("www.x/a://b").
+var urlLiteralSchemeRe = regexp.MustCompile(`^(?:` + urlLiteralScheme + `)`)
+
+// urlLiteralHostAccepted reports whether a candidate literal — the whole
+// address the patterns above matched, scheme or "www." prefix included — has
+// a host micromark's domain production accepts: NO UNDERSCORE IN EITHER OF
+// THE LAST TWO dot-separated segments.
+//
+// WHY A FUNCTION AND NOT A PATTERN, which is the whole reason this rule sat
+// unmodeled while the widenings around it landed. The rule is a scanner in
+// both halves of the reference — micromark's domainAfter counts underscores
+// per segment as it consumes the domain, and mdast-util's isCorrectDomain
+// splits the host on '.' and tests the last two parts — and it REJECTS AN
+// ADDRESS RATHER THAN SHORTENING ONE. A character class cannot do that. Spell
+// the segments out in the pattern instead and the engine simply matches a
+// shorter host: `https://ex_x` would stop before the underscore and go out as
+// the href `https://ex`, and `www.a_b.com` as `http://www.a`, which replaces a
+// wrong verdict with a wrong ADDRESS. Go's regexp has no lookahead to say
+// "and nothing more of the host follows", so the verdict has to be taken
+// after the match, once the whole candidate is in hand.
+//
+// IT IS NOT A PARITY NIT. The same hole loses content on the format leg, and
+// that is what makes it worth the second pass: the formatter may pick '_' as
+// the emphasis delimiter, '_' is a legal host byte, and the two decisions
+// compose. "*www.*.A" formats to "_www._.A", whose bytes hold a "www."
+// literal with the host "www._.A" — so the re-parse links it, the emphasis is
+// gone, and a link the author never wrote is in the document. The host's last
+// two segments are "_" and "A", so this rule is exactly what refuses it.
+//
+// THE END GOLDMARK WOULD PICK IS THE END TESTED, via isURLTrailPunct: the
+// linkify extension trims a trailing run of `? ! . , : * _ ~` off its match,
+// and micromark's domain does the same thing one step earlier — at a '.' or
+// '_' it checks whether a trailing-punctuation run to the end of the URL
+// starts there and ends the domain before it. So "https://ex_" is the host
+// "ex" to both, and testing the untrimmed match would refuse an address both
+// recognizers link.
+//
+// THE TRIM IS WHY THE DOMAIN IS READ THE REFERENCE'S WAY — the scheme or the
+// "www." prefix off the FRONT first, and a trailing run gone only when no path
+// follows. Both halves matter, and each was measured:
+//
+//   - Trimming the whole literal first lets the run eat back into the prefix.
+//     "www.._" is a match — the TLD class takes '_' — and trimming it whole
+//     leaves "www", a clean host with no underscore in sight, so the address
+//     linked as "http://www". Stripping the prefix first leaves the domain
+//     ".._", which trims to nothing, and an empty domain is no domain: neither
+//     recognizer accepts one.
+//   - Trimming a literal that HAS a path would refuse the reference's own
+//     answer in reverse. micromark ends the domain before a punctuation run
+//     only when the run reaches the END OF THE URL, so "https://ex_/y" keeps
+//     its underscore and is prose, while "https://ex_" loses it and links.
+func urlLiteralHostAccepted(literal string) bool {
+	host := literal
+	switch m := urlLiteralSchemeRe.FindString(host); {
+	case m != "":
+		host = host[len(m):]
+	case bytes.HasPrefix([]byte(host), urlLiteralWWWPrefix):
+		host = host[len(urlLiteralWWWPrefix):]
+	}
+	// The host ends where urlLiteralPath may open, and the trim applies to the
+	// END OF THE URL — so a literal that HAS a path is not trimmed at all.
+	// "https://ex_/y" keeps its underscore in the last segment, exactly as
+	// micromark's domain does when the punctuation run does not reach the end.
+	if i := strings.IndexAny(host, "/#?"); i >= 0 {
+		host = host[:i]
+	} else {
+		// isURLTrailPunct is goldmark's own trailing set, applied here with
+		// one difference that matters: trimURLLiteralEnd stops at the first
+		// byte, because the linkify extension must leave SOME address behind,
+		// while a domain that is nothing but punctuation is no domain at all
+		// and the reference refuses it. Going all the way to empty is what
+		// tells the two apart.
+		i := len(host)
+		for i > 0 && isURLTrailPunct(host[i-1]) {
+			i--
+		}
+		host = host[:i]
+	}
+	if host == "" {
+		return false
+	}
+	last := host
+	rest := ""
+	if i := strings.LastIndexByte(host, '.'); i >= 0 {
+		last, rest = host[i+1:], host[:i]
+	}
+	if strings.Contains(last, "_") {
+		return false
+	}
+	if i := strings.LastIndexByte(rest, '.'); i >= 0 {
+		rest = rest[i+1:]
+	}
+	return !strings.Contains(rest, "_")
+}
+
+// urlLiteralCandidate returns the raw-source literal at the head of line, nil
+// for none. The order is goldmark's own: the schemed pattern first, the
+// scheme-less "www." one only when that found nothing.
+func urlLiteralCandidate(line []byte) []byte {
+	if m := urlLiteralAnchoredRe.Find(line); m != nil {
+		return m
+	}
+	if bytes.HasPrefix(line, urlLiteralWWWPrefix) {
+		return urlLiteralWWWAnchoredRe.Find(line)
+	}
+	return nil
+}
+
+// urlLiteralWWWPrefix is goldmark's own scheme-less pre-gate, spelled once.
+var urlLiteralWWWPrefix = []byte("www.")
+
+// urlLiteralHostEscapable lists the ASCII-punctuation bytes urlLiteralHostByte
+// takes — the only bytes a backslash can hide that the host would otherwise
+// have consumed.
+const urlLiteralHostEscapable = `-@:%._+~#=`
+
+// urlLiteralUnescaped returns line with every backslash that hides a host byte
+// removed. It is a VIEW FOR A VERDICT and never for an extent: the offsets
+// shift, so nothing may be spliced from it.
+func urlLiteralUnescaped(line []byte) []byte {
+	out := make([]byte, 0, len(line))
+	for i := range line {
+		if line[i] == '\\' && i+1 < len(line) &&
+			strings.IndexByte(urlLiteralHostEscapable, line[i+1]) >= 0 {
+			continue
+		}
+		out = append(out, line[i])
+	}
+	return out
+}
+
+// urlLiteralHostAcceptedAt reports whether the literal of matchLen bytes at the
+// head of line has a host the rule accepts, and it takes the verdict from the
+// ESCAPE-FREE VIEW whenever a backslash is what ended the match.
+//
+// AN ESCAPE MUST NOT DECIDE WHETHER A URL IS A LINK — the principle
+// escapedLinkifyParser states for an escape in FRONT of a literal, which the
+// host rule makes reachable from INSIDE one. A backslash is not a host byte,
+// so it ends the host wherever it sits, and the shortened host it leaves can
+// pass a rule the whole one fails. Measured, without this view: the formatter
+// renders the plain text "https://例_x" as "https://例\_x" (it escapes an
+// underscore after a non-ASCII letter), the re-parse reads the host as "例",
+// the rule accepts a dotless host, and a link to "https://例" appears in a
+// document whose source had none. Same bytes, two verdicts, and the format leg
+// between them.
+func urlLiteralHostAcceptedAt(line []byte, matchLen int) bool {
+	cand := line[:matchLen]
+	if matchLen < len(line) && line[matchLen] == '\\' {
+		if v := urlLiteralCandidate(urlLiteralUnescaped(line)); v != nil {
+			cand = v
+		}
+	}
+	return urlLiteralHostAccepted(string(cand))
+}
+
+// findURLLiterals is urlLiteralRe.FindAllStringIndex with the host gate
+// applied, which is the form the DECODED-TEXT scan needs. A rejected match is
+// dropped whole rather than retried shorter — that is the reference's own
+// behavior, whose transform returns false for the match instead of trimming
+// the domain and looking again.
+func findURLLiterals(s string) [][]int {
+	var out [][]int
+	for _, loc := range urlLiteralRe.FindAllStringIndex(s, -1) {
+		if urlLiteralHostAccepted(s[loc[0]:loc[1]]) {
+			out = append(out, loc)
+		}
+	}
+	return out
+}
