@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"bytes"
 	"regexp"
 	"strings"
 
@@ -21,8 +22,9 @@ import (
 // delimiters (space, *, _, ~, (). This parser fills the gap so that
 // normalisation round-trips produce the same output as remark-gfm.
 //
-// Trigger fires on ':'. When ':' is immediately followed by https://, http://,
-// or ftp://, the ':' is emitted as text and the URL is returned as an AutoLink.
+// Trigger fires on ':'. When ':' is immediately followed by a bare URL literal
+// — schemed or scheme-less "www." — the ':' is emitted as text and the literal
+// is returned as an AutoLink.
 type colonURLParser struct{}
 
 func (*colonURLParser) Trigger() []byte { return []byte{':'} }
@@ -37,21 +39,34 @@ func (*colonURLParser) Parse(parent gast.Node, block text.Reader, pc parser.Cont
 		return nil
 	}
 	rest := line[1:]
-	// The anchored pattern is the whole gate. A scheme pre-check used to sit
-	// in front of it, spelled with three case-SENSITIVE byte prefixes, and
-	// it silently narrowed this parser back below urlLiteralAnchoredRe: the
-	// pattern accepts "HTTPS://" and the pre-check dropped it first.
-	m := urlLiteralAnchoredRe.FindIndex(rest)
-	if len(m) == 0 || m[0] != 0 {
+	// The anchored patterns are the whole gate. A scheme pre-check used to
+	// sit in front of them, spelled with three case-SENSITIVE byte prefixes,
+	// and it silently narrowed this parser back below urlLiteralAnchoredRe:
+	// the pattern accepts "HTTPS://" and the pre-check dropped it first.
+	//
+	// BOTH SHAPES, not the schemed one alone. urlLiteralCandidate runs the
+	// scheme-less "www." pattern when the schemed one finds nothing, in
+	// goldmark's own order. Reading only the schemed pattern left this byte
+	// half-served — measured against the frozen reference, "z:www.a.b c"
+	// comes back as "z:[www.a.b](http://www.a.b) c" while "z:http://a.b c"
+	// already linked here.
+	m := urlLiteralCandidate(rest)
+	if m == nil {
 		return nil
 	}
 	// The host gate is the second half of the pattern (see
 	// urlLiteralHostAccepted): a host with an underscore in either of its
 	// last two segments is not a literal at all, here as in the reference.
-	if !urlLiteralHostAcceptedAt(rest, m[1]) {
+	if !urlLiteralHostAcceptedAt(rest, len(m)) {
 		return nil
 	}
-	urlLen := m[1]
+	// The literal ends where the parser would end it, not where the pattern
+	// does (see trimURLLiteralEnd).
+	lit := trimURLLiteralEnd(string(m))
+	if lit == "" {
+		return nil
+	}
+	urlLen := len(lit)
 	// Emit the ':' as a text segment, then return the URL as an autolink.
 	colonSeg := segment.WithStop(segment.Start + 1)
 	gast.MergeOrAppendTextSegment(parent, colonSeg)
@@ -59,7 +74,13 @@ func (*colonURLParser) Parse(parent gast.Node, block text.Reader, pc parser.Cont
 	block.Advance(1 + urlLen)
 	urlStart := segment.Start + 1
 	textNode := gast.NewTextSegment(text.NewSegment(urlStart, urlStart+urlLen))
-	return gast.NewAutoLink(gast.AutoLinkURL, textNode)
+	link := gast.NewAutoLink(gast.AutoLinkURL, textNode)
+	if hasWWWPrefix([]byte(lit)) {
+		// The scheme goldmark completes for its own www branch; without it
+		// AutoLink.URL reports a schemeless, relative address.
+		link.Protocol = []byte("http")
+	}
+	return link
 }
 
 // angleAutoLinkParser wraps goldmark's core autolink parser ('<url>' /
@@ -140,7 +161,17 @@ type escapedLinkifyParser struct{ inner parser.InlineParser }
 // host gate included, so an escape cannot buy a literal the unescaped
 // spelling is refused.
 func newEscapedLinkifyParser(opts ...extension.LinkifyOption) parser.InlineParser {
-	return &escapedLinkifyParser{inner: newLinkifyHostGate(extension.NewLinkifyParser(opts...))}
+	return &escapedLinkifyParser{inner: newLinkifyRecognizer(opts...)}
+}
+
+// newLinkifyRecognizer builds the linkify parser this package registers: the
+// stock one, the host gate in front of it, and the mixed-case "www." branch in
+// front of that. Spelled once because two registrations need it — the one
+// NewParser makes and the second instance escapedLinkifyParser delegates to —
+// and an escape must not decide whether a URL is a link, so both need the same
+// stack.
+func newLinkifyRecognizer(opts ...extension.LinkifyOption) parser.InlineParser {
+	return newWWWCaseLinkifyParser(newLinkifyHostGate(extension.NewLinkifyParser(opts...)))
 }
 
 // linkifyBoundaryBytes is goldmark's linkify trigger set. Its Parse advances
@@ -187,6 +218,107 @@ func (p *linkifyHostGate) Parse(parent gast.Node, block text.Reader, pc parser.C
 		return nil
 	}
 	return p.inner.Parse(parent, block, pc)
+}
+
+// wwwCaseLinkifyParser linkifies a scheme-less "www." literal whose prefix is
+// not spelled in lowercase, which goldmark's linkify extension cannot reach.
+//
+// THE PREFIX IS A CASE RULE IN THE REFERENCE, and it was a case-sensitive byte
+// compare here. Measured against the frozen reference, whole bodies:
+//
+//	"see WWW.ex.com b"   ref links "http://WWW.ex.com"   here prose
+//	"see WWW.x b"        ref links "http://WWW.x"        here prose
+//	"see Www.Ex.Com b"   ref links "http://Www.Ex.Com"   here prose
+//
+// Both of the reference's recognizers fold the prefix: micromark's tokenizer
+// lowercases before it tests, and mdast-util-gfm-autolink-literal's transform
+// matches `www.` with /i. So this is a link-versus-text divergence with a
+// payload difference — a push sent prose where the reference sends a link —
+// and the renderer's own defusing rule already treated the uppercase spelling
+// as dangerous ("see WWW.ex.com b" rendered "see WWW\.ex.com b", an escape
+// for a link that never formed).
+//
+// WHY GOLDMARK CANNOT: its linkify parser reaches the WWW pattern only through
+// `if m == nil && bytes.HasPrefix(line, domainWWW)`, where domainWWW is the
+// package-level `[]byte("www.")`. There is no option for it, unlike the
+// schemed branch's AllowedProtocols pre-gate, which linkifyOptions already
+// opens for both cases. So the pattern can be widened all it likes and the
+// stock parser will never be handed a "WWW." to run it on.
+//
+// IT CLAIMS ONLY WHAT THE PRE-GATE REFUSES. A lowercase "www." is handed
+// straight to the wrapped parser, so every literal that linked before still
+// takes goldmark's own path, at goldmark's own extent. That is what keeps this
+// from being a second recognizer: the pattern (urlLiteralWWWAnchoredRe), the
+// end-trim (trimURLLiteralEnd, which is goldmark's own trim spelled out) and
+// the host gate (urlLiteralHostAcceptedAt) are the ones the rest of the
+// package runs.
+//
+// ONE REGISTRATION, NOT TWO, and that is deliberate rather than tidy.
+// goldmark sorts its inline parsers with sort.Slice, which is not stable, so
+// two parsers registered at the same priority with the same trigger set would
+// run in an unspecified order. Wrapping the gate puts the two in a fixed one.
+type wwwCaseLinkifyParser struct{ inner parser.InlineParser }
+
+// newWWWCaseLinkifyParser wraps a linkify parser with the mixed-case "www."
+// branch.
+func newWWWCaseLinkifyParser(inner parser.InlineParser) parser.InlineParser {
+	return &wwwCaseLinkifyParser{inner: inner}
+}
+
+func (p *wwwCaseLinkifyParser) Trigger() []byte { return p.inner.Trigger() }
+
+func (p *wwwCaseLinkifyParser) Parse(parent gast.Node, block text.Reader, pc parser.Context) gast.Node {
+	if n := p.parseMixedCaseWWW(parent, block, pc); n != nil {
+		return n
+	}
+	return p.inner.Parse(parent, block, pc)
+}
+
+// parseMixedCaseWWW returns the autolink for a "www." literal goldmark's
+// lowercase pre-gate refuses, nil for anything else. It never advances the
+// reader on the nil path, so the caller may delegate straight afterwards.
+func (*wwwCaseLinkifyParser) parseMixedCaseWWW(parent gast.Node, block text.Reader, pc parser.Context) gast.Node {
+	if pc.IsInLinkLabel() {
+		return nil
+	}
+	line, segment := block.PeekLine()
+	consumes, start := 0, segment.Start
+	// goldmark's own boundary step: the trigger byte is not part of the
+	// address, and the literal begins one byte later. A line head has no
+	// boundary byte to skip.
+	if len(line) > 0 && strings.IndexByte(linkifyBoundaryBytes, line[0]) >= 0 {
+		consumes, start, line = 1, start+1, line[1:]
+	}
+	// The lowercase spelling is goldmark's, and it keeps it. Only the
+	// spellings the pre-gate drops are this parser's.
+	if !hasWWWPrefix(line) || bytes.HasPrefix(line, urlLiteralWWWPrefix) {
+		return nil
+	}
+	// A schemed literal wins over the scheme-less one, exactly as it does in
+	// goldmark's own order — "wwW.x" is not a scheme, but the check costs
+	// nothing and keeps the two orders one order.
+	if urlLiteralAnchoredRe.Match(line) {
+		return nil
+	}
+	m := urlLiteralWWWAnchoredRe.Find(line)
+	if m == nil || !urlLiteralHostAcceptedAt(line, len(m)) {
+		return nil
+	}
+	lit := trimURLLiteralEnd(string(m))
+	if lit == "" {
+		return nil
+	}
+	if consumes != 0 {
+		gast.MergeOrAppendTextSegment(parent, segment.WithStop(segment.Start+1))
+	}
+	block.Advance(consumes + len(lit))
+	addr := gast.NewTextSegment(text.NewSegment(start, start+len(lit)))
+	link := gast.NewAutoLink(gast.AutoLinkURL, addr)
+	// The scheme goldmark completes for its own www branch. AutoLink.URL
+	// prepends it, which is what makes Source.Autolinks report the same
+	// Target shape for both spellings.
+	link.Protocol = []byte("http")
+	return link
 }
 
 func (*escapedLinkifyParser) Trigger() []byte { return []byte{'\\'} }
@@ -325,9 +457,8 @@ func NewParser() parser.Parser {
 				// Extend does nothing else — one AddOptions with one inline
 				// parser at 999 — so this registration is the whole of it.
 				// See linkifyOptions for why every pattern here is this
-				// package's own.
-				util.Prioritized(newLinkifyHostGate(
-					extension.NewLinkifyParser(linkifyOptions()...)), 999),
+				// package's own, and newLinkifyRecognizer for what wraps it.
+				util.Prioritized(newLinkifyRecognizer(linkifyOptions()...), 999),
 				util.Prioritized(directive.NewTextDirectiveParser(NewParser), 800),
 				util.Prioritized(&colonURLParser{}, 999),
 			),

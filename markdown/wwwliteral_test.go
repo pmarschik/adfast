@@ -137,6 +137,35 @@ var wwwLiteralCases = []struct {
 	name: "a two-letter prefix is not the literal",
 	src:  "ww.x",
 	want: "",
+}, {
+	// THE CASE FOLD. Both of the reference's recognizers read the prefix
+	// case-insensitively — micromark's tokenizer lowercases before it tests,
+	// mdast-util's transform matches `www.` with /i — so the pattern folds
+	// the three w's and nothing else about the literal changes.
+	name: "an uppercase prefix",
+	src:  "WWW.x",
+	want: "WWW.x",
+}, {
+	name: "a mixed-case prefix with a path",
+	src:  "wWw.x/y",
+	want: "wWw.x/y",
+}, {
+	name: "a mixed-case prefix on a dotted host",
+	src:  "Www.Ex.Com",
+	want: "Www.Ex.Com",
+}, {
+	// The fold reaches the PREFIX only. Everything the gate refuses in
+	// lowercase it refuses here, so the case rule cannot be read as a
+	// second, looser recognizer.
+	name:         "an uppercase prefix does not exempt the host gate",
+	src:          "WWW.a_b.com",
+	want:         "WWW.a_b.com",
+	hostRejected: true,
+}, {
+	name:         "an uppercase prefix alone is not a host",
+	src:          "WWW.",
+	want:         "",
+	hostRejected: true,
 }}
 
 func TestWWWLiteralPattern(t *testing.T) {
@@ -283,43 +312,114 @@ func TestWWWLiteralRawRecognizerMatchesThePattern(t *testing.T) {
 	}
 }
 
-// TestWWWLiteralUppercasePrefixStaysProse is a PRESERVED-BEHAVIOR PIN on a
-// DIVERGENCE, not on a fix: it records what this package does with an
-// uppercase "WWW." prefix, which is not what the reference does.
+// TestWWWLiteralUppercasePrefixLinks is the end-to-end half of the case fold.
+// It replaces a pin that recorded the opposite behavior as a known
+// divergence: an uppercase "WWW." prefix used to stay prose where the
+// reference sends a link, which is a payload difference and not a shifted
+// extent — a push sent prose where the reference sends a link, and the
+// renderer already treated the uppercase spelling as dangerous, writing
+// "see WWW\.ex.com b" for a link that never formed (dotAfterWwwEscapes takes
+// "[Ww]").
 //
-// Measured against the frozen reference, whole bodies:
+// GOLDMARK'S PATTERN IS NOT WHERE THE RULE LIVED. Its linkify parser reaches
+// the WWW pattern only after a hard-coded, case-SENSITIVE
+// `bytes.HasPrefix(line, "www.")` that no option can replace, so a widened
+// urlLiteralWWW alone would have left the raw recognizer refusing what the
+// decoded-text scan started accepting — the inversion
+// TestURLLiteralRawPatternIsTheWiderOne forbids for the schemed literal.
+// wwwCaseLinkifyParser is the half that makes the widened pattern reachable.
 //
-//	"see WWW.ex.com b"   ref links "http://WWW.ex.com"   here prose
-//	"see WWW.x b"        ref links "http://WWW.x"        here prose
-//	"see Www.Ex.Com b"   ref links "http://Www.Ex.Com"   here prose
-//
-// BOTH of the reference's recognizers are case-insensitive here, so this is
-// a link-versus-text divergence with a payload difference: a push sends
-// prose where the reference sends a link.
-//
-// IT IS NOT A PATTERN PROBLEM, which is why the pin sits here rather than a
-// widened urlLiteralWWW. goldmark's linkify parser reaches its WWW pattern
-// only after a hard-coded, case-SENSITIVE `bytes.HasPrefix(line, "www.")`
-// that no option can replace — the schemed branch's equivalent pre-gate IS
-// replaceable, and NewParser already opens it for both cases. Spelling the
-// prefix `[wW][wW][wW]\.` would therefore change nothing about the raw
-// verdict while making the decoded-text scan accept what the raw one still
-// refuses, which is the inversion TestURLLiteralRawPatternIsTheWiderOne
-// forbids for the schemed literal. Closing it needs an inline parser of
-// this package's own.
-//
-// The lowercase row is in the same document deliberately: it is what makes
-// the uppercase rows read as a case rule rather than as a broken prefix.
-func TestWWWLiteralUppercasePrefixStaysProse(t *testing.T) {
+// THE LOWERCASE ROW IS IN THE SAME DOCUMENT deliberately, and it is the good
+// case: it takes goldmark's own path, at goldmark's own extent, so a fix that
+// replaced the lowercase recognizer rather than extending past it fails here.
+func TestWWWLiteralUppercasePrefixLinks(t *testing.T) {
 	t.Parallel()
 	const src = "see WWW.ex.com and WWW.x and Www.Ex.Com and www.ex.com b\n"
-	want := []string{"http://www.ex.com"}
+	want := []string{
+		"http://WWW.ex.com", "http://WWW.x", "http://Www.Ex.Com", "http://www.ex.com",
+	}
 	if got := linkURLsOf(Parse([]byte(src))); !equalStrings(got, want) {
 		t.Errorf("link URLs of %q = %v, want %v", src, got, want)
 	}
-	autolinks := NewSource([]byte(src)).Autolinks()
-	if len(autolinks) != 1 || autolinks[0].Target != "http://www.ex.com" {
-		t.Errorf("Autolinks(%q) = %+v, want the lowercase host alone", src, autolinks)
+	// The RAW spans have to agree with the tree, which is the property the
+	// pattern alone could not have delivered: relinkifyTexts would have put
+	// the link in the tree while Source.Autolinks stayed silent.
+	wantSpans := []Autolink{
+		{Target: "http://WWW.ex.com", Span: Span{4, 14}, Text: Span{4, 14}, Bare: true},
+		{Target: "http://WWW.x", Span: Span{19, 24}, Text: Span{19, 24}, Bare: true},
+		{Target: "http://Www.Ex.Com", Span: Span{29, 39}, Text: Span{29, 39}, Bare: true},
+		{Target: "http://www.ex.com", Span: Span{44, 54}, Text: Span{44, 54}, Bare: true},
+	}
+	if got := NewSource([]byte(src)).Autolinks(); !slices.Equal(got, wantSpans) {
+		t.Errorf("Autolinks(%q) = %+v, want %+v", src, got, wantSpans)
+	}
+	const wantRender = "see [WWW.ex.com](http://WWW.ex.com) and [WWW.x](http://WWW.x) and\n" +
+		"[Www.Ex.Com](http://Www.Ex.Com) and [www.ex.com](http://www.ex.com) b\n"
+	got := Render(Parse([]byte(src)))
+	if got != wantRender {
+		t.Errorf("Render(Parse(%q)) = %q, want %q", src, got, wantRender)
+	}
+	if again := Render(Parse([]byte(got))); again != got {
+		t.Errorf("not idempotent: %q -> %q", got, again)
+	}
+}
+
+// TestWWWLiteralUppercasePrefixLinksAfterAnEscape is the escaped half of the
+// same rule: an escape must not decide whether a URL is a link (see
+// escapedLinkifyParser), and the mixed-case branch has to sit inside the same
+// recognizer stack or the escaped spelling and the bare one answer
+// differently. Measured against the frozen reference:
+//
+//	"a\_WWW.x b"  ->  "a\_[WWW.x](http://WWW.x) b"
+//
+// The unescaped row is the good case, in the same document.
+func TestWWWLiteralUppercasePrefixLinksAfterAnEscape(t *testing.T) {
+	t.Parallel()
+	const src = "a\\_WWW.x and a_Www.y b\n"
+	want := []string{"http://WWW.x", "http://Www.y"}
+	if got := linkURLsOf(Parse([]byte(src))); !equalStrings(got, want) {
+		t.Errorf("link URLs of %q = %v, want %v", src, got, want)
+	}
+}
+
+// TestWWWLiteralUppercasePrefixGetsASchemeInTheDecodedScan covers the third
+// site the prefix is spelled at: splitURLLiterals, the decoded-text scan that
+// rescues a literal goldmark refused to look at. A dangling link label is the
+// shape that reaches it — inside "[ …" goldmark's linkify never runs, so this
+// scan is the only recognizer, and it is the one that has to COMPLETE the
+// address.
+//
+// WHY IT IS A SEPARATE TEST FROM THE PARSER ONES: goldmark's own www branch
+// prepends the scheme itself (AutoLink.URL writes Protocol + "://"), so the
+// href only goes out schemeless where THIS scan produced it. With the prefix
+// test here left case-sensitive the tree carried the link but the destination
+// was the bare "WWW.x", which is a RELATIVE link by the time it reaches ADF,
+// and no test over the parser paths can see that.
+//
+// Measured against the frozen reference:
+//
+//	"[ WWW.x b"       ->  "\[ [WWW.x](http://WWW.x) b"
+//	"[ Www.Ex.Com b"  ->  "\[ [Www.Ex.Com](http://Www.Ex.Com) b"
+//
+// The lowercase row is the good case, in the same table.
+func TestWWWLiteralUppercasePrefixGetsASchemeInTheDecodedScan(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct{ src, want string }{
+		{"[ WWW.x b\n", "http://WWW.x"},
+		{"[ Www.Ex.Com b\n", "http://Www.Ex.Com"},
+		{"[ www.x b\n", "http://www.x"},
+	} {
+		t.Run(c.src, func(t *testing.T) {
+			t.Parallel()
+			// The premise: goldmark itself sees nothing here, so the tree
+			// link below can only have come from the decoded-text scan.
+			if got := NewSource([]byte(c.src)).Autolinks(); len(got) != 0 {
+				t.Fatalf("Autolinks(%q) = %+v, want none (goldmark must skip the label)", c.src, got)
+			}
+			if got := linkURLsOf(Parse([]byte(c.src))); !equalStrings(got, []string{c.want}) {
+				t.Errorf("link URLs of %q = %v, want %v", c.src, got, []string{c.want})
+			}
+		})
 	}
 }
 

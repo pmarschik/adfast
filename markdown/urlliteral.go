@@ -1,7 +1,6 @@
 package markdown
 
 import (
-	"bytes"
 	"regexp"
 	"strings"
 )
@@ -271,30 +270,33 @@ const (
 	// the schemed form too ("https://www.點看.com"). Adding it here would
 	// move that row for the scheme-less spelling alone.
 	//
-	// THE PREFIX IS SPELLED LOWERCASE, and unlike urlLiteralScheme — which
-	// writes its case-insensitivity out per letter as `[hH][tT][tT][pP]` —
-	// this one is NOT widened to `[wW][wW][wW]`, even though BOTH of the
-	// reference's recognizers are case-insensitive here too. Measured
-	// against the frozen reference:
+	// THE PREFIX IS SPELLED PER LETTER, `[wW][wW][wW]\.`, the way
+	// urlLiteralScheme spells its own case-insensitivity, because BOTH of the
+	// reference's recognizers are case-insensitive here too. Measured against
+	// the frozen reference:
 	//
-	//	"see WWW.ex.com b"   ref links "http://WWW.ex.com"   here prose
-	//	"see WWW.x b"        ref links "http://WWW.x"        here prose
-	//	"see Www.Ex.Com b"   ref links "http://Www.Ex.Com"   here prose
+	//	"see WWW.ex.com b"   ref links "http://WWW.ex.com"
+	//	"see WWW.x b"        ref links "http://WWW.x"
+	//	"see Www.Ex.Com b"   ref links "http://Www.Ex.Com"
 	//
-	// THE PATTERN IS NOT THE GATE for that divergence, which is why
-	// widening it would buy nothing and cost the invariant. goldmark's
-	// linkify parser reaches its WWW pattern only through a hard-coded
+	// THE PATTERN ALONE WAS NEVER THE GATE, which is why widening it needed a
+	// parser to land with it. goldmark's linkify parser reaches its WWW
+	// pattern only through a hard-coded
 	// `bytes.HasPrefix(line, []byte("www."))`, spelled case-SENSITIVELY in
 	// the extension and not configurable — unlike the schemed branch, whose
-	// equivalent pre-gate IS configurable and which NewParser therefore
-	// opens for both cases (see WithLinkifyAllowedProtocols there). A
-	// `[wW][wW][wW]\.` here would leave the raw recognizer refusing "WWW."
-	// exactly as before while the DECODED-TEXT scan started accepting it,
-	// which inverts the relationship TestURLLiteralRawPatternIsTheWiderOne
-	// states. Closing this divergence needs an inline parser of this
-	// package's own, not a wider pattern, so the prefix stays lowercase
-	// until that lands.
-	urlLiteralWWW = `www\.(?:` + urlLiteralHostDotted +
+	// equivalent pre-gate IS configurable and which NewParser therefore opens
+	// for both cases (see WithLinkifyAllowedProtocols there). A wider pattern
+	// on its own would have left the raw recognizer refusing "WWW." while the
+	// DECODED-TEXT scan started accepting it, which is the inversion
+	// TestURLLiteralRawPatternIsTheWiderOne forbids for the schemed literal.
+	// wwwCaseLinkifyParser in parser.go is the missing half: it claims
+	// exactly the spellings goldmark's pre-gate refuses and runs this same
+	// pattern on them, so the two recognizers keep one verdict.
+	//
+	// THE LOWERCASE SPELLING STILL GOES THROUGH GOLDMARK, untouched. The
+	// widened letters only make the pattern reachable for a candidate the
+	// stock parser would never have handed it.
+	urlLiteralWWW = `[wW][wW][wW]\.(?:` + urlLiteralHostDotted +
 		`|[a-zA-Z0-9]` + urlLiteralHostByte + `{0,255})` + urlLiteralPath
 )
 
@@ -333,10 +335,12 @@ var urlLiteralRe = regexp.MustCompile(
 // the dot the decoded-text recognizer demands, so both halves of the
 // reference accept the same set.
 //
-// NOT CASE-INSENSITIVE, and that is NOT an oversight — see the note on
-// urlLiteralWWW. goldmark gates this pattern behind its own hard-coded
-// `bytes.HasPrefix(line, []byte("www."))`, so a pattern that also accepted
-// "WWW." would never be reached with one.
+// CASE-INSENSITIVE IN THE PREFIX, which goldmark alone cannot use: it gates
+// this pattern behind its own hard-coded
+// `bytes.HasPrefix(line, []byte("www."))`, so the stock parser never reaches
+// it with a "WWW.". wwwCaseLinkifyParser applies the same pattern to exactly
+// those spellings, which is what keeps the raw and decoded-text recognizers
+// on one verdict. See urlLiteralWWW.
 var urlLiteralWWWAnchoredRe = regexp.MustCompile(`^(?:` + urlLiteralWWW + `)`)
 
 // urlLiteralAnchoredRe matches a schemed literal at the head of the input,
@@ -406,7 +410,7 @@ func urlLiteralHostAccepted(literal string) bool {
 	switch m := urlLiteralSchemeRe.FindString(host); {
 	case m != "":
 		host = host[len(m):]
-	case bytes.HasPrefix([]byte(host), urlLiteralWWWPrefix):
+	case hasWWWPrefix([]byte(host)):
 		host = host[len(urlLiteralWWWPrefix):]
 	}
 	// The host ends where urlLiteralPath may open, and the trim applies to the
@@ -452,14 +456,33 @@ func urlLiteralCandidate(line []byte) []byte {
 	if m := urlLiteralAnchoredRe.Find(line); m != nil {
 		return m
 	}
-	if bytes.HasPrefix(line, urlLiteralWWWPrefix) {
+	if hasWWWPrefix(line) {
 		return urlLiteralWWWAnchoredRe.Find(line)
 	}
 	return nil
 }
 
 // urlLiteralWWWPrefix is goldmark's own scheme-less pre-gate, spelled once.
+// It is the LOWERCASE spelling because that is the byte sequence goldmark's
+// linkify extension tests for; hasWWWPrefix is what this package uses when
+// the question is whether a candidate carries the prefix at all.
 var urlLiteralWWWPrefix = []byte("www.")
+
+// hasWWWPrefix reports whether line opens on the scheme-less "www." prefix in
+// ANY case, which is how both halves of the reference read it (measured:
+// "see WWW.x b" comes back linked as "http://WWW.x"). The comparison is ASCII
+// folding written out rather than bytes.EqualFold, for the reason
+// urlLiteralScheme spells its letters out: Unicode simple case folding puts
+// the long s and the Kelvin sign in the same orbits as ASCII letters, and
+// neither recognizer folds that far.
+func hasWWWPrefix(line []byte) bool {
+	if len(line) < len(urlLiteralWWWPrefix) {
+		return false
+	}
+	return (line[0] == 'w' || line[0] == 'W') &&
+		(line[1] == 'w' || line[1] == 'W') &&
+		(line[2] == 'w' || line[2] == 'W') && line[3] == '.'
+}
 
 // urlLiteralHostEscapable lists the ASCII-punctuation bytes urlLiteralHostByte
 // takes — the only bytes a backslash can hide that the host would otherwise

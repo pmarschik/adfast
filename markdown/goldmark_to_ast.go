@@ -235,7 +235,12 @@ func splitURLLiterals(node *ast.Text) []ast.Node {
 		url := trimURLLiteralEnd(value[start:end])
 		end = start + len(url)
 		href := url
-		if strings.HasPrefix(url, "www.") {
+		// The prefix test is the pattern's, not a second spelling of it:
+		// urlLiteralWWW folds the three w's, so a "WWW." literal reaches here
+		// and has to be completed with the same scheme goldmark's own www
+		// branch prepends. Testing "www." alone left it schemeless, which
+		// reaches ADF as a relative link.
+		if hasWWWPrefix([]byte(url)) {
 			href = "http://" + url
 		}
 		out = append(out, &ast.Link{
