@@ -546,10 +546,26 @@ func (r *mdRenderer) writeWrapped(b *strings.Builder, nodes []ast.Node, i int, m
 		openProblem = !canOpenMarker(m, st.prevRune, r.renderedChildLead(node, m, st))
 		closeProblem = !canCloseMarker(m, r.renderedChildTrail(node, m, st), siblingLeadRune(nodes, i+1))
 	}
-	after := nextTextLead(nodes, i)
-	if after == 0 && i == len(nodes)-1 {
-		after = st.afterLead
-	}
+	// The byte that follows the last child is the construct's OWN closing
+	// marker, not whatever stands behind the construct. Measured against the
+	// frozen reference (mdast-util-to-markdown, the engine remark-stringify
+	// is, driven on hand-built trees with emphasis:'_' so the spellings line
+	// up), 2026-09-05 — four independent unsafe rules read the same "after"
+	// and all four answer it with the marker:
+	//
+	//	emphasis["see https:"] + text "//x b"  ->  _see https:_//x b
+	//	emphasis["www."]       + text "..A"    ->  _www\._..A
+	//	emphasis["x@"]         + text "y.com"  ->  _x\@_&#x79;.com
+	//	emphasis["a&"]         + text "amp;"   ->  _a&_&#x61;mp;
+	//
+	// The ':' row escapes only before '/', and '_' is not one, so the colon
+	// stays bare; the '.' and '@' rows take '_' as a word character and keep
+	// their escape; the '&' row wants '[#A-Za-z]' next and '_' is neither, so
+	// the ampersand stays bare. Threading the grandparent's byte instead got
+	// the first and the last of those wrong — "_see https\:_//x b" and
+	// "_a\&_&#x61;mp;" — while agreeing on the two in the middle by accident,
+	// because '.' and '_' fall in the same character class there.
+	after := marker[len(marker)-1]
 	child := inlineContext{
 		escape:         st.escape,
 		colons:         st.colons,
