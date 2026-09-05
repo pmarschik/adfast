@@ -45,6 +45,12 @@ func (*colonURLParser) Parse(parent gast.Node, block text.Reader, pc parser.Cont
 	if len(m) == 0 || m[0] != 0 {
 		return nil
 	}
+	// The host gate is the second half of the pattern (see
+	// urlLiteralHostAccepted): a host with an underscore in either of its
+	// last two segments is not a literal at all, here as in the reference.
+	if !urlLiteralHostAcceptedAt(rest, m[1]) {
+		return nil
+	}
 	urlLen := m[1]
 	// Emit the ':' as a text segment, then return the URL as an autolink.
 	colonSeg := segment.WithStop(segment.Start + 1)
@@ -130,9 +136,57 @@ const escapedLinkifyBoundaries = "*_~("
 type escapedLinkifyParser struct{ inner parser.InlineParser }
 
 // newEscapedLinkifyParser returns the post-escape linkify parser, delegating
-// to a linkify parser configured identically to the one NewParser registers.
+// to a linkify parser configured identically to the one NewParser registers —
+// host gate included, so an escape cannot buy a literal the unescaped
+// spelling is refused.
 func newEscapedLinkifyParser(opts ...extension.LinkifyOption) parser.InlineParser {
-	return &escapedLinkifyParser{inner: extension.NewLinkifyParser(opts...)}
+	return &escapedLinkifyParser{inner: newLinkifyHostGate(extension.NewLinkifyParser(opts...))}
+}
+
+// linkifyBoundaryBytes is goldmark's linkify trigger set. Its Parse advances
+// one byte past any of these before it applies a URL pattern, so the gate
+// below has to read its candidate from the same place. The set is spelled as
+// bytes rather than reused from escapedLinkifyBoundaries because that one is
+// deliberately the SMALLER set — the escapable subset — and the two answer
+// different questions.
+const linkifyBoundaryBytes = " *_~("
+
+// linkifyHostGate refuses a bare-URL literal whose host micromark's domain
+// production rejects — an underscore in either of the last two dot-separated
+// segments — and delegates every other decision to the linkify parser it
+// wraps. See urlLiteralHostAccepted for the rule and for why it cannot be a
+// pattern.
+//
+// IT LOOKS BEFORE THE INNER PARSER RUNS rather than undoing afterwards.
+// goldmark's linkify appends the boundary character as a text segment on its
+// success path, through MergeOrAppendTextSegment, which may EXTEND the
+// preceding Text node instead of appending a child — so a rejection taken
+// after the fact has nothing clean to undo. Reading the same line with the
+// same two patterns and returning nil first leaves the reader untouched, and
+// returning nil is what the inner parser itself does for an address it
+// refuses.
+//
+// A CANDIDATE THAT IS NEITHER PATTERN IS PASSED THROUGH, not refused: the
+// inner parser's third branch is the EMAIL literal, whose host rule is its
+// own (goldmark's `-`/`_` tail test plus adf's validation) and not this one.
+type linkifyHostGate struct{ inner parser.InlineParser }
+
+// newLinkifyHostGate wraps a linkify parser with the host gate.
+func newLinkifyHostGate(inner parser.InlineParser) parser.InlineParser {
+	return &linkifyHostGate{inner: inner}
+}
+
+func (p *linkifyHostGate) Trigger() []byte { return p.inner.Trigger() }
+
+func (p *linkifyHostGate) Parse(parent gast.Node, block text.Reader, pc parser.Context) gast.Node {
+	line, _ := block.PeekLine()
+	if len(line) > 0 && strings.IndexByte(linkifyBoundaryBytes, line[0]) >= 0 {
+		line = line[1:]
+	}
+	if m := urlLiteralCandidate(line); m != nil && !urlLiteralHostAcceptedAt(line, len(m)) {
+		return nil
+	}
+	return p.inner.Parse(parent, block, pc)
 }
 
 func (*escapedLinkifyParser) Trigger() []byte { return []byte{'\\'} }
@@ -239,9 +293,6 @@ func NewParser() parser.Parser {
 	// (see strikethrough.go) at goldmark's own priority 500 instead.
 	md := goldmark.New(
 		goldmark.WithExtensions(
-			// See linkifyOptions for why every pattern here is this
-			// package's own.
-			extension.NewLinkify(linkifyOptions()...),
 			extension.Table,
 			// TaskList is replaced by strictTaskCheckBoxParser below —
 			// goldmark accepts "[ ]" without following whitespace, where
@@ -267,6 +318,16 @@ func NewParser() parser.Parser {
 				// free; it is spelled at linkify's own 999 because it is
 				// linkify, one dispatch position earlier.
 				util.Prioritized(newEscapedLinkifyParser(linkifyOptions()...), 999),
+				// LINKIFY IS REGISTERED HERE rather than through
+				// extension.NewLinkify, at that extension's own priority and
+				// with the same options: the gate has to wrap the parser, and
+				// the extension exposes no seam to wrap it through. Its
+				// Extend does nothing else — one AddOptions with one inline
+				// parser at 999 — so this registration is the whole of it.
+				// See linkifyOptions for why every pattern here is this
+				// package's own.
+				util.Prioritized(newLinkifyHostGate(
+					extension.NewLinkifyParser(linkifyOptions()...)), 999),
 				util.Prioritized(directive.NewTextDirectiveParser(NewParser), 800),
 				util.Prioritized(&colonURLParser{}, 999),
 			),

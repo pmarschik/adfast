@@ -18,6 +18,14 @@ type urlLiteralHostCase struct {
 	raw string
 	// text is what urlLiteralRe matches, "" for no match.
 	text string
+	// hostRejected is urlLiteralHostAccepted's verdict on src, inverted so
+	// the common answer is the zero value. THE PATTERN IS ONLY HALF THE
+	// ANSWER: every caller runs one of the two patterns above and then the
+	// gate, so a row with a nonempty column and hostRejected set is prose in
+	// the document even though the pattern matched. The rows that carry it
+	// are the underscore hosts; that every other row here leaves it false is
+	// what says the gate refuses those and nothing else.
+	hostRejected bool
 }
 
 // THE SPLIT IS THE POINT. The reference's two recognizers disagree about the
@@ -240,54 +248,150 @@ var urlLiteralHostCases = []urlLiteralHostCase{{
 	raw:  "https://a.coſ",
 	text: "https://a.coſ",
 }, {
-	// PRESERVED BEHAVIOR PIN for a divergence OLDER than any widening here,
-	// recorded because the Unicode-led host reaches it too: an UNDERSCORE in
-	// the host. micromark's domainAfter refuses an underscore in either of
-	// the last two segments and the transform's isCorrectDomain refuses it as
-	// well, so the reference reads all three of "https://ex_x",
-	// "https://a_b.com/x" and "https://例_x" as prose, while goldmark's class
-	// has always taken '_' as a host byte. Modeling the rule belongs to that
-	// divergence, not to the host widenings.
-	name: "an underscore host is accepted here and not by the reference",
-	src:  "https://ex_x",
-	raw:  "https://ex_x",
+	// THE HOST GATE, whose rows all keep their pattern match and lose the
+	// document: an UNDERSCORE in either of the host's LAST TWO dot-separated
+	// segments. micromark's domainAfter counts underscores per segment as it
+	// consumes the domain and mdast-util's isCorrectDomain tests the last two
+	// parts of a split host, so both halves of the reference read these as
+	// prose, while goldmark's host class has always taken '_' as a byte.
+	//
+	// The pattern columns still hold the whole address on purpose. The rule
+	// rejects an address rather than shortening one, and a character class
+	// can only shorten — see urlLiteralHostAccepted — so the columns record
+	// what the pattern reaches and hostRejected records what the document
+	// gets.
+	name:         "an underscore in a dotless host",
+	src:          "https://ex_x",
+	raw:          "https://ex_x",
+	text:         "",
+	hostRejected: true,
+}, {
+	name:         "an underscore in the second-to-last segment",
+	src:          "https://a_b.com/x",
+	raw:          "https://a_b.com/x",
+	text:         "https://a_b.com/x",
+	hostRejected: true,
+}, {
+	// The same rule reached through the Unicode-led host. The row is here so
+	// that widening is measured against the gate too, rather than being
+	// assumed to share the ASCII answer.
+	name:         "an underscore after a non-ASCII host",
+	src:          "https://例_x",
+	raw:          "https://例_x",
+	text:         "",
+	hostRejected: true,
+}, {
+	// AN UNDERSCORE IN THE LAST SEGMENT, and the row that pays for the '_' in
+	// urlLiteralHostDotted's TLD class. Without that byte the class ended the
+	// dotted alternative at the TLD, so the pattern matched "https://ex.com"
+	// and the WRONG HREF went out — a shortened address, which is the failure
+	// mode the gate exists to avoid. With it the pattern reaches the whole
+	// candidate and the gate refuses the whole candidate, which is what both
+	// halves of the reference do. The byte is safe to add precisely because
+	// any match that reaches it has an underscore in the last segment, so the
+	// gate always refuses it.
+	name:         "an underscore in the last segment",
+	src:          "https://ex.com_x",
+	raw:          "https://ex.com_x",
+	text:         "https://ex.com_x",
+	hostRejected: true,
+}, {
+	name:         "an underscore in the last segment with a path",
+	src:          "https://ex.com_x/y",
+	raw:          "https://ex.com_x/y",
+	text:         "https://ex.com_x/y",
+	hostRejected: true,
+}, {
+	name:         "an underscore in both of the last two segments",
+	src:          "https://a_b.c_d.com",
+	raw:          "https://a_b.c_d.com",
+	text:         "https://a_b.c_d.com",
+	hostRejected: true,
+}, {
+	// LAST TWO, NOT ANY. This pair is what makes the rule a segment count
+	// rather than "no underscore in a host": the underscore sits in the
+	// second-to-last segment in one and the third-to-last in the other, and
+	// only the first is refused. A gate that scanned the whole host would
+	// pass every other row in this table and fail here.
+	name:         "an underscore in the second-to-last segment of three",
+	src:          "https://a.b_c.com",
+	raw:          "https://a.b_c.com",
+	text:         "https://a.b_c.com",
+	hostRejected: true,
+}, {
+	name: "an underscore in the third-to-last segment is accepted",
+	src:  "https://x_y.z.com",
+	raw:  "https://x_y.z.com",
+	text: "https://x_y.z.com",
+}, {
+	// THE TRIM IS PART OF THE RULE. goldmark drops a trailing run of
+	// `? ! . , : * _ ~` off its match and micromark's domain ends before the
+	// same run, so the host here is "ex" and the address links — testing the
+	// untrimmed candidate would refuse one both recognizers accept. The
+	// second row is the discriminator: trimming the dot leaves "a_b", which
+	// is still an underscore in the last segment.
+	name: "a trailing underscore is trimmed off the host",
+	src:  "https://ex_",
+	raw:  "https://ex_",
 	text: "",
 }, {
-	name: "an underscore in a dotted host, same divergence",
-	src:  "https://a_b.com/x",
-	raw:  "https://a_b.com/x",
-	text: "https://a_b.com/x",
+	name:         "a trailing dot does not rescue an underscore",
+	src:          "https://a_b.",
+	raw:          "https://a_b.",
+	text:         "",
+	hostRejected: true,
 }, {
-	// The same divergence reached through the Unicode-led host, which is the
-	// only shape the widening adds that the reference does not accept. The
-	// row is here so the count of new divergences is one and written down,
-	// not inferred.
-	name: "an underscore after a non-ASCII host, same divergence",
-	src:  "https://例_x",
-	raw:  "https://例_x",
-	text: "",
+	// The same trailing underscore in a DOTTED host, which is what the '_' in
+	// the TLD class reaches: the pattern takes "com_" and the trim gives the
+	// host back as "ex.com".
+	name: "a trailing underscore after a TLD is trimmed",
+	src:  "https://ex.com_",
+	raw:  "https://ex.com_",
+	text: "https://ex.com_",
+}, {
+	// A PATH ENDS THE TRIM'S CLAIM, and this row is its discriminator against
+	// the one above: micromark ends the domain before a punctuation run only
+	// when the run reaches the end of the URL. Here "/y" follows, so the
+	// underscore stays in the last segment and the address is prose — while
+	// "https://ex_" two rows up loses it and links.
+	name:         "an underscore before a path is not trimmed",
+	src:          "https://ex_/y",
+	raw:          "https://ex_/y",
+	text:         "",
+	hostRejected: true,
 }, {
 	// THE NEGATIVES, which is what keeps the widening from being "anything
 	// after ://". The reference rejects each of these, measured.
-	name: "a host starting on an underscore",
-	src:  "https://_x",
-	raw:  "",
-	text: "",
+	// Refused twice over, and the columns say which came first: the pattern
+	// never opens a host on an underscore, and the gate would refuse the host
+	// even if it did.
+	name:         "a host starting on an underscore",
+	src:          "https://_x",
+	raw:          "",
+	text:         "",
+	hostRejected: true,
 }, {
 	name: "a host starting on a hyphen",
 	src:  "https://-x",
 	raw:  "",
 	text: "",
 }, {
-	name: "a host starting on a slash",
-	src:  "https:///x",
-	raw:  "",
-	text: "",
+	// THE EMPTY DOMAIN, which the gate refuses on its own account: the
+	// reference's domain production must consume at least one character, so
+	// a literal whose whole domain is a path opener or nothing at all has no
+	// host to judge. Neither pattern reaches these, so the columns are the
+	// first refusal and the gate is the second.
+	name:         "a host starting on a slash",
+	src:          "https:///x",
+	raw:          "",
+	text:         "",
+	hostRejected: true,
 }, {
-	name: "no host at all",
-	src:  "https://",
-	raw:  "",
-	text: "",
+	name:         "no host at all",
+	src:          "https://",
+	raw:          "",
+	text:         "",
+	hostRejected: true,
 }, {
 	// AN EMPTY LEADING SEGMENT. The reference's decoded-text host is
 	// `[-.\w]+`, so it may open on a dot, and its isCorrectDomain skips an
@@ -314,10 +418,11 @@ var urlLiteralHostCases = []urlLiteralHostCase{{
 	// The empty segment is not a license for an EMPTY HOST: the TLD class
 	// still needs one character. The reference rejects both of these too —
 	// its splitUrl strips the trailing dot and refuses the empty remainder.
-	name: "a lone dot is not a host",
-	src:  "https://.",
-	raw:  "",
-	text: "",
+	name:         "a lone dot is not a host",
+	src:          "https://.",
+	raw:          "",
+	text:         "",
+	hostRejected: true,
 }, {
 	// A punctuation-led host is still accepted when it is DOTTED, because
 	// goldmark accepted it and so does the reference's transform. Dropping
@@ -349,6 +454,10 @@ func TestURLLiteralPatternsSplitOnTheHost(t *testing.T) {
 			if text != c.text {
 				t.Errorf("urlLiteralRe.FindString(%q) = %q, want %q", c.src, text, c.text)
 			}
+			if got := !urlLiteralHostAccepted(c.src); got != c.hostRejected {
+				t.Errorf("urlLiteralHostAccepted(%q) = %v, want %v",
+					c.src, !got, !c.hostRejected)
+			}
 		})
 	}
 }
@@ -373,10 +482,19 @@ func TestURLLiteralRawPatternIsTheWiderOne(t *testing.T) {
 }
 
 // TestURLLiteralASCIIExtentsAreGoldmarksExactly is the safety argument for
-// every host widening in this file, stated as a property rather than as a
-// promise in a comment: on an ALL-ASCII candidate the raw pattern must answer
-// exactly what goldmark's own two host alternatives answer, so no widening
-// here can move a literal in an ASCII document.
+// every UNICODE host widening in this file, stated as a property rather than
+// as a promise in a comment: on an ALL-ASCII candidate the raw pattern must
+// answer exactly what the ASCII host alternatives answer, so no widening for a
+// non-ASCII host can move a literal in an ASCII document.
+//
+// IT DOES NOT SPEAK FOR THE '_' IN urlLiteralHostDotted's TLD CLASS, which is
+// the one place this package's ASCII host rule is deliberately not goldmark's,
+// and which this test cannot see because goldmarkOnly is built from the same
+// constant. That byte lengthens an ASCII extent on purpose —
+// "https://ex.com_x" matches whole where goldmark stopped at "https://ex.com"
+// — and what keeps it safe is not this property but urlLiteralHostAccepted,
+// which refuses every candidate that reaches the byte. The urlLiteralHostCases
+// rows carrying hostRejected are where that pair is measured.
 //
 // It holds by construction, and the construction is what the test pins: each
 // widening opens on urlLiteralHostRune, whose class excludes `\x00-\x7F`, so
@@ -420,6 +538,119 @@ func TestURLLiteralASCIIExtentsAreGoldmarksExactly(t *testing.T) {
 			t.Errorf("%q: the Unicode-led host must be unreachable for ASCII, matched %q",
 				src, got)
 		}
+	}
+}
+
+// TestURLLiteralHostGateReadsThroughAnEscape covers the half of the host rule
+// the candidate table cannot reach: a backslash INSIDE the address.
+//
+// A backslash is not a host byte, so it ends the host wherever it sits, and the
+// shortened host it leaves can pass a rule the whole one fails. That is not a
+// hypothetical — it is the formatter's own output. "https://例_x" is prose, the
+// renderer escapes an underscore after a non-ASCII letter, and the escaped
+// spelling "https://例\_x" leaves the host "例", which is dotless and
+// underscore-free and would link. The document would gain a link to
+// "https://例" by being formatted.
+//
+// The accepted rows are the discriminator: they carry the SAME escape shape and
+// come back true, so the test says the verdict follows the escape-free host and
+// not the presence of a backslash.
+func TestURLLiteralHostGateReadsThroughAnEscape(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		line     string
+		accepted bool
+	}{{
+		name:     "a bare underscore host",
+		line:     "https://ex_x b",
+		accepted: false,
+	}, {
+		name:     "an escaped underscore in an ASCII host",
+		line:     `https://ex\_x b`,
+		accepted: false,
+	}, {
+		name:     "an escaped underscore in a non-ASCII host",
+		line:     `https://例\_x b`,
+		accepted: false,
+	}, {
+		name:     "an escaped underscore in the last segment",
+		line:     `https://ex.com\_x b`,
+		accepted: false,
+	}, {
+		// The same escape, and the host is fine once it is read whole: the
+		// underscore is trailing, so the trim takes it.
+		name:     "an escaped underscore that trims away",
+		line:     `https://ex.com\_ b`,
+		accepted: true,
+	}, {
+		name:     "an escaped dot inside an accepted host",
+		line:     `https://ex.com\.x b`,
+		accepted: true,
+	}, {
+		name:     "no escape at all",
+		line:     "https://ex.com b",
+		accepted: true,
+	}}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			line := []byte(c.line)
+			m := urlLiteralCandidate(line)
+			if m == nil {
+				t.Fatalf("urlLiteralCandidate(%q) found no literal to gate", c.line)
+			}
+			if got := urlLiteralHostAcceptedAt(line, len(m)); got != c.accepted {
+				t.Errorf("urlLiteralHostAcceptedAt(%q, %d) = %v, want %v (candidate %q)",
+					c.line, len(m), got, c.accepted, m)
+			}
+		})
+	}
+}
+
+// TestURLLiteralUnderscoreHostStaysProse is the end-to-end half: one document
+// holding every shape the host rule refuses next to the shapes it must not, so
+// a gate that over-reached would fail here rather than pass quietly.
+//
+// THE SECOND LEG asserts that rendering the document neither adds a link nor
+// takes one away, which is the property the gate has to hold on both sides of a
+// round trip. It does NOT reach the escape hole urlLiteralHostAcceptedAt
+// closes: this renderer escapes the colon as well ("https\\://例\\_x"), so the
+// literal is gone before the host is read. The formatter in the root package
+// escapes only the underscore, which is why that hole is measured there — see
+// TestEscapedUnderscoreInAHostDoesNotLink.
+func TestURLLiteralUnderscoreHostStaysProse(t *testing.T) {
+	t.Parallel()
+	const src = "see https://ex_x and https://ex.com_x and https://a_b.com/x" +
+		" and https://例_x and https://x_y.z.com and www.a_b.com and www.a.A end\n"
+	want := []string{"https://x_y.z.com", "http://www.a.A"}
+	if got := linkURLsOf(Parse([]byte(src))); !equalStrings(got, want) {
+		t.Errorf("link URLs of %q = %v, want %v", src, got, want)
+	}
+	rendered := Render(Parse([]byte(src)))
+	if got := linkURLsOf(Parse([]byte(rendered))); !equalStrings(got, want) {
+		t.Errorf("link URLs of the rendered form %q = %v, want %v", rendered, got, want)
+	}
+	if twice := Render(Parse([]byte(rendered))); twice != rendered {
+		t.Errorf("not idempotent:\n once:  %q\n twice: %q", rendered, twice)
+	}
+}
+
+// TestURLLiteralUnderscoreHostStaysProseAfterAColon covers the THIRD reader of
+// the same pattern, which the two tests above cannot reach: colonURLParser.
+//
+// goldmark's linkify triggers on ' ', '*', '_', '~' and '(' only, so a literal
+// glued to a preceding ':' — "link:https://…", which remark-gfm links — is this
+// package's own inline parser and takes its own route to the pattern. A gate
+// wired into the linkify parser alone leaves that route open, and every other
+// test here still passes.
+func TestURLLiteralUnderscoreHostStaysProseAfterAColon(t *testing.T) {
+	t.Parallel()
+	const src = "see link:https://ex_x and link:https://a_b.com/x" +
+		" and link:https://ex.com end\n"
+	want := []string{"https://ex.com"}
+	if got := linkURLsOf(Parse([]byte(src))); !equalStrings(got, want) {
+		t.Errorf("link URLs of %q = %v, want %v", src, got, want)
 	}
 }
 

@@ -30,6 +30,12 @@ var wwwLiteralCases = []struct {
 	src  string
 	// want is what urlLiteralRe matches, "" for no match.
 	want string
+	// hostRejected is urlLiteralHostAccepted's verdict on src, inverted so
+	// the common answer is the zero value. A row with a nonempty want and
+	// hostRejected set matches the pattern and is still prose in the
+	// document: the "www." prefix supplies the dot the host rule counts
+	// from, but it does not exempt the segments after it.
+	hostRejected bool
 }{{
 	// THE WIDENING. One host character after the prefix is a literal.
 	name: "a dotless host after the prefix",
@@ -63,17 +69,69 @@ var wwwLiteralCases = []struct {
 	// THE NEGATIVES. The prefix alone is not a host, and the dotless
 	// alternative opens on an alphanumeric exactly as the schemed one does
 	// ("https://-x" is prose too).
-	name: "the prefix alone is not a host",
-	src:  "www.",
-	want: "",
+	// The prefix alone leaves an EMPTY DOMAIN once it is stripped, and the
+	// reference's domain production must consume at least one character, so
+	// the gate refuses it as the pattern does.
+	name:         "the prefix alone is not a host",
+	src:          "www.",
+	want:         "",
+	hostRejected: true,
 }, {
 	name: "a hyphen does not open the host",
 	src:  "www.-x",
 	want: "",
 }, {
-	name: "an underscore does not open the host",
-	src:  "www._x",
-	want: "",
+	// Refused twice over, and the columns say which came first: the dotless
+	// alternative does not open a host on an underscore, and the gate would
+	// refuse "www._x" anyway because the last segment holds one.
+	name:         "an underscore does not open the host",
+	src:          "www._x",
+	want:         "",
+	hostRejected: true,
+}, {
+	// THE HOST GATE ON THE SCHEME-LESS SIDE. The dotted alternative reaches
+	// past an underscore that the dotless one may not open on, so the pattern
+	// takes both of these whole and urlLiteralHostAccepted is what refuses
+	// them — an underscore in either of the last two segments, which is
+	// micromark's domain rule and mdast-util's isCorrectDomain alike.
+	name:         "an underscore in the second-to-last segment",
+	src:          "www.a_b.com",
+	want:         "www.a_b.com",
+	hostRejected: true,
+}, {
+	// THE FORMAT-LEG HOST, and the reason this rule is not a parity nit. The
+	// formatter may pick '_' as the emphasis delimiter, so "*www.*.A" is
+	// rendered "_www._.A", whose bytes hold this literal. Linking it drops
+	// the emphasis and invents a link the author never wrote; the last two
+	// segments are "_" and "A", so the rule refuses it.
+	name:         "the delimiter host the formatter can produce",
+	src:          "www._.A",
+	want:         "www._.A",
+	hostRejected: true,
+}, {
+	// THE FUZZ REPRO for the '_' in urlLiteralHostDotted's TLD class, which
+	// is the byte that lets this candidate match at all: the domain after the
+	// prefix is ".._", nothing but punctuation. Trimming the trailing run off
+	// the WHOLE literal left "www", a clean host, and "*www..*" formatted to
+	// "_www.._" and linked "http://www" — an invented link, a shortened
+	// address and lost emphasis in one input. The gate strips the prefix
+	// first, so it sees the empty domain the reference sees.
+	name:         "a domain of nothing but punctuation",
+	src:          "www.._",
+	want:         "www.._",
+	hostRejected: true,
+}, {
+	// LAST TWO, NOT ANY: the same underscore one segment further left is
+	// accepted, so the rule is a segment count and not a ban on the byte.
+	name: "an underscore in the third-to-last segment is accepted",
+	src:  "www.x_y.z.com",
+	want: "www.x_y.z.com",
+}, {
+	// The one-letter TLD next to the row above, which is the accepted half of
+	// the "www._.A" shape: same length, same segments, no underscore.
+	name: "a single-letter TLD is accepted",
+	src:  "www.a.A",
+	want: "www.a.A",
 }, {
 	// The prefix is the prefix: two w's do not make one.
 	name: "a two-letter prefix is not the literal",
@@ -88,6 +146,10 @@ func TestWWWLiteralPattern(t *testing.T) {
 			t.Parallel()
 			if got := urlLiteralRe.FindString(c.src); got != c.want {
 				t.Errorf("urlLiteralRe.FindString(%q) = %q, want %q", c.src, got, c.want)
+			}
+			if got := !urlLiteralHostAccepted(c.src); got != c.hostRejected {
+				t.Errorf("urlLiteralHostAccepted(%q) = %v, want %v",
+					c.src, !got, !c.hostRejected)
 			}
 		})
 	}
@@ -183,6 +245,12 @@ func TestWWWLiteralIsReportedAsARawAutolinkSpan(t *testing.T) {
 // row of wwwLiteralCases through the parser and asserts the raw span is
 // exactly what urlLiteralRe reads at that offset.
 //
+// ONE PATTERN AND ONE GATE, which is why the rejected rows expect no span at
+// all rather than a shorter one: urlLiteralHostAccepted refuses a candidate
+// whole, and the raw recognizer has to refuse it the same way the decoded-text
+// scan does. A gate wired into only one of the two would show up here as a
+// span for a host the tree has no link for.
+//
 // This is the property that makes one pattern one verdict. goldmark ships
 // its own scheme-less pattern (`www\.…{1,256}\.[a-z]+`), and while the
 // parser was left on it the raw recognizer and the decoded-text scan could
@@ -199,7 +267,7 @@ func TestWWWLiteralRawRecognizerMatchesThePattern(t *testing.T) {
 			// takes; "see " is four bytes, so a match starts at offset 4.
 			src := "see " + c.src + " b\n"
 			var want []Autolink
-			if c.want != "" {
+			if c.want != "" && !c.hostRejected {
 				stop := 4 + len(c.want)
 				want = []Autolink{{
 					Target: "http://" + c.want,
