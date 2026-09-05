@@ -183,6 +183,49 @@ is the fallback artifact for the "exists in the shared schema" claim.
 | fragment          | ✓    | ✓          | converted | [fragment.ts#L17](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/marks/fragment.ts#L17)                 | no page (404) — omission                                                                                                | **absent** from confluence-schema.ts. render-confirmed 2026-07-22                                                                                                                          |
 | fontSize          | —    | —          | dropped   | [font-size.ts#L11](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/marks/font-size.ts#L11)               | no page (404); shared-schema only; REST rejects it                                                                      | absent from confluence-schema.ts; shared-schema only; stripped on save                                                                                                                     |
 
+## A schema default a round trip completes: `mediaSingle`'s `layout`
+
+Some attributes carry a schema default, and `layout` on `mediaSingle` is
+one: Atlassian's schema declares it `layout: { default: 'center' }`
+([media-single.ts#L20](https://github.com/pioug/atlassian-frontend-mirror/blob/f5ca0f120c6ea5d79873805d081a72c82917e1f8/editor/adf-schema/src/schema/nodes/media-single.ts#L20)),
+and the Jira
+[`nodes/mediaSingle`](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/mediaSingle/)
+page marks it required. So **adfast never emits a layout-less
+`mediaSingle`**: a directive that spells none gets `center`, except file
+media, which gets `align-start`, the attachment default the decode then
+elides again. A round trip may therefore ADD an attribute the author
+never wrote.
+
+That is not a media special case. The rule is that **the canonical form
+spells a schema default the author omitted**, and adfast already followed
+it elsewhere: `::linkEmbed[https://example.com/embed]` gains
+`layout="center"`, `:status[no color]` gains `color="neutral"`.
+
+**It is also the reference implementation's behavior, not an adfast
+liberty**, and `testdata/directive_fixtures.json` is where that is
+measured rather than assumed. Every markdown fixture carries the
+reference's own md → ADF → md `roundtrip` beside the source, and two rows
+there gain an attribute the input did not have:
+
+| Fixture `md`                             | Reference's own `roundtrip`                               |
+| ---------------------------------------- | --------------------------------------------------------- |
+| `::linkEmbed[https://example.com/embed]` | `::linkEmbed[https://example.com/embed]{layout="center"}` |
+| `:status[no color]`                      | `:status[no color]{color="neutral"}`                      |
+
+For `mediaSingle` the same corpus states it structurally: across both
+directions it holds **twelve** `mediaSingle` nodes, and not one of them
+lacks a `layout`. The elision asymmetry is the corpus's too — an external
+media carrying `center` renders as
+`::media[shot]{height="50" layout="center" type="external" …}`, while a
+file media carrying `align-start` renders with no attribute at all.
+
+Where the completion is **visible** is the directive form. An external
+image that needs nothing beyond its source is image-expressible and
+renders as `![shot](https://example.com/i.png)`, so the `center` lives
+only in the ADF; a media that cannot take the image form — one carrying
+`width`/`height`, a border, or display sizing — keeps the directive, and
+the directive spells the layout.
+
 ## A linked image: `link` on a media node
 
 A link wrapping an image — `[![the logo](logo.png)](https://home/)`, a

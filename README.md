@@ -694,6 +694,17 @@ value, so any other attribute has to keep one of the two quotes out. The
 `sources` attribute of `dataConsumer` is a plain comma-separated list of
 source ids, and it is not JSON.
 
+The canonical form also **spells a schema default that the author left
+out**. Where ADF gives an attribute a default, a directive that omits it
+is under-specified rather than different, so a format or a round trip
+writes the value back: `::linkEmbed[https://example.com/embed]` comes
+back as `::linkEmbed[https://example.com/embed]{layout="center"}`, and
+`:status[no color]` as `:status[no color]{color="neutral"}`. The
+attribute stays optional on input; only the output is complete. This is
+the reference implementation's own behavior, not an adfast liberty — its
+md → ADF → md round trips in `testdata/directive_fixtures.json` produce
+exactly those two lines.
+
 ### Leaf directives (standalone lines)
 
 | Markdown                                                                                                 | ADF                        | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -708,6 +719,22 @@ source ids, and it is not JSON.
 
 A media directive also carries the `borderColor` and `borderSize`
 attributes, for the ADF border mark on the media node.
+
+A **non-file** media names its source with `url` instead of `#id`, and
+its `mediaSingle` wrapper always carries a `layout` — the schema-default
+rule above applies to it, so a directive that omits one is completed:
+
+```markdown
+::media[shot]{height="50" layout="center" type="external" url="https://example.com/i.png" width="100"}
+```
+
+Write that line without the `layout` and a format hands it back with
+`layout="center"`. File media is the exception, in the other direction:
+its default is `align-start`, which the canonical directive leaves
+implicit, so `::media[shot.png]{#<media-uuid>}` stays as written. And an
+external image that needs nothing beyond its source is not a directive at
+all — it renders as `![shot](https://example.com/i.png)`, with the
+`center` visible only in the ADF.
 
 ### Text directives (inline elements)
 

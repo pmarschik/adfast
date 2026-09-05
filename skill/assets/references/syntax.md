@@ -54,6 +54,16 @@ Attributes live in `{…}` after the label:
   comma-separated list of opaque source ids (not JSON) —
   `sources="id1,id2"`.
 
+- **Schema defaults are spelled out.** Where ADF gives an attribute a
+  default, a directive that omits it is under-specified rather than
+  different, and the canonical rendering writes the value back:
+  `::linkEmbed[https://example.com/embed]` formats to
+  `::linkEmbed[https://example.com/embed]{layout="center"}`, and
+  `:status[no color]` to `:status[no color]{color="neutral"}`. The
+  attribute stays optional on input; only the output is complete. The
+  reference implementation does the same, so this is parity, not a
+  liberty.
+
 Rendered attributes are sorted; the id shorthand comes first.
 
 ## Container directives (block elements)
@@ -91,6 +101,21 @@ so round trips preserve mark order.
 | `::jql[project = X AND status = Open]{cloudId="…" datasource="…" columns="summary,status"}`              | blockCard (JQL datasource) | Live JQL tables (Jira); `columns` lists the table-view keys, `url` is kept when present. `cloudId` and `datasource` are REQUIRED — without either the query degrades to a plain paragraph with a `jql-degraded` diagnostic, and an empty query drops                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `::extension{key="…" type="…" parameters='…' layout? localId? text?}`                                    | extension                  | Bodiless macros; `key`/`type` are the ADF extensionKey/extensionType; `parameters` carries arbitrary JSON in the canonical attr encoding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `::syncBlock{localId="…" resourceId="…"}`                                                                | syncBlock                  | A reference to a synced block                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+A **non-file** media names its source with `url` instead of `#id`, and
+its `mediaSingle` wrapper always carries a `layout`, so the schema-default
+rule under [Attribute syntax](#attribute-syntax) applies to it:
+
+```markdown
+::media[shot]{height="50" layout="center" type="external" url="https://example.com/i.png" width="100"}
+```
+
+Omit the `layout` and a format completes it to `center`. File media is
+the exception, in the other direction: its default is `align-start`, and
+the canonical directive leaves that one implicit. An external image that
+needs nothing beyond its source is not a directive at all — it renders as
+`![shot](https://example.com/i.png)`, with the `center` visible only in
+the ADF.
 
 ## Text directives (inline elements)
 
