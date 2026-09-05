@@ -145,6 +145,17 @@ func (r *mdRenderer) expandTableSpans(rows []ast.Node) (visual [][]string, colCo
 // visitor degrades by writing their children, so flattening them here
 // reproduces what the cell already rendered; the switch adds only the
 // kinds that carried their text somewhere the fallback never looked.
+//
+// That equivalence was measured, one kind at a time: with every kind but
+// blockquote removed from the recursion list the whole suite stayed
+// green, because the inline writer's own fallback reaches the same
+// children and emits the same bytes. The list therefore earns its keep
+// in one situation only — a rewritten leaf nested below one of these
+// wrappers, which the fallback would reach but the rewrite would not.
+// Each entry is pinned on exactly that shape by
+// TestTableCell_EveryBlockWrapperIsReachedThrough, so dropping any one
+// of them now turns its case red; do not trim the list on the strength
+// of a green run without checking that test.
 func cellContent(children []ast.Node) []ast.Node {
 	var out []ast.Node
 	for _, child := range children {
@@ -172,6 +183,17 @@ func appendCellContent(out []ast.Node, node ast.Node) []ast.Node {
 			return out
 		}
 		return append(out, &ast.InlineCode{Value: n.Value})
+	case *ast.HTML:
+		// Raw HTML stays raw — the reference writes it verbatim and so
+		// does the cell, and an inline span is the common case here
+		// because a parse splits inline HTML into tag-only nodes. But
+		// verbatim is not automatically safe: a value carrying a newline
+		// or a bare pipe breaks the row it sits in. See cellSafeHTML.
+		safe := cellSafeHTML(n.Value)
+		if safe == n.Value {
+			return append(out, node)
+		}
+		return append(out, &ast.HTML{Value: safe})
 	case *ast.ThematicBreak:
 		// The one block with no content at all: there is nothing for the
 		// cell to lose. The reference writes "***", which inside a cell
@@ -187,6 +209,64 @@ func appendCellContent(out []ast.Node, node ast.Node) []ast.Node {
 		return out
 	}
 	return append(out, node)
+}
+
+// cellSafeHTML makes a raw HTML value writable on one table line: every
+// newline becomes a space, and a bare pipe is escaped.
+//
+// Both rewrites are unreachable from a parse, which is why they cannot
+// cost a round trip. A cell is one line, so a parsed HTML value never
+// holds a newline; and a pipe written inside a cell's HTML keeps its
+// backslash in the value itself — parsing "| <a title=\"a\\|b\">x</a> |"
+// yields the html node `<a title="a\|b">`, already escaped, which this
+// leaves alone. A bare pipe therefore only reaches here from a
+// hand-built tree or an ADF conversion, where before this it split the
+// row into two columns: "<b>a|b</b>" rendered "| <b>a|b</b> |".
+//
+// The reference does neither. Measured on a two-row table whose body
+// cell holds the node (mdast-util-to-markdown with mdast-util-gfm-table),
+// an html value of "<div>\nA\n</div>" serializes to a third row of three
+// lines and "<b>a|b</b>" to a row of three columns — its unsafe patterns
+// guard text serialization only, and raw HTML skips them. That is the
+// same table-destroying output this layer already refuses to copy for a
+// code block. The space is the reference's own answer to an end of line
+// that the enclosing construct cannot hold: a break inside a table cell
+// serializes to " " rather than to "\\\n".
+func cellSafeHTML(s string) string {
+	if !strings.ContainsAny(s, "|\n\r") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 8)
+	backslashes := 0
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; c {
+		case '\r':
+			// A CRLF is one end of line, so it collapses to one space.
+			if i+1 < len(s) && s[i+1] == '\n' {
+				i++
+			}
+			b.WriteByte(' ')
+			backslashes = 0
+		case '\n':
+			b.WriteByte(' ')
+			backslashes = 0
+		case '|':
+			// An odd run of backslashes already escapes this pipe.
+			if backslashes%2 == 0 {
+				b.WriteByte('\\')
+			}
+			b.WriteByte(c)
+			backslashes = 0
+		case '\\':
+			backslashes++
+			b.WriteByte(c)
+		default:
+			backslashes = 0
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 // spanExpander is expandTableSpans' running state: the rowspan
