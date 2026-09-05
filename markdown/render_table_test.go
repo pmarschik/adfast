@@ -60,6 +60,48 @@ func TestTableCell_CodeBlockInsideABlockquoteKeepsItsText(t *testing.T) {
 	}
 }
 
+// TestTableCell_EveryBlockWrapperIsReachedThrough pins the whole list of
+// kinds the cell projection recurses into, one case per kind. Without the
+// pins only the blockquote entry was load-bearing: dropping any other kind
+// left the suite green, because the inline writer's own fallback degrades
+// that kind to its children and produces the same bytes. The list earns
+// its keep only where a rewritten leaf sits below it, so every entry gets
+// a leaf below it here — an ast.Code, whose text the fallback cannot
+// reach on its own.
+func TestTableCell_EveryBlockWrapperIsReachedThrough(t *testing.T) {
+	code := func() ast.Node { return &ast.Code{Lang: "go", Value: "A"} }
+	cases := []struct {
+		kid  ast.Node
+		name string
+	}{
+		{name: "root", kid: &ast.Root{Children: []ast.Node{code()}}},
+		{name: "paragraph", kid: &ast.Paragraph{Children: []ast.Node{code()}}},
+		{name: "heading", kid: &ast.Heading{Depth: 2, Children: []ast.Node{code()}}},
+		{name: "blockquote", kid: &ast.Blockquote{Children: []ast.Node{code()}}},
+		{name: "list", kid: &ast.List{Children: []ast.Node{
+			&ast.ListItem{Children: []ast.Node{code()}},
+		}}},
+		{name: "list item", kid: &ast.ListItem{Children: []ast.Node{code()}}},
+		{name: "table", kid: &ast.Table{Children: []ast.Node{
+			&ast.TableRow{Children: []ast.Node{&ast.TableCell{Children: []ast.Node{code()}}}},
+		}}},
+		{name: "table row", kid: &ast.TableRow{Children: []ast.Node{
+			&ast.TableCell{Children: []ast.Node{code()}},
+		}}},
+		{name: "table cell", kid: &ast.TableCell{Children: []ast.Node{code()}}},
+		{name: "container directive", kid: &ast.ContainerDirective{Name: "note", Children: []ast.Node{code()}}},
+		{name: "leaf directive", kid: &ast.LeafDirective{Name: "note", Children: []ast.Node{code()}}},
+	}
+	want := "| good | subject |\n| ---- | ------- |\n| A    | `A`     |\n"
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Render(cellTable(tc.kid)); got != want {
+				t.Errorf("code block under a %s in a cell:\ngot  %q\nwant %q", tc.name, got, want)
+			}
+		})
+	}
+}
+
 func TestTableCell_CodeBlockPipeStaysEscaped(t *testing.T) {
 	// The recovered text goes through the cell's own inline writer, so
 	// the pipe that would split the row is escaped like any other.
@@ -77,6 +119,55 @@ func TestTableCell_FrontmatterKeepsItsText(t *testing.T) {
 	want := "| good | subject |\n| ---- | ------- |\n| A    | `x: 1`  |\n"
 	if got != want {
 		t.Errorf("frontmatter in a cell:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+func TestTableCell_RawHTMLNewlineCannotBreakTheRow(t *testing.T) {
+	// Raw HTML is written verbatim, so a value spanning lines used to put
+	// those lines straight into the row and the table stopped being a
+	// table. A cell is one line, so no parse can produce this value —
+	// only a hand-built tree or an ADF conversion.
+	got := Render(cellTable(&ast.HTML{Value: "<div>\nA\n</div>"}))
+	want := "| good | subject        |\n| ---- | -------------- |\n| A    | <div> A </div> |\n"
+	if got != want {
+		t.Errorf("multiline raw HTML in a cell:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+func TestTableCell_RawHTMLPipeStaysEscaped(t *testing.T) {
+	// A bare pipe in raw HTML split the row into two columns. It reaches
+	// the cell only from a hand-built tree: a parsed cell keeps the
+	// backslash inside the html value itself (see the pin below).
+	got := Render(cellTable(&ast.HTML{Value: "<b>a|b</b>"}))
+	want := "| good | subject     |\n| ---- | ----------- |\n| A    | <b>a\\|b</b> |\n"
+	if got != want {
+		t.Errorf("piped raw HTML in a cell:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+func TestTableCell_RawHTMLAlreadyEscapedPipeIsLeftAlone(t *testing.T) {
+	// The escape must not stack, or every render of a parsed table would
+	// add a backslash. Both the value a parse produces and a value whose
+	// backslash is itself escaped are measured here.
+	got := Render(cellTable(&ast.HTML{Value: `<a title="a\|b">`}))
+	want := "| good | subject          |\n| ---- | ---------------- |\n| A    | <a title=\"a\\|b\"> |\n"
+	if got != want {
+		t.Errorf("pre-escaped raw HTML in a cell:\ngot  %q\nwant %q", got, want)
+	}
+	got = Render(cellTable(&ast.HTML{Value: `<a t="a\\|b">`}))
+	want = "| good | subject        |\n| ---- | -------------- |\n| A    | <a t=\"a\\\\\\|b\"> |\n"
+	if got != want {
+		t.Errorf("escaped backslash before a pipe:\ngot  %q\nwant %q", got, want)
+	}
+}
+
+// TestTableCell_ParsedHTMLPipeSurvivesReRender pins why the escape above
+// cannot cost a round trip: a pipe written inside a cell's HTML keeps its
+// backslash in the html value, so the render leaves it exactly as parsed.
+func TestTableCell_ParsedHTMLPipeSurvivesReRender(t *testing.T) {
+	src := "| h                     |\n| --------------------- |\n| <a title=\"a\\|b\">x</a> |\n"
+	if got := Render(Parse([]byte(src))); got != src {
+		t.Errorf("parsed HTML pipe re-render:\ngot  %q\nwant %q", got, src)
 	}
 }
 
@@ -124,6 +215,13 @@ func TestTableCell_BlockWrappersDegradeToTheirContent(t *testing.T) {
 				&ast.TableRow{Children: []ast.Node{textCell("B")}},
 			}}},
 			want: "| good | subject |\n| ---- | ------- |\n| A    | B       |\n",
+		},
+		{
+			// Raw HTML that already fits a row is written verbatim, like
+			// the reference writes it.
+			name: "inline raw HTML",
+			kids: []ast.Node{&ast.HTML{Value: "<b>B</b>"}},
+			want: "| good | subject  |\n| ---- | -------- |\n| A    | <b>B</b> |\n",
 		},
 		{
 			// The one block with no content at all, so the cell has
