@@ -106,13 +106,19 @@ func (p *angleAutoLinkParser) Parse(parent gast.Node, block text.Reader, pc pars
 	return n
 }
 
-// escapedLinkifyBoundaries is the subset of goldmark's linkify trigger set
-// that a backslash can escape: its Trigger() is ' ', '*', '_', '~', '(' and
-// only ASCII punctuation is escapable, so the space drops out. A boundary
-// NOT in this set stays out on purpose — the escape must not WIDEN the
-// verdict, only leave it where the literal character puts it. "a\.http://x"
-// therefore keeps linking nothing, exactly as "a.http://x" does.
-const escapedLinkifyBoundaries = "*_~("
+// escapedLinkifyBoundaries is the set of boundary bytes a backslash can
+// escape in front of a bare URL literal: goldmark's own five plus the widened
+// set punctLinkifyParser claims, minus the space (only ASCII punctuation is
+// escapable) and minus ':' (colonURLParser owns that byte, and it is not in
+// this chain).
+//
+// IT IS THE SAME SET AS THE UNESCAPED ONE ON PURPOSE. An escape must not
+// decide whether a URL is a link, in either direction, so this set has to
+// track the boundaries the literal spelling accepts rather than lag behind
+// them: while it read "*_~(" alone, "a\.http://x" stayed prose after
+// "a.http://x" had started linking, and the formatter's move of an escape
+// would then have added or removed a link.
+const escapedLinkifyBoundaries = "*_~(" + punctLinkifyBoundaries
 
 // escapedLinkifyParser linkifies a bare URL that follows a backslash escape,
 // which goldmark's own linkify extension cannot reach.
@@ -171,7 +177,8 @@ func newEscapedLinkifyParser(opts ...extension.LinkifyOption) parser.InlineParse
 // and an escape must not decide whether a URL is a link, so both need the same
 // stack.
 func newLinkifyRecognizer(opts ...extension.LinkifyOption) parser.InlineParser {
-	return newWWWCaseLinkifyParser(newLinkifyHostGate(extension.NewLinkifyParser(opts...)))
+	return newPunctLinkifyParser(
+		newWWWCaseLinkifyParser(newLinkifyHostGate(extension.NewLinkifyParser(opts...))))
 }
 
 // linkifyBoundaryBytes is goldmark's linkify trigger set. Its Parse advances
@@ -318,6 +325,164 @@ func (*wwwCaseLinkifyParser) parseMixedCaseWWW(parent gast.Node, block text.Read
 	// prepends it, which is what makes Source.Autolinks report the same
 	// Target shape for both spellings.
 	link.Protocol = []byte("http")
+	return link
+}
+
+// punctLinkifyBoundaries is every ASCII punctuation byte this package claims
+// as a left boundary for a bare URL literal. The omissions from the ASCII
+// punctuation set fall into three groups, and only the last one is a gap.
+//
+// ALREADY OWNED, so claiming them here would be a second recognizer for a
+// shape that already works:
+//
+//   - '(' '*' '_' '~' are goldmark's own trigger set, handled by the wrapped
+//     parser at goldmark's own extent.
+//   - ':' belongs to colonURLParser, which reads the same patterns. Two
+//     parsers registered at one priority with one trigger byte run in an
+//     unspecified order (goldmark sorts with sort.Slice, which is not
+//     stable), so the byte has exactly one owner.
+//   - '\\' belongs to escapedLinkifyParser, which advances past the escape
+//     and delegates into this chain, so an escaped boundary reaches the rule
+//     through that parser rather than around it.
+//
+// UNREACHABLE, because another parser answers first: '[' is the link
+// parser's, and it returns the bracket as text rather than declining, so a
+// parser behind it is never asked. "z[http://a.b" stays prose here and links
+// in the reference.
+//
+// HELD BACK, and these are the gaps. '&' '#' ';' are the bytes of a CHARACTER
+// REFERENCE, and adding a trigger at any of them changes how the document is
+// ESCAPED, not just how it is linked. goldmark ends a line by appending its
+// trailing run with parent.AppendChild rather than MergeOrAppendTextSegment
+// (parser.parseBlock), so every trigger byte splits the text node there — and
+// the renderer's character-reference rule reads the bytes around a '&' inside
+// ONE text node, so a split it did not expect makes it defuse a reference that
+// needs no defusing. Measured with '&' in this set, whole bodies:
+//
+//	"x&#x20;"     formatted "x\&#x20;"     (base: "x&#x20;", a fixpoint)
+//	"***0*0**0"   formatted to a non-fixpoint, "**_&#x30;_&#x30;**&#x30;"
+//	              re-rendering as "**_&#x30;_&#x30;**\&#x30;"
+//
+// '#' and ';' break the same way from the other two positions in "&#x20;".
+// Closing this needs the escape rule to read the rendered output rather than
+// the node it is inside, which is render_escape.go's business and not this
+// parser's, so the three bytes stay out and "z&http://a.b" stays prose.
+//
+// '<' is held back for a different reason, and it is the one omission that
+// trades one divergence for another rather than avoiding a regression.
+// Source.Autolinks resolves an autolink's written extent from Node.Pos, which
+// is the byte BEFORE the address, and it reads a '<' there as the ANGLE form —
+// the form whose address must be closed by a '>'. Its doc states outright that
+// this is sound BECAUSE no linkify parser triggers on '<'. Registering one
+// makes "z<http://a.b c" build an AutoLink whose Pos is that '<' with no '>'
+// behind the address, so the extent fails to resolve and the node is DROPPED
+// from that view instead of reported. Measured both ways, whole bodies:
+//
+//	                  '<' in this set          '<' out (here)
+//	"z<http://a.b c"  tree link, span view []  no link at all
+//	                  UnlocatedAutolinks() 1   UnlocatedAutolinks() 0
+//	"z<www.a.b c"     tree link, span view []  no link at all
+//	                  UnlocatedAutolinks() 1   UnlocatedAutolinks() 0
+//
+// The reference links both — "z<http://a.b c" reports "http://a.b" at 2-12 —
+// so NEITHER column matches it. The byte stays out because closing the gap
+// properly is source_autolinks.go's business: that view has to tell the two
+// written forms apart by something other than the byte at Pos before a parser
+// may trigger here. TestBoundaryLiteralsAllResolveToASpan holds the line in the
+// meantime — it fails on the unlocated count the moment a byte with this hazard
+// is added.
+const punctLinkifyBoundaries = "!\"$%'),+-./=>?@[]^`{|}"
+
+// punctLinkifyParser linkifies a bare URL literal that follows an ASCII
+// punctuation byte outside goldmark's five-byte trigger set.
+//
+// THE BOUNDARY IS A RULE ABOUT THE PREVIOUS CHARACTER, and the reference
+// spells it three ways rather than one. Read out of the frozen install:
+//
+//   - micromark-extension-gfm-autolink-literal's tokenizer, for a SCHEMED
+//     literal: `previousProtocol = !asciiAlpha(code)`. Every byte that is
+//     not an ASCII letter opens one — punctuation, but digits and non-ASCII
+//     letters too.
+//   - the same tokenizer, for a "www." literal: `previousWww` is the closed
+//     set `null | '(' | '*' | '_' | '[' | ']' | '~' | line ending | space`,
+//     which is goldmark's five plus '[' and ']' — NARROWER than punctuation.
+//   - mdast-util-gfm-autolink-literal's transform, for both: start of input,
+//     Unicode whitespace, or Unicode punctuation.
+//
+// A literal links when ANY of the three accepts it, so the union is what a
+// round trip has to reproduce. Swept over all 32 ASCII punctuation bytes in
+// "z<punct>http://a.b c" and "z<punct>www.a.b c" the reference links 32 of 32
+// in each; this package agreed on 12 of those 64 bodies before this parser
+// and on 53 after it. The eleven that remain are the bytes
+// punctLinkifyBoundaries names as owned or held back.
+//
+// WHAT IT DOES NOT REACH, and why that is not fixable here: goldmark
+// dispatches an inline parser only at an unescaped ASCII punctuation byte, a
+// space, or the line head (`util.IsPunct` is a byte test — see
+// parser.parseBlock), so a boundary that is a DIGIT or a NON-ASCII character
+// never reaches any Trigger at all. Measured, still divergent after this
+// parser: "1http://a.b" and "参http://a.b" link in the reference (neither
+// previous byte is an ASCII letter) and stay prose here, as does "a—www.a.b".
+// That residual is a boundary CLASS this package cannot see, not a byte it
+// chose to leave out. Closing it needs a scan outside goldmark's dispatch,
+// which would report links in the tree that Source.Autolinks cannot see — the
+// split escapedLinkifyParser exists to avoid.
+//
+// ACCEPTANCE IS THIS PACKAGE'S, not a fourth copy: urlLiteralCandidate runs
+// the same two anchored patterns in goldmark's own order, urlLiteralHostAccepted
+// applies the same domain rule, and trimURLLiteralEnd is goldmark's trailing
+// trim spelled out. Only the byte in front of the address is new.
+type punctLinkifyParser struct{ inner parser.InlineParser }
+
+// newPunctLinkifyParser returns the widened-boundary linkify parser wrapping
+// inner, whose triggers it also serves.
+func newPunctLinkifyParser(inner parser.InlineParser) parser.InlineParser {
+	return &punctLinkifyParser{inner: inner}
+}
+
+func (p *punctLinkifyParser) Trigger() []byte {
+	return append([]byte(punctLinkifyBoundaries), p.inner.Trigger()...)
+}
+
+func (p *punctLinkifyParser) Parse(parent gast.Node, block text.Reader, pc parser.Context) gast.Node {
+	if n := p.parseAfterPunct(parent, block, pc); n != nil {
+		return n
+	}
+	return p.inner.Parse(parent, block, pc)
+}
+
+// parseAfterPunct returns the autolink for a literal opening one byte after a
+// widened boundary, nil for anything else. It never advances the reader on
+// the nil path, so the caller may delegate straight afterwards.
+func (*punctLinkifyParser) parseAfterPunct(parent gast.Node, block text.Reader, pc parser.Context) gast.Node {
+	if pc.IsInLinkLabel() {
+		return nil
+	}
+	line, segment := block.PeekLine()
+	if len(line) < 2 || strings.IndexByte(punctLinkifyBoundaries, line[0]) < 0 {
+		return nil
+	}
+	rest := line[1:]
+	m := urlLiteralCandidate(rest)
+	if m == nil || !urlLiteralHostAcceptedAt(rest, len(m)) {
+		return nil
+	}
+	lit := trimURLLiteralEnd(string(m))
+	if lit == "" {
+		return nil
+	}
+	// The boundary byte is not part of the address; it goes out as text,
+	// exactly as goldmark emits its own trigger byte.
+	gast.MergeOrAppendTextSegment(parent, segment.WithStop(segment.Start+1))
+	block.Advance(1 + len(lit))
+	start := segment.Start + 1
+	addr := gast.NewTextSegment(text.NewSegment(start, start+len(lit)))
+	link := gast.NewAutoLink(gast.AutoLinkURL, addr)
+	if hasWWWPrefix([]byte(lit)) {
+		// The scheme goldmark completes for its own www branch; without it
+		// AutoLink.URL reports a schemeless, relative address.
+		link.Protocol = []byte("http")
+	}
 	return link
 }
 
