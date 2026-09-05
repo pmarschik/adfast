@@ -567,10 +567,16 @@ would only be a second one. A named regression test pins each of these:
   directive name without a rename of the directive. `:name{}` is
   semantically inert for every registered kind, terminates the token,
   and ends the form in punctuation. A node that renders bare therefore
-  renders as `:media{}_!_` rather than as the unstable `:media_!_` of
-  remark. Since the bare-name rule below, the node that reaches this
-  repair comes from ADF rather than from `*:media!*`, whose `:media` is
-  prose. The formatter needs the block in more places than the renderer does. It
+  renders as `:name{}_!_` rather than as the unstable `:name_!_` of
+  remark. Since the bare-name rule below, a dialect name written bare is
+  prose and never reaches this repair — `*:media!*` is a word — so what
+  reaches it is a form the author gave a payload (`:media[0]{}{0=" "}`)
+  and a generic, unregistered name, which renders bare because no dialect
+  constructor runs for it. A dialect chip that would otherwise reach the
+  renderer with nothing left to spell writes its default attribute
+  instead of nothing (`convert.unbareSourcelessChip`), so it terminates
+  its own form and needs no block on top.
+  The formatter needs the block in more places than the renderer does. It
   adds no escape of its own and writes back the source form the parse
   captured, so a `[` or a `_` that the source left bare fuses onto the
   name, where a re-derived escape would have separated it. See

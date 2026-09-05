@@ -20,10 +20,12 @@ import (
 // label and no attributes is prose on that leg (see dialect's bare-name
 // rule), so the repair no longer has a bare DIALECT directive to protect
 // here — the word travels as text and the emphasis keeps it. What still
-// reaches the repair on this leg is a form the author gave a payload:
-// the labeled and attributed rows below, and a directive whose payload
-// the ADF leg drops. TestSourcelessChipFromADFGetsTheTail covers the
-// latter, which is the one shape that still renders bare.
+// reaches the repair on this leg is a form the author gave a payload: the
+// labeled and attributed rows below, and every generic (unregistered)
+// name, which renders bare because no dialect constructor runs for it. A
+// media chip whose payload the ADF leg drops no longer reaches it, since
+// it spells its default type instead of nothing — see
+// TestSourcelessChipFromADFNeedsNoTail.
 func TestBareDirectiveBeforeEmphasisGetsPunctuationTail(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -99,20 +101,24 @@ func TestBareDirectiveBeforeEmphasisGetsPunctuationTail(t *testing.T) {
 	}
 }
 
-// The one inline node that still renders as a bare name is a media chip
-// that addresses nothing: ADF may carry a mediaInline with neither id nor
-// collection, and there is no attribute left to write for it. The
-// punctuation tail is what keeps the emphasis after it flanking, so this
-// is the live subject of markdown.needsPunctTrail.
+// A media chip that addresses nothing — ADF may carry a mediaInline with
+// neither id nor collection — used to be the one inline node that rendered
+// as a bare name, and so the live subject of markdown.needsPunctTrail on
+// this leg: the empty attribute block was all there was to end the form in
+// punctuation and keep the emphasis after it flanking.
 //
-// The chip does not survive the trip, and that is the point of the
-// bare-name rule rather than a defect of the repair: ":media{}" carries
-// no more than ":media" does, so it re-parses as the word, and the second
-// render writes the word as text. Two passes, then stable — the reader
-// sees a word instead of a chip that addresses no attachment. See
-// dialect.SourcelessMedia for why an unaddressed chip is defective in the
-// first place.
-func TestSourcelessChipFromADFGetsTheTail(t *testing.T) {
+// It no longer renders bare. The bare spelling was not a spelling of the
+// node at all — the bare-name rule reads it back as the word ":media" —
+// so the chip took two passes to settle and became text on the way. It
+// now spells the default type it always had (convert.unbareSourcelessChip,
+// and TestPayloadlessMediaChipKeepsASpellingThatReadsBack for the rule
+// itself), which ends the form in a brace by itself: the repair has no
+// work to do here and must not add a second block on top.
+//
+// The repair keeps its own live subjects in the table above — a labeled
+// directive followed by a brace, and every generic (unregistered) name,
+// which still renders bare because no dialect constructor runs for it.
+func TestSourcelessChipFromADFNeedsNoTail(t *testing.T) {
 	t.Parallel()
 	const src = `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[` +
 		`{"type":"mediaInline","attrs":{"type":"file"}},` +
@@ -122,15 +128,11 @@ func TestSourcelessChipFromADFGetsTheTail(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	first := adfast.ToMarkdown(adfast.FromADF(doc))
-	if want := ":media{}_!_\n"; first != want {
+	if want := ":media{type=\"file\"}_!_\n"; first != want {
 		t.Fatalf("first render = %q, want %q", first, want)
 	}
-	second := roundTripMarkdown(first)
-	if want := "\\:medi&#x61;_!_\n"; second != want {
-		t.Fatalf("second render = %q, want %q", second, want)
-	}
-	if third := roundTripMarkdown(second); third != second {
-		t.Fatalf("not stable after the degradation:\n second: %q\n third:  %q", second, third)
+	if second := roundTripMarkdown(first); second != first {
+		t.Fatalf("the chip must settle in ONE pass:\n first:  %q\n second: %q", first, second)
 	}
 }
 

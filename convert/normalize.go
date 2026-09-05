@@ -595,19 +595,63 @@ func (fn *normalizer) carryUnreadAtomAttrs(src ast.Node, atoms []fmtAtom) {
 // Writing the default back costs one attribute in the formatted text and
 // nothing in ADF (the encode infers the same "file" either way), and it
 // runs after carryUnreadAtomAttrs so a chip that has any other
-// attribute to render needs no filler. The ADF leg keeps its own bare
-// spelling: this is the format leg's rule about the AUTHOR'S markdown,
-// and dialect's bareTextGuard documents why a sourceless chip decoded
-// FROM ADF is allowed to come back as the word.
+// attribute to render needs no filler.
 func unbareDialectAtom(atoms []fmtAtom) {
 	if len(atoms) != 1 {
 		return
 	}
-	v, ok := atoms[0].node.(*dialect.MediaInline)
+	unbareSourcelessChip(atoms[0].node)
+}
+
+// unbareSourcelessChip writes the default type back onto a :media chip
+// that has nothing else to spell, so the directive keeps a form that
+// reads back as the same node.
+//
+// It is one rule serving BOTH legs, and that is the point rather than a
+// convenience. A payload-less chip renders as the bare name ":media",
+// and a bare KNOWN inline directive name is prose (dialect's bare-name
+// rule) — so the bare spelling does not mean the node it was written
+// from. Whichever leg produces the chip, the render is a word and the
+// NEXT parse reads a word: the document needed two passes to settle,
+// which is the round-trip idempotence invariant broken, and in between
+// it silently swapped a media node for text.
+//
+// The two producers are the format leg's re-derivation (normalizeMediaInline
+// omits the default type="file" because the encode re-infers it, so
+// ":media{type=file}" re-derived to a bare chip) and the ADF decode
+// (convert's VisitMediaInline: a mediaInline carrying neither id nor
+// collection decodes to a chip with no attribute at all). Both handed
+// the renderer a node with no spelling; neither leg can be repaired by
+// escaping, because the bytes are correct for the word and wrong for the
+// node.
+//
+// The type is the one attribute always available to spell — ADF's
+// mediaInline always has a type, and "file" is what the encode infers
+// when none is written — so it is what makes the form terminate in an
+// attribute block that a re-parse promotes again. Nothing is added to
+// the dialect surface: ":media{type=file}" is the spelling the format
+// leg has written since the same rule landed there.
+//
+// A chip that spells anything else — an id, a collection, a label, a
+// link or annotation mark — already terminates its own form and is left
+// exactly as it was.
+func unbareSourcelessChip(n ast.Node) {
+	v, ok := n.(*dialect.MediaInline)
 	if !ok || len(v.Attrs) > 0 || len(v.Children) > 0 {
 		return
 	}
-	v.Attrs["type"] = v.MediaType
+	mtype := v.MediaType
+	if mtype == "" {
+		// The ADF decode carries the node's type through verbatim, and a
+		// mediaInline may arrive with none; the encode reads an absent
+		// type as "file", so writing anything else back would not survive
+		// its own round trip.
+		mtype = "file"
+	}
+	if v.Attrs == nil {
+		v.Attrs = map[string]string{}
+	}
+	v.Attrs["type"] = mtype
 }
 
 // hasUnreadAttr reports whether attrs holds a name outside read.
