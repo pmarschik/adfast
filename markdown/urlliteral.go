@@ -206,11 +206,44 @@ const (
 	// candidate for ast.NormalizeLabel's fold, which is a Unicode FULL fold
 	// over arbitrary label text and would widen this gate further still.
 	urlLiteralScheme = `(?:[hH][tT][tT][pP][sS]?|[fF][tT][pP])://`
-	// urlLiteralWWW is the scheme-less "www." literal, kept BYTE-IDENTICAL
-	// to what this package matched before. goldmark completes the scheme for
-	// it, so it is not a URL as written, and every caller of this package
-	// treats it separately; widening it is a change of its own.
-	urlLiteralWWW = `www\.[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+(?::\d+)?` + urlLiteralPath
+	// urlLiteralWWW is the scheme-less "www." literal. goldmark completes the
+	// scheme for it, so it is not a URL as written, and every caller of this
+	// package treats it separately.
+	//
+	// THE "www." PREFIX IS ITSELF THE DOT the host rule demands, and that is
+	// the whole of the widening here. goldmark spelled the rest of the host
+	// as `[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-z]+`, so it wanted a SECOND dot
+	// after the prefix and read "www.x" as prose. Both of the reference's
+	// recognizers link it:
+	//
+	//   - micromark's tokenizer needs no dot in a domain at all (its own
+	//     source says so), so "www." plus one domain character is a literal.
+	//   - mdast-util-gfm-autolink-literal's transform splits the whole host
+	//     on '.' and demands two segments — and "www" is the first of them,
+	//     so "www.x" satisfies it where a bare "x" would not.
+	//
+	// Measured against the frozen reference, "see www.x b" comes back with
+	// the host linked while this package left the line as prose. That is a
+	// LINK-VERSUS-TEXT divergence rather than a shifted extent: a canonical
+	// diff over a document holding a bare "www." host disagreed about the
+	// payload, and a push sent prose where the reference sends a link.
+	//
+	// THE REMAINDER IS THE SCHEMED HOST RULE, reused rather than respelled,
+	// so the dotted and dotless forms cannot drift apart from the schemed
+	// literal's. Taking urlLiteralHostDotted FIRST is what keeps every
+	// address that already linked at the extent it already had: '~' is a
+	// host byte, so a lone dotless alternative would read "www.ex.com~foo"
+	// whole, where the dotted alternative stops at "www.ex.com" and leaves
+	// the tilde to the path gap this file's header describes.
+	//
+	// urlLiteralHostUnicodeLed is deliberately NOT among the alternatives.
+	// The prefix is ASCII, so the character right after it can never be the
+	// FIRST of the host — that position is 'w' — and the segment after the
+	// prefix is a middle segment, which the header records as truncating in
+	// the schemed form too ("https://www.點看.com"). Adding it here would
+	// move that row for the scheme-less spelling alone.
+	urlLiteralWWW = `www\.(?:` + urlLiteralHostDotted +
+		`|[a-zA-Z0-9]` + urlLiteralHostByte + `{0,255})` + urlLiteralPath
 )
 
 // urlLiteralRe matches a GFM literal-autolink URL anywhere in a string,

@@ -498,6 +498,14 @@ func TestRender_DotAfterWAtANodeBoundary(t *testing.T) {
 // REMARK MODE ONLY, and not because prettier mode is untested: what prettier
 // mode writes for a bare dot is the prettier column of dotAfterWCases, and
 // what it does with an AUTHORED escape is the test below.
+//
+// THE FIXTURE IS "ww." AND NOT "www.", and the difference is the recognizer
+// rather than the escape rule. "www.x" is now a URL LITERAL (see
+// urlLiteralWWW), so a line holding it parses as a LINK and never reaches
+// the escaper at all — both modes answer "see [www.x](http://www.x) b",
+// which is what TestWWWLiteralLinksASchemeLessHost pins. The escape rule
+// itself is keyed on a single 'w' (dotAfterWCases' "ONE 'w' is enough"
+// row), so "ww." exercises exactly the same rule on text that stays text.
 func TestRender_DotAfterWRoundTripsStablyInRemarkMode(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -506,12 +514,12 @@ func TestRender_DotAfterWRoundTripsStablyInRemarkMode(t *testing.T) {
 		want string
 	}{{
 		name: "an authored escape is written back",
-		src:  "see www\\.x b\n",
-		want: "see www\\.x b\n",
+		src:  "see ww\\.x b\n",
+		want: "see ww\\.x b\n",
 	}, {
 		name: "a bare dot gains the escape",
-		src:  "see www.x b\n",
-		want: "see www\\.x b\n",
+		src:  "see ww.x b\n",
+		want: "see ww\\.x b\n",
 	}, {
 		name: "a dot the rule does not reach stays bare",
 		src:  "see v.x b\n",
@@ -567,10 +575,13 @@ func TestRender_DotAfterWKeepsAnAuthoredEscapeInBothModes(t *testing.T) {
 		remark   string
 		prettier string
 	}{{
+		// "ww." rather than "www." for the reason the round-trip test above
+		// records: a "www." host is a URL literal now, so that spelling never
+		// reaches the escaper.
 		name:     "an authored dot escape survives in both modes",
-		src:      "see www\\.x b\n",
-		remark:   "see www\\.x b\n",
-		prettier: "see www\\.x b\n",
+		src:      "see ww\\.x b\n",
+		remark:   "see ww\\.x b\n",
+		prettier: "see ww\\.x b\n",
 	}, {
 		name:     "and an authored LITERAL backslash before a dot is kept in both",
 		src:      "a b\\\\.c d\n",
