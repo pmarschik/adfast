@@ -1568,31 +1568,95 @@ func (c *astConverter) flattenLink(node *ast.Link, ctx markCtx) []adf.Node {
 	next.linkTitle = node.Title
 	next.hasLink = true
 	out := c.flattenChildren(node.Children, next)
-	if len(out) == 0 {
-		// The link mark rides on the label, so a label that converted to
-		// nothing takes the destination with it. What markdown produces is
-		// a label with no text ANYWHERE in it — "[![]()](href)", an image
-		// with neither alt text nor a destination to name it after (see
-		// inlineFlattener.degradeUnplaceableImage). An unplaceable image
-		// that HAS a label keeps this link alive: the label becomes the
-		// text and the enclosing destination its mark.
-		c.reportEmptiedLink(href)
+	// The sink test comes first so a caller that asked for no diagnostics
+	// pays nothing for the walk: this runs on EVERY link in the document,
+	// and the answer is only ever used to phrase a message.
+	if c.diagnostics != nil && !carriesLink(out, href) {
+		// The link mark rides on the label, so a label with no node ABLE TO
+		// CARRY the mark takes the destination with it. Asking whether the
+		// label produced any node at all was the weaker question and missed
+		// the commoner half: "[:mention[Jane]{#1}](href)" produces a mention,
+		// which is not empty and still leaves nothing for the mark — Jira has
+		// never been observed to put marks on mention, status, emoji, date,
+		// placeholder, inlineExtension or mediaInline (measured over 110MB of
+		// recorded payloads: 39,159 marks keys, all of them on text), so the
+		// encoders leave those leaves bare and the href simply left the
+		// document. The empty-label half is still here too: "[![]()](href)",
+		// an image with neither alt text nor a destination to name it after
+		// (see inlineFlattener.degradeUnplaceableImage).
+		//
+		// The question is asked of the OUTPUT rather than of the input kinds
+		// so that no future encoder has to remember to update a list: text
+		// under a style wrapper (:u, :color, :annotation) answers yes on its
+		// own, because the wrapper flattens THROUGH this same context. A
+		// label that carries the destination only in PART (an unlinked
+		// mention between two linked words) also answers yes: the href is
+		// still in the document and still clickable, so nothing was dropped
+		// to report.
+		c.reportEmptiedLink(href, out)
 	}
 	return out
 }
 
-// reportEmptiedLink reports a link whose whole label converted to
-// nothing: with no node left to carry the mark, the href leaves the
-// document. A link with no destination to lose ("[]()") stays quiet.
-func (c *astConverter) reportEmptiedLink(href string) {
+// carriesLink answers whether the destination actually reached the
+// encoded label: some node in out, or somewhere in its subtree, carries
+// a link mark to href.
+//
+// The subtree half is currently unexercised — every node flattenLink
+// produces today is an inline leaf, so the walk never descends — and it
+// is written this way anyway because the total question is the one the
+// caller means. A guard that read only the top level would be a second
+// place to remember if an encoder ever returns a wrapper (a linked image
+// alone in a paragraph already becomes a mediaSingle wrapping a marked
+// media node; it reaches ADF through the block path rather than here,
+// which is the near miss this shape guards against).
+func carriesLink(out []adf.Node, href string) bool {
+	for _, root := range out {
+		for n := range adf.Walk(root) {
+			for _, m := range adf.NodeMarks(n) {
+				if link, ok := m.(*adf.Link); ok && link.Href != nil && *link.Href == href {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// reportEmptiedLink reports a link whose label kept no node able to carry
+// the mark, so the href leaves the document. A link with no destination
+// to lose ("[]()") stays quiet.
+//
+// One code covers both shapes and the MESSAGE says which happened, the
+// way CodeUnresolvedAsset and CodeJQLDegraded already split their cases:
+// the consumer's action is the same either way (the URL is gone from the
+// payload, tell the author), and a second code would grow every
+// consumer's Codes() classification table for a distinction none of them
+// would route differently.
+func (c *astConverter) reportEmptiedLink(href string, out []adf.Node) {
 	if c.diagnostics == nil || href == "" {
 		return
 	}
-	c.diagnostics(Diagnostic{
-		Code: CodeLinkDestinationDropped,
-		Message: "link to " + href +
-			" dropped: its whole label converted to nothing, and an ADF link mark needs content to ride on",
-	})
+	message := "link to " + href +
+		" dropped: its whole label converted to nothing, and an ADF link mark needs content to ride on"
+	if kinds := unmarkableKinds(out); kinds != "" {
+		message = "link to " + href + " dropped: its label encoded to " + kinds +
+			", and an ADF link is a mark that only text can carry"
+	}
+	c.diagnostics(Diagnostic{Code: CodeLinkDestinationDropped, Message: message})
+}
+
+// unmarkableKinds names the top-level kinds a non-empty label encoded to,
+// for reportEmptiedLink's message — deduplicated, in document order.
+// An empty label returns "", which selects the other wording.
+func unmarkableKinds(out []adf.Node) string {
+	var kinds []string
+	for _, n := range out {
+		if kind := n.Kind(); !slices.Contains(kinds, kind) {
+			kinds = append(kinds, kind)
+		}
+	}
+	return strings.Join(kinds, ", ")
 }
 
 // flattenTextDirective converts a generic (unknown) text directive: it

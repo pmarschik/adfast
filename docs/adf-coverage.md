@@ -319,9 +319,14 @@ The last three rows are the lossy ones, and none is silent:
 - **unplaceable image with no label.** An image with neither alt text
   nor a destination to name it after (`![]()`) has no label to keep, so
   it still converts away — and says nothing, because there is no asset
-  behind it to resolve later. Inside a link it is also the one markdown
-  form that empties a whole label, leaving an ADF link mark with no node
-  to ride on; a `link-destination-dropped` diagnostic names that href.
+  behind it to resolve later. Inside a link it is the markdown form that
+  empties a whole label, leaving an ADF link mark with no node to ride
+  on; a `link-destination-dropped` diagnostic names that href. The same
+  diagnostic covers the other way a label can carry no mark: a label
+  that is only a marks-less inline leaf — `:mention`, `:status`,
+  `:emoji`, `:date`, `:placeholder`, `:extension`, `:media` — none of
+  which adfast marks, because no recorded Atlassian payload marks them
+  either.
 
 ### Reading one back
 

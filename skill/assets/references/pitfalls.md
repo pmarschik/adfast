@@ -75,11 +75,17 @@ vocabulary:
   The content stays visible and the round trip is stable; only the
   "render this inline" intent is lost. An inline image the asset store
   resolves to a media id is unaffected.
-- `link-destination-dropped` — a link whose whole label converted away,
-  leaving the mark with no node to ride on. The one markdown form that
-  does it is a linked image with neither alt text nor a placeable
-  picture (`[![]()](href)`): there is no label to keep, so the href goes
-  too, and the diagnostic names it.
+- `link-destination-dropped` — a link whose label kept no node able to
+  carry the mark, so the href left the document. Two forms reach it, and
+  the message says which. The label converted away entirely: a linked
+  image with neither alt text nor a placeable picture (`[![]()](href)`).
+  Or the label became a marks-less inline leaf — `[:mention[Jane]{#1}]`
+  `(href)`, and the same for `:status`, `:emoji`, `:date`,
+  `:placeholder`, `:extension` and `:media`. The leaf still renders, so
+  the page looks right and only the URL is gone; put text inside the
+  link beside the leaf to keep it. A label that carries the destination
+  in part (an unlinked mention between two linked words) is not
+  reported — the href is still there.
 - `unused-definition-dropped` — a link reference definition no reference
   in the document uses. Its destination never travelled to a use, so
   there is nothing in ADF to hold it; the diagnostic names the label and
