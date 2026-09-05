@@ -35,6 +35,83 @@ func emphasisMarkerByte(node ast.Node) byte {
 	return 0
 }
 
+// emphasisMarkerAfter returns the delimiter byte the renderer will actually
+// put around the construct at nodes[i] when the rune prev precedes it, which
+// is emphasisMarkerByte's answer for everything except an emphasis whose '_'
+// would not flank where it sits. It is 0 for a node that is not a mark.
+//
+// '_' has no intraword form in CommonMark, so an emphasis with a word
+// character on either side cannot be written with it at all. The repair the
+// rest of this file implements — hex-encode the neighboring rune so the
+// marker gets the punctuation it needs — then reaches for three plain
+// letters: "a*b*c" went out as "&#x61;_&#x62;_&#x63;". That is valid and it
+// round-trips, which is why nothing caught it, but it is unreadable in a file
+// an author is expected to hand-edit, and partial-word emphasis is ordinary
+// in prose.
+//
+// Both references answer it the way the spec intends, by using the delimiter
+// that HAS an intraword form. Measured on "a*b*c": prettier 3.8.1 (md -> md)
+// writes "a*b*c", and mdast-util-to-markdown, given the same emphasis mark,
+// writes "a*b*c". prettier reaches it by choosing '*' when a word touches the
+// emphasis and '_' otherwise; mdast-util-to-markdown by preferring '*'
+// outright.
+//
+// So '*' is taken only where '_' would otherwise force the encoding and '*'
+// is clean on BOTH sides — an emphasis '_' can carry keeps it (prettier's
+// spaced "a _b_ c" is unchanged), and an emphasis neither delimiter can
+// carry keeps the existing repair rather than trading one bad marker for
+// another. "Clean" is more than flanking: see asteriskRunMerges.
+func (r *mdRenderer) emphasisMarkerAfter(nodes []ast.Node, i int, prev rune, st *inlineContext) byte {
+	marker := emphasisMarkerByte(nodes[i])
+	if marker != '_' {
+		return marker
+	}
+	next := siblingLeadRune(nodes, i+1)
+	// Each candidate is measured against ITS OWN rendering: the marker is
+	// the preceding rune for the children, and since the choice made here is
+	// what a nested emphasis reads as that rune, '_' and '*' do not always
+	// render the same content. See renderedChildLead.
+	for _, cand := range [2]byte{'_', '*'} {
+		lead := r.renderedChildLead(nodes[i], cand, st)
+		trail := r.renderedChildTrail(nodes[i], cand, st)
+		if !canOpenMarker(cand, prev, lead) || !canCloseMarker(cand, trail, next) {
+			continue
+		}
+		if cand == '*' && asteriskRunMerges(prev, lead, trail, next) {
+			continue
+		}
+		return cand
+	}
+	return '_'
+}
+
+// asteriskRunMerges reports whether an emphasis written with '*' here would
+// have one of its markers swallowed by a neighboring asterisk.
+//
+// canOpenMarker and canCloseMarker answer a FLANKING question — what CLASS
+// the runes on either side of the marker fall into — and an asterisk is
+// punctuation, so they are perfectly happy next to one. But the parser scans
+// a maximal run of the delimiter character FIRST and only then asks about
+// flanking, so a '*' marker touching another '*' is not a marker of its own
+// length at all: the two fuse into a single longer run that pairs off
+// differently. '_' never met this, because it is a different character from
+// the '*' that strong is always written with, and because the neighbors that
+// could have been asterisks were being hex-encoded away by the repair this
+// choice exists to avoid.
+//
+// Found by FuzzRoundTripIdempotent on "0*0****0*0***", whose emphasis holds a
+// trailing strong and is followed by another: taking '*' wrote
+// "0*0**0*****0**\*", where the strong's closer, the emphasis's closer and
+// the next strong's opener are one run of five asterisks. It re-parsed as a
+// different tree, so a second render did not reproduce it. The '~~' handling
+// in writeWrapped guards the same class of fusion for strikethrough.
+//
+// The four neighbors are the ones the flanking checks already use, so a
+// rejection here only ever falls back to the '_' the renderer wrote before.
+func asteriskRunMerges(prev, lead, trail, next rune) bool {
+	return prev == '*' || lead == '*' || trail == '*' || next == '*'
+}
+
 func flankWS(r rune) bool {
 	return r == 0 || unicode.IsSpace(r)
 }
@@ -97,7 +174,11 @@ func (r *mdRenderer) needsPunctTrail(nodes []ast.Node, i int, st *inlineContext)
 		return 0
 	}
 	next := nodes[i+1]
-	if marker := emphasisMarkerByte(next); marker != 0 {
+	// The delimiter the emphasis will be written with, not the preferred
+	// one: an emphasis that falls back to '*' after a word rune (see
+	// emphasisMarkerAfter) opens straight after the directive's name and
+	// needs no attribute block to separate them.
+	if marker := r.emphasisMarkerAfter(nodes, i+1, directiveTailStandIn, st); marker != 0 {
 		if r.markerNeedsPunctBefore(marker, next, st) {
 			return rune(marker)
 		}
@@ -163,8 +244,8 @@ func (r *mdRenderer) hexEncodesLead(text *ast.Text, nodes []ast.Node, j int, st 
 		return true
 	}
 	if j+1 < len(nodes) {
-		if m := emphasisMarkerByte(nodes[j+1]); m != 0 {
-			return !canOpenMarker(m, lead, r.renderedChildLead(nodes[j+1], st))
+		if m := r.emphasisMarkerAfter(nodes, j+1, lead, st); m != 0 {
+			return !canOpenMarker(m, lead, r.renderedChildLead(nodes[j+1], m, st))
 		}
 	}
 	return false
@@ -228,7 +309,7 @@ const directiveTailStandIn = 'x'
 // makes it flank — while a punctuation predecessor would work. writeWrapped
 // still applies encodeLead on top once the predecessor changes.
 func (r *mdRenderer) markerNeedsPunctBefore(marker byte, next ast.Node, st *inlineContext) bool {
-	lead := r.renderedChildLead(next, st)
+	lead := r.renderedChildLead(next, marker, st)
 	leads := []rune{lead}
 	if isEncodableRune(lead, r.cfg.noSpaceEscapes) {
 		leads = append(leads, '&') // what encodeLead would leave in its place
@@ -346,19 +427,35 @@ func nodeLeadRune(node ast.Node) rune {
 // actually render — inner constructs may hex-encode their boundary runes
 // ("0" becomes "&#x30;"), which changes the flanking class the re-parser
 // sees. Rendering into a scratch context has no side effects.
-func (r *mdRenderer) renderedChildLead(node ast.Node, st *inlineContext) rune {
-	var tmp strings.Builder
-	child := inlineContext{escape: st.escape, colons: st.colons, pipes: st.pipes, prevRune: '_', directiveLabel: st.directiveLabel}
-	r.writeInlines(&tmp, ast.Children(node), &child)
-	return firstRuneOf(tmp.String())
+//
+// marker is the delimiter byte the construct is being written with, which is
+// the rune its children see as their predecessor. It used to be a hardcoded
+// '_' stand-in, and that was sound while the flanking checks were the only
+// readers of it: they classify the predecessor as whitespace, punctuation or
+// neither, and every marker byte ('_', '*', '~') is punctuation, so which one
+// it was could not change an answer. emphasisMarkerAfter reads the byte
+// itself — a '*' predecessor is the one thing that rules '*' out — so the
+// stand-in now has to be the real marker or the scratch render disagrees with
+// the real one about which delimiter a nested emphasis gets. On
+// "***0*0**0" it did: the scratch trail said '0' where the render wrote ';',
+// the strong's closer was then judged flankable when it was not, and the
+// round trip lost the marks (found by FuzzRoundTripIdempotent).
+func (r *mdRenderer) renderedChildLead(node ast.Node, marker byte, st *inlineContext) rune {
+	return firstRuneOf(r.renderChildScratch(node, marker, st))
 }
 
 // renderedChildTrail is renderedChildLead's counterpart for the last rune.
-func (r *mdRenderer) renderedChildTrail(node ast.Node, st *inlineContext) rune {
+func (r *mdRenderer) renderedChildTrail(node ast.Node, marker byte, st *inlineContext) rune {
+	return lastRuneOf(r.renderChildScratch(node, marker, st))
+}
+
+// renderChildScratch renders a construct's children into a throwaway builder
+// under the state they would have inside it.
+func (r *mdRenderer) renderChildScratch(node ast.Node, marker byte, st *inlineContext) string {
 	var tmp strings.Builder
-	child := inlineContext{escape: st.escape, colons: st.colons, pipes: st.pipes, prevRune: '_', directiveLabel: st.directiveLabel}
+	child := inlineContext{escape: st.escape, colons: st.colons, pipes: st.pipes, prevRune: rune(marker), directiveLabel: st.directiveLabel}
 	r.writeInlines(&tmp, ast.Children(node), &child)
-	return lastRuneOf(tmp.String())
+	return tmp.String()
 }
 
 // siblingLeadRune is the first rune rendered by nodes[i] (0 = end of the

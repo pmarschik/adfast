@@ -210,7 +210,8 @@ func (v *inlineWriteVisitor) VisitStrong(*ast.Strong) struct{} {
 
 // VisitEmphasis implements ast.Visitor.
 func (v *inlineWriteVisitor) VisitEmphasis(*ast.Emphasis) struct{} {
-	v.r.writeWrapped(v.b, v.nodes, v.i, "_", v.st)
+	marker := v.r.emphasisMarkerAfter(v.nodes, v.i, v.st.prevRune, v.st)
+	v.r.writeWrapped(v.b, v.nodes, v.i, string(marker), v.st)
 	return struct{}{}
 }
 
@@ -382,8 +383,12 @@ func (r *mdRenderer) writeTextInline(b *strings.Builder, nodes []ast.Node, i int
 	st.encodeLead = false
 	trail := st.encodeTrail && i == len(nodes)-1
 	if i+1 < len(nodes) {
-		if m := emphasisMarkerByte(nodes[i+1]); m != 0 {
-			if !canOpenMarker(m, lastRuneOf(node.Value), r.renderedChildLead(nodes[i+1], st)) {
+		// The delimiter that will be written, not the preferred one: an
+		// emphasis that falls back to '*' here (see emphasisMarkerAfter)
+		// opens against a word rune, so this text keeps its last letter
+		// instead of trading it for a character reference.
+		if m := r.emphasisMarkerAfter(nodes, i+1, lastRuneOf(node.Value), st); m != 0 {
+			if !canOpenMarker(m, lastRuneOf(node.Value), r.renderedChildLead(nodes[i+1], m, st)) {
 				trail = true
 			}
 		}
@@ -532,9 +537,14 @@ func lastRuneByteOf(s string) byte {
 func (r *mdRenderer) writeWrapped(b *strings.Builder, nodes []ast.Node, i int, marker string, st *inlineContext) {
 	node := nodes[i]
 	openProblem, closeProblem := false, false
-	if m := emphasisMarkerByte(node); m != 0 {
-		openProblem = !canOpenMarker(m, st.prevRune, r.renderedChildLead(node, st))
-		closeProblem = !canCloseMarker(m, r.renderedChildTrail(node, st), siblingLeadRune(nodes, i+1))
+	if emphasisMarkerByte(node) != 0 {
+		// The byte the caller settled on, which for an emphasis is not
+		// always the preferred '_' (see emphasisMarkerAfter). Asking about
+		// '_' while writing '*' would encode neighbors the written marker
+		// has no trouble with.
+		m := marker[len(marker)-1]
+		openProblem = !canOpenMarker(m, st.prevRune, r.renderedChildLead(node, m, st))
+		closeProblem = !canCloseMarker(m, r.renderedChildTrail(node, m, st), siblingLeadRune(nodes, i+1))
 	}
 	after := nextTextLead(nodes, i)
 	if after == 0 && i == len(nodes)-1 {

@@ -76,6 +76,15 @@ func TestWithoutSignificantSpaceEscapesWritesTheSpaceItself(t *testing.T) {
 // are what keeps an emphasis marker flankable, so dropping one would change
 // what the text says rather than how a space survives. Nothing about the
 // option may touch them.
+//
+// Both probes wrap content whose OWN boundary is punctuation, which is the
+// shape that still needs the reference. A word on both sides of the emphasis
+// does not: '*' has an intraword form and the renderer takes it there, so
+// "a" + em("b") + "c" is written "a*b*c" with nothing encoded at all (see
+// emphasisMarkerAfter). Punctuation inside the marker defeats BOTH
+// delimiters — neither '_' nor '*' is left-flanking before a '.' at a word
+// predecessor — so the neighboring letter is still the only thing that can
+// give way, and this option must not take it.
 func TestWithoutSignificantSpaceEscapesKeepsTheFlankingEncodes(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -83,8 +92,8 @@ func TestWithoutSignificantSpaceEscapesKeepsTheFlankingEncodes(t *testing.T) {
 		want string
 		in   adf.Doc
 	}{
-		{name: "emphasis closing before a word", in: doc(p(txt("a", &adf.Em{}), txt("b"))), want: "_&#x61;_&#x62;\n"},
-		{name: "emphasis opening after a word", in: doc(p(txt("b"), txt("a", &adf.Em{}))), want: "&#x62;_&#x61;_\n"},
+		{name: "emphasis closing before a word", in: doc(p(txt("a.", &adf.Em{}), txt("b"))), want: "_a._&#x62;\n"},
+		{name: "emphasis opening after a word", in: doc(p(txt("b"), txt(".a", &adf.Em{}))), want: "&#x62;_.a_\n"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
