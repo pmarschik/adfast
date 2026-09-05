@@ -590,3 +590,35 @@ func TestRender_DotAfterWKeepsAnAuthoredEscapeInBothModes(t *testing.T) {
 		})
 	}
 }
+
+// A table cell is not a block container: no list can start inside one, so the
+// ordered-marker escape there is noise the reference does not write. The rule
+// reaches a cell at all only because renderCellString seeds the inline context
+// with prev='\n', which makes every cell look like a line start.
+//
+// This is also why escapeOrderedMarker takes inCell. Dropping its prettier
+// gate — see that function, and the wrap-column pin above — made the character
+// rule fire in both modes, so without a cell guard a divergence that had been
+// remark-only would have reached the prettier leg the formatter actually uses.
+// The paragraph in the same document is the good case: outside a cell the
+// escape is load-bearing and must survive.
+func TestRender_OrderedMarkerIsNotEscapedInsideATableCell(t *testing.T) {
+	t.Parallel()
+	const src = "| a | b |\n| --- | --- |\n| 1. x | 2) y |\n\n1\\. still a paragraph\n"
+	const want = "| a    | b    |\n| ---- | ---- |\n| 1. x | 2) y |\n\n1\\. still a paragraph\n"
+	t.Run("remark", func(t *testing.T) {
+		t.Parallel()
+		if got := Render(Parse([]byte(src))); got != want {
+			t.Errorf("Render(%q) =\n%q\nwant\n%q", src, got, want)
+		}
+	})
+	// The prettier leg reads the SOURCE-ESCAPE convention, so it takes the
+	// same normalize pass the facade runs; see the pin above for why the two
+	// halves are one setting.
+	t.Run("prettier", func(t *testing.T) {
+		t.Parallel()
+		if got := Render(convert.NormalizeFormat(Parse([]byte(src))), WithPrettierText()); got != want {
+			t.Errorf("Render(%q) =\n%q\nwant\n%q", src, got, want)
+		}
+	})
+}
