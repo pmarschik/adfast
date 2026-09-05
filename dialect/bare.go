@@ -76,12 +76,19 @@ import (
 // # What this costs on the ADF leg
 //
 // A directive that renders bare now re-parses as prose, and the one node
-// that still renders bare comes from ADF: a mediaInline with neither id
-// nor collection. That chip does not survive a trip through markdown any
-// more — it comes back as the word ":media". Nothing addressable is
-// lost, because the chip addressed nothing (see SourcelessMedia), and
-// the reader gets a word instead of an attachment reference that resolves
-// to no attachment. TestSourcelessChipFromADFGetsTheTail measures it.
+// that could still render bare comes from ADF: a mediaInline with neither
+// id nor collection. It no longer does, and nothing here is what stops
+// it. The rule below cannot: the bytes ":media" are right for the word
+// and wrong for the node, and no escaping pass can tell those apart,
+// because the ambiguity is in the grammar rather than in the escaping.
+//
+// The answer is to not produce a node with no spelling in the first
+// place. convert.unbareSourcelessChip writes the chip's default type
+// back on the way out of ADF, so it renders as ":media{type=\"file\"}",
+// which this rule reads as a directive and which decodes to the same
+// chip again. TestSourcelessChipFromADFNeedsNoTail measures that, and
+// the two committed FuzzRoundTripIdempotent seeds pin the two spellings
+// the md leg reached it by.
 //
 // # Scope
 //
