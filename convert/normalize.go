@@ -422,10 +422,13 @@ func (fn *normalizer) flattenInline(n ast.Node, ctx fmtMarks) []fmtAtom {
 	if atoms, ok := fn.flattenNestingInline(n, ctx); ok {
 		return atoms
 	}
+	if atoms, ok := fn.keepUnreadAttrDialectMark(n, ctx); ok {
+		return atoms
+	}
 	if atoms, ok := fn.flattenDialectMarkInline(n, ctx); ok {
 		return fn.keepEmptiedDialectInline(n, atoms, ctx)
 	}
-	if atoms, ok := flattenDialectAtomInline(n); ok {
+	if atoms, ok := fn.flattenDialectAtomInline(n); ok {
 		return fn.keepEmptiedDialectInline(n, atoms, ctx)
 	}
 	return fn.flattenForeignInline(n, ctx)
@@ -487,6 +490,184 @@ func (fn *normalizer) keepEmptiedDialectInline(n ast.Node, atoms []fmtAtom, ctx 
 		return atoms
 	}
 	return []fmtAtom{{node: n, m: ctx}}
+}
+
+// The format leg's totality rule has a second half, for the case
+// keepEmptiedDialectInline does not reach: a re-derivation that produces
+// a node, but a POORER one than the author wrote.
+//
+// A typed kind re-derives its canonical payload from a per-kind
+// allowlist mirroring that kind's EncodeADF, and every attribute outside
+// the list was silently deleted. Measured before this rule:
+//
+//	":media{x=1}"                      -> ":media"
+//	":media{0}"                        -> ":media"
+//	":status[Done]{color=red foo=bar}" -> ":status[Done]{color=\"red\"}"
+//	":u[x]{a=b}"                       -> ":u[x]"
+//	":mention[Bob]{id=1 zz=2}"         -> ":mention[Bob]{#1}"
+//
+// For most of them that is text deletion, the thing NormalizeFormat
+// exists to forbid: the encode leg drops these attributes because ADF
+// has nowhere to put them, but the format leg writes MARKDOWN, where the
+// author's own spelling is exactly what it must give back. An unknown
+// directive name already survives spelled as written (":foo{a=b}" ->
+// ":foo{a=\"b\"}"), and prettier 3.8.1, which has no directive grammar,
+// leaves all of these untouched; a name the dialect happens to KNOW is
+// no reason to write less back.
+//
+// For ":media" it is worse than text deletion, because the bare-name
+// rule (dialect's bareDirective) reads a payload-less known name back as
+// prose: the chip that went in came out as the word ":media", so the
+// format leg changed the document's meaning. FuzzFormatSemanticsPreserved
+// finds ":media{0}" for that reason, and its seed pins it.
+//
+// The rule is split by what the kind's re-derivation produces, because
+// the two halves have different room for the attribute:
+//
+//   - An ATOM kind re-derives a NODE, so the unread attributes are
+//     copied onto it (carryUnreadAtomAttrs) and it renders them back
+//     from its raw attribute map. The re-derived node is what continues
+//     through the pass, so the canonical payload still wins on every
+//     attribute the kind DOES read — ":media{type=file}" keeps
+//     collapsing to the default, ":status[Done]{color=red}" still gains
+//     no second spelling — and, decisively, the atom rides the same
+//     empty mark context it always did, so this rule introduces no tree
+//     shape the renderer has not already seen.
+//
+//   - A MARK kind re-derives NOTHING to hang an attribute on: ":u" is a
+//     mark pushed onto the context and dissolved, and ADF gives underline
+//     no attribute that could hold "a=b". So the author's node is kept
+//     whole (keepUnreadAttrDialectMark), with its children normalized in
+//     place, which is keepEmptiedDialectInline's answer applied one case
+//     earlier.
+//
+// The ADF is untouched either way: ToADF ignores an attribute its kind
+// does not read, so ToADF(NormalizeFormat(n)) == ToADF(n) still holds,
+// and the encode leg goes on dropping (the whole rule is gated on
+// keepGenericDirectives).
+
+// keepUnreadAttrDialectMark keeps a dialect MARK kind the author spelled
+// with an attribute the mark cannot read, instead of dissolving it to
+// its children and deleting the attribute with it. It runs before
+// flattenDialectMarkInline so the mark's own attribute (":color"'s
+// color, ":annotation"'s id) is still re-derived by that path whenever
+// nothing else was spelled.
+func (fn *normalizer) keepUnreadAttrDialectMark(n ast.Node, ctx fmtMarks) ([]fmtAtom, bool) {
+	attrs, read, ok := dialectMarkAttrsRead(n)
+	if !ok || !fn.keepGenericDirectives || !hasUnreadAttr(attrs, read) {
+		return nil, false
+	}
+	ast.SetChildren(n, fn.normalizeInlines(ast.Children(n)))
+	return []fmtAtom{{node: n, m: ctx}}, true
+}
+
+// carryUnreadAtomAttrs copies onto a re-derived inline atom every
+// attribute the author spelled that the kind's canonical payload does
+// not read. The atom's own map is rebuilt fresh by the normalizeX
+// helpers, so this only ever ADDS the leftovers.
+func (fn *normalizer) carryUnreadAtomAttrs(src ast.Node, atoms []fmtAtom) {
+	if !fn.keepGenericDirectives || len(atoms) != 1 || atoms[0].node == nil {
+		return
+	}
+	srcAttrs, read, ok := dialectAtomAttrsRead(src)
+	if !ok {
+		return
+	}
+	dstAttrs, _, ok := dialectAtomAttrsRead(atoms[0].node)
+	if !ok || dstAttrs == nil {
+		return
+	}
+	for k, v := range srcAttrs {
+		if !slices.Contains(read, k) {
+			dstAttrs[k] = v
+		}
+	}
+}
+
+// unbareDialectAtom keeps a re-derived inline atom spelled as a
+// DIRECTIVE. The chip is the one inline kind whose whole canonical
+// payload is optional — normalizeMediaInline omits the default
+// type="file" because the encode re-infers it — so a chip that spelled
+// only that default re-derived to a bare ":media", which the bare-name
+// rule reads back as prose. ":media{type=file}" formatted to ":media"
+// and changed a chip into a word.
+//
+// Writing the default back costs one attribute in the formatted text and
+// nothing in ADF (the encode infers the same "file" either way), and it
+// runs after carryUnreadAtomAttrs so a chip that has any other
+// attribute to render needs no filler. The ADF leg keeps its own bare
+// spelling: this is the format leg's rule about the AUTHOR'S markdown,
+// and dialect's bareTextGuard documents why a sourceless chip decoded
+// FROM ADF is allowed to come back as the word.
+func unbareDialectAtom(atoms []fmtAtom) {
+	if len(atoms) != 1 {
+		return
+	}
+	v, ok := atoms[0].node.(*dialect.MediaInline)
+	if !ok || len(v.Attrs) > 0 || len(v.Children) > 0 {
+		return
+	}
+	v.Attrs["type"] = v.MediaType
+}
+
+// hasUnreadAttr reports whether attrs holds a name outside read.
+func hasUnreadAttr(attrs map[string]string, read []string) bool {
+	for k := range attrs {
+		if !slices.Contains(read, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// dialectMarkAttrsRead answers, for a dialect kind that flattens to a
+// MARK on the context, the attribute names that flattening reads. The
+// lists mirror flattenDialectMarkInline and flattenAnnotation.
+// dialect.FontSize is deliberately absent: it is retired and dissolves
+// with a diagnostic, so there is nothing to keep it for.
+func dialectMarkAttrsRead(n ast.Node) (attrs map[string]string, read []string, ok bool) {
+	switch v := n.(type) {
+	case *dialect.Color:
+		return v.Attrs, []string{"color"}, true
+	case *dialect.Bg:
+		return v.Attrs, []string{"color"}, true
+	case *dialect.Underline:
+		return v.Attrs, nil, true
+	case *dialect.Sub:
+		return v.Attrs, nil, true
+	case *dialect.Sup:
+		return v.Attrs, nil, true
+	case *dialect.Annotation:
+		return v.Attrs, []string{"id", "annotationType"}, true
+	}
+	return nil, nil, false
+}
+
+// dialectAtomAttrsRead answers, for a dialect kind that re-derives to
+// one inline ATOM, the attribute names that re-derivation reads. Each
+// list mirrors the normalizeX helper below it, which in turn mirrors the
+// kind's EncodeADF.
+func dialectAtomAttrsRead(n ast.Node) (attrs map[string]string, read []string, ok bool) {
+	switch v := n.(type) {
+	case *dialect.Mention:
+		return v.Attrs, []string{"id", "accessLevel"}, true
+	case *dialect.Status:
+		return v.Attrs, []string{"color", "style"}, true
+	case *dialect.MediaInline:
+		return v.Attrs, []string{
+			"type", "id", "collection", "path",
+			"href", "hrefTitle", "annotationId", "annotationType",
+		}, true
+	case *dialect.Emoji:
+		return v.Attrs, []string{"shortName", "id", "text"}, true
+	case *dialect.Date:
+		return v.Attrs, []string{"timestamp", "localId"}, true
+	case *dialect.Placeholder:
+		return v.Attrs, []string{"localId"}, true
+	case *dialect.InlineExtension:
+		return v.Attrs, []string{"type", "key", "parameters", "text", "localId"}, true
+	}
+	return nil, nil, false
 }
 
 // flattenLeafInline handles the core inline kinds that become one atom:
@@ -647,8 +828,23 @@ func (fn *normalizer) flattenAnnotation(v *dialect.Annotation, ctx fmtMarks) []f
 }
 
 // flattenDialectAtomInline handles the dialect's inline atoms, plus the
-// dialect block kinds that have no inline form at all.
-func flattenDialectAtomInline(n ast.Node) ([]fmtAtom, bool) {
+// dialect block kinds that have no inline form at all. On the format leg
+// the re-derived atom then takes back what the author spelled beside the
+// canonical payload — see carryUnreadAtomAttrs and unbareDialectAtom.
+func (fn *normalizer) flattenDialectAtomInline(n ast.Node) ([]fmtAtom, bool) {
+	atoms, ok := fn.deriveDialectAtomInline(n)
+	if !ok {
+		return nil, false
+	}
+	fn.carryUnreadAtomAttrs(n, atoms)
+	if fn.keepGenericDirectives {
+		unbareDialectAtom(atoms)
+	}
+	return atoms, true
+}
+
+// deriveDialectAtomInline re-derives one inline atom's canonical payload.
+func (fn *normalizer) deriveDialectAtomInline(n ast.Node) ([]fmtAtom, bool) {
 	switch v := n.(type) {
 	case *dialect.Mention:
 		return atomOrNone(normalizeMention(v)), true
@@ -657,7 +853,7 @@ func flattenDialectAtomInline(n ast.Node) ([]fmtAtom, bool) {
 	case *dialect.MediaInline:
 		return atomOrNone(normalizeMediaInline(v)), true
 	case *dialect.Emoji:
-		return flattenEmoji(v), true
+		return fn.flattenEmoji(v), true
 	case *dialect.Date:
 		return atomOrNone(normalizeDate(v)), true
 	case *dialect.Placeholder:
@@ -954,16 +1150,25 @@ func normalizeMediaInline(v *dialect.MediaInline) ast.Node {
 // flattenEmoji mirrors Emoji.EncodeADF ∘ convert's VisitEmoji: emojis
 // with rendered text (or a known shortname) become plain text atoms
 // WITHOUT inherited marks; the directive survives only for custom ones.
-func flattenEmoji(v *dialect.Emoji) []fmtAtom {
+//
+// The projection to a character is skipped on the format leg when the
+// author spelled an attribute the kind cannot read, because a text atom
+// has no node for carryUnreadAtomAttrs to put it on and the attribute
+// would be deleted. Keeping the directive form is the same trade the
+// rest of that rule makes.
+func (fn *normalizer) flattenEmoji(v *dialect.Emoji) []fmtAtom {
 	shortName := v.Attrs["shortName"]
 	if shortName == "" {
 		return nil
 	}
-	if text, ok := v.Attrs["text"]; ok {
-		return []fmtAtom{{text: text}}
-	}
-	if unicode, ok := dialect.EmojiUnicode(shortName); ok {
-		return []fmtAtom{{text: unicode}}
+	_, read, _ := dialectAtomAttrsRead(v)
+	if !fn.keepGenericDirectives || !hasUnreadAttr(v.Attrs, read) {
+		if text, ok := v.Attrs["text"]; ok {
+			return []fmtAtom{{text: text}}
+		}
+		if unicode, ok := dialect.EmojiUnicode(shortName); ok {
+			return []fmtAtom{{text: unicode}}
+		}
 	}
 	attrs := map[string]string{"shortName": shortName}
 	if v.Attrs["id"] != "" {
