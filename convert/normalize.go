@@ -625,6 +625,27 @@ func (fn *normalizer) flattenForeignInline(n ast.Node, ctx fmtMarks) []fmtAtom {
 		// Foreign extension kinds pass through untouched: without their
 		// ADF leg the formatter cannot re-derive their canonical payload,
 		// and rendering the parsed node is the identity.
+		//
+		// The marks around it are the AUTHOR'S, and they ride with it —
+		// the same rule the generic *ast.TextDirective case above
+		// follows, and for the same reason. Riding bare moved the
+		// emphasis to whatever came next: "*:media!*" formatted to
+		// ":media{}_!_", so the em that enclosed the whole run ended up
+		// on "!" alone, while the faithful render and the ADF leg both
+		// keep "_:media!_".
+		//
+		// Only a node that DECLARES an inline form takes them.
+		// extension.InlineLead is that declaration: a text-position
+		// constructor must implement it (extension.Registration
+		// validates exactly that), and a leaf or container kind does
+		// not, because its markdown form is a "::name" line or a
+		// ":::name" fence that no emphasis run can enclose. Such a node
+		// only reaches inline position from a hand-built tree, and
+		// wrapping it would spell a block directive inside an emphasis
+		// delimiter, so it keeps riding bare.
+		if _, inline := n.(extension.InlineLead); inline {
+			return []fmtAtom{{node: n, m: ctx}}
+		}
 		return []fmtAtom{{node: n}}
 	}
 	// Block kinds in inline position degrade like convert's fallback:
@@ -699,6 +720,15 @@ func atomLeaf(item fmtAtom) ast.Node {
 			// "[:name](https://e.com)" into a bare ":name" — the very
 			// deletion the format leg exists to prevent (probe:
 			// TestFormatSemanticCoherence_Corpus adf/8).
+			return wrapAtomMarks(item.node, item.m)
+		case extension.InlineLead:
+			// An inline extension node keeps its marks too, for the
+			// generic directive's reason — they are the author's own.
+			// This case is reached only where the flattener CHOSE to
+			// hand the atom a mark context (flattenForeignInline); the
+			// dialect's own re-derived atoms carry an empty one, for
+			// which wrapAtomMarks is the identity, so the typed kinds
+			// that may not carry a mark in ADF still do not.
 			return wrapAtomMarks(item.node, item.m)
 		}
 		return item.node
