@@ -1453,6 +1453,13 @@ func (v *adfInlineVisitor) VisitStatus(n *adf.Status) []flatInline { return v.in
 // back as the link it stands for; an attachment the asset store has the file
 // for reads back as the inline image it came from; every other one stays a
 // :media directive.
+//
+// The chip that addresses NOTHING — a mediaInline with neither id nor
+// collection, which the product does emit — is the one whose directive
+// had nothing left to spell, so it rendered as the bare name ":media"
+// and the next parse read that back as the word rather than the node.
+// unbareSourcelessChip gives it the default type to spell instead; see
+// there for why the same rule serves this leg and the format leg.
 func (v *adfInlineVisitor) VisitMediaInline(n *adf.MediaInline) []flatInline {
 	if link, ok := v.rc.fileCardLink(n); ok {
 		return []flatInline{{text: link.Label, href: link.Href, isLink: true}}
@@ -1460,7 +1467,11 @@ func (v *adfInlineVisitor) VisitMediaInline(n *adf.MediaInline) []flatInline {
 	if img := v.rc.mediaInlineAsImage(n); img != nil {
 		return []flatInline{{directive: img}}
 	}
-	return v.inlineFallback(n)
+	items := v.inlineFallback(n)
+	for i := range items {
+		unbareSourcelessChip(items[i].directive)
+	}
+	return items
 }
 
 // VisitColwidthsHint implements adf.Visitor.
