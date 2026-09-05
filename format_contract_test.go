@@ -274,11 +274,16 @@ func TestDirectiveBeforeUnescapedSyntaxIsTerminated(t *testing.T) {
 			want: ":media{}[ ]\n",
 		},
 		{
-			// prettier drops the source's '[' escape, so the terminator
-			// is what keeps the brackets out of the directive.
-			name: "escaped bracket loses its escape",
+			// An AUTHORED '[' escape is now provenance the formatter
+			// carries (markdown.PreservedEscapes), so it is written back
+			// and no terminator is needed: the escaped bracket cannot open
+			// a label in the first place. This is the reference formatter's
+			// own answer — prettier prints text from the source slice and
+			// leaves "\[" exactly as authored — where adfast used to decode
+			// the escape away and then repair the damage with "{}".
+			name: "an authored bracket escape keeps the label closed",
 			md:   ":media\\[x]",
-			want: ":media{}[x]\n",
+			want: ":media\\[x]\n",
 		},
 		{
 			// The trailing '_' keeps this out of the directive grammar
@@ -712,6 +717,11 @@ func TestEmailLiteralStaysUnlinkedAcrossFormat(t *testing.T) {
 // also carries preserved escapes: only PreservedEscapes stand undecoded in
 // Raw, so a literal backslash pair must not read as one escape (see
 // markdown.rawEscapeAt).
+//
+// The '(' escapes are written back rather than decoded away because '(' is
+// in that set: the reference formatter prints text from the source slice
+// and keeps an authored "\(" as authored, so keeping it is the parity
+// answer as well as the round-trip one.
 func TestEscapeProvenanceSurvivesAURLSplit(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -726,17 +736,17 @@ func TestEscapeProvenanceSurvivesAURLSplit(t *testing.T) {
 			// text kept the literal's first byte.
 			name: "literal backslash pair before a preserved escape",
 			md:   "\\\\\\0+\\+\\(www.0.a0",
-			want: "\\\\\\0+\\+([www.0.a](http://www.0.a)0\n",
+			want: "\\\\\\0+\\+\\([www.0.a](http://www.0.a)0\n",
 		},
 		{
 			name: "preserved escape alone",
 			md:   "\\+\\(www.0.a0",
-			want: "\\+([www.0.a](http://www.0.a)0\n",
+			want: "\\+\\([www.0.a](http://www.0.a)0\n",
 		},
 		{
 			name: "literal backslash alone",
 			md:   "\\\\\\(www.0.a0",
-			want: "\\\\([www.0.a](http://www.0.a)0\n",
+			want: "\\\\\\([www.0.a](http://www.0.a)0\n",
 		},
 		{
 			// Every preserved escape, each standing for one value byte.

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/pmarschik/adfast/ast"
+	"github.com/pmarschik/adfast/convert"
 )
 
 // dotAfterWCase is one text body with the byte each render mode writes for
@@ -254,10 +255,17 @@ var dotAfterWCases = []dotAfterWCase{{
 	// pass does not reach. Measured against the frozen reference, which
 	// escapes it; prettier's column is adfast's own, since a source "1.\tx"
 	// is a list and not a text node prettier can be handed.
+	//
+	// Both columns escape. Prettier's used to be a bare "1.\tx", which was a
+	// LOSS and not a measurement: a tab is a legal ordered-marker separator,
+	// so that output re-parses as an orderedList and the text node is gone.
+	// The character rule now runs in prettier mode as well — see
+	// escapeOrderedMarker, which needs to run before the wrapper rather than
+	// after it — and this is the row where that shows as a repair.
 	name:     "a marker dot before a tab, which only the character rule catches",
 	in:       "1.\tx",
 	remark:   "1\\.\tx\n",
-	prettier: "1.\tx\n",
+	prettier: "1\\.\tx\n",
 }}
 
 func TestRender_DotAfterWFollowsTheReferenceUnsafeRule(t *testing.T) {
@@ -523,25 +531,35 @@ func TestRender_DotAfterWRoundTripsStablyInRemarkMode(t *testing.T) {
 	}
 }
 
-// PRESERVED-BEHAVIOR PIN, AND A KNOWN LOSS: the prettier leg still drops an
-// authored "\." — it is decoded at parse time and prettier mode has no rule
-// to write it back. Prettier itself preserves the backslash (it prints text
-// from the source slice), so this is a divergence, and it is pinned rather
-// than fixed because the obvious fix is measurably worse.
+// Both legs now keep an authored "\.", by two different routes: remark
+// mode re-derives the escape from its own www rule, and prettier mode
+// writes back the escape provenance the parse recorded (see
+// PreservedEscapes, which holds '.' and '\'). Prettier is a source-slice
+// printer, so keeping the authored backslash is its answer too.
 //
-// PreservedEscapes is a byte SET with no per-position provenance: adding '.'
-// to it makes the formatter treat every backslash-before-dot as an escape to
-// re-emit, including one an author wrote as a LITERAL backslash. The second
-// row is that case, and it is correct today in both modes. Under the widened
-// set it comes back as "a b\.c d", whose value on the next parse is
-// "a b.c d" — a byte loss traded for a value loss. The same trade appears
-// wherever a keep is scoped by context instead of provenance, which is why
-// the fix belongs in how the parse RECORDS an escape, not in this set.
+// The second row is the case that makes the provenance TOTAL rather than a
+// guess: an author's LITERAL backslash before a dot, which must stay two
+// backslashes. A PreservedEscapes holding '.' but NOT '\' — the naive
+// widening this bug's earlier attempts kept reaching for — writes it back
+// as "a b\.c d", whose value on the next parse is "a b.c d": a byte the
+// author wrote, silently gone. Both rows therefore belong in one test; a
+// change that fixes either alone breaks the other.
 //
-// Not a reason to write the escape in prettier mode either: prettier leaves
-// a bare dot bare (dotAfterWCases' prettier column), so writing it would
-// rewrite ordinary prose — "W.C. Fields" would come back "W\.C. Fields".
-func TestRender_DotAfterWPrettierLegDropsAnAuthoredEscape(t *testing.T) {
+// The prettier leg is rendered from the escape-preserving SOURCE FORM,
+// because that is what prettier mode consumes (WithPrettierText). The
+// formatter's canonicalization is what puts that form where the renderer
+// reads it — convert.NormalizeFormat moves ast.Text.Raw onto ast.Text.Value
+// — so the tree goes through it here exactly as it does in the facade. A
+// bare Parse tree still holds the fully decoded value on Value, where every
+// backslash is a literal one; rendering that under prettier's rules would
+// read the author's literal backslashes as escapes. The remark leg takes
+// the decoded tree straight, which is the form ITS rules are written for.
+//
+// Writing the escape unconditionally in prettier mode remains wrong, and is
+// not what happens here: prettier leaves a BARE dot bare (dotAfterWCases'
+// prettier column), so an unconditional rule would rewrite ordinary prose —
+// "W.C. Fields" would come back "W\.C. Fields".
+func TestRender_DotAfterWKeepsAnAuthoredEscapeInBothModes(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name     string
@@ -549,10 +567,10 @@ func TestRender_DotAfterWPrettierLegDropsAnAuthoredEscape(t *testing.T) {
 		remark   string
 		prettier string
 	}{{
-		name:     "an authored dot escape is lost in prettier mode",
+		name:     "an authored dot escape survives in both modes",
 		src:      "see www\\.x b\n",
 		remark:   "see www\\.x b\n",
-		prettier: "see www.x b\n",
+		prettier: "see www\\.x b\n",
 	}, {
 		name:     "and an authored LITERAL backslash before a dot is kept in both",
 		src:      "a b\\\\.c d\n",
@@ -565,7 +583,7 @@ func TestRender_DotAfterWPrettierLegDropsAnAuthoredEscape(t *testing.T) {
 			if got := Render(Parse([]byte(c.src))); got != c.remark {
 				t.Errorf("remark mode: %q -> %q, want %q", c.src, got, c.remark)
 			}
-			got := Render(Parse([]byte(c.src)), WithPrettierText())
+			got := Render(convert.NormalizeFormat(Parse([]byte(c.src))), WithPrettierText())
 			if got != c.prettier {
 				t.Errorf("prettier mode: %q -> %q, want %q", c.src, got, c.prettier)
 			}

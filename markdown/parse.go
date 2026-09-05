@@ -32,12 +32,51 @@ import (
 	"github.com/pmarschik/adfast/extension"
 )
 
-// PreservedEscapes are the backslash escapes prettier keeps as literal text
-// (its parser predates CommonMark's escapable set). The single faithful
-// parse captures them undecoded on ast.Text.Raw (the escape provenance)
-// while Value stays fully decoded, so the prettier formatter can re-emit
-// them byte-for-byte (\~, \:, \-) without polluting the semantic value.
-const PreservedEscapes = "~:-+"
+// PreservedEscapes are the backslash escapes the prettier formatter keeps
+// as literal source bytes. The single faithful parse captures them
+// undecoded on ast.Text.Raw (the escape provenance) while Value stays
+// fully decoded, so the formatter can re-emit them byte-for-byte without
+// polluting the semantic value.
+//
+// It is the CommonMark escapable set (isEscapableASCIIPunct) MINUS '_',
+// '*', '`' and '#'. The reference formatter preserves an authored escape
+// for every other punctuation byte — measured over all 32 of them, it keeps
+// 31 and drops only '_', whose escape it recomputes from its word-boundary
+// rule (an intraword "a_b\_c d" comes back "a_b_c d"). '*' and '`' are left
+// out for a different reason: the render escapes both unconditionally
+// (escapesInlineMarker), so decoding them and letting that rule write the
+// backslash back reproduces the reference byte-for-byte with no provenance
+// to carry.
+//
+// '#' IS LEFT OUT UNDER PROTEST, and the reason is a rule that runs after
+// the escaper rather than a property of the character. An ATX heading's
+// trailing '#' would re-parse as a closing sequence, so renderHeading
+// rewrites the LAST byte of the finished inline string into "\#". That
+// rewrite reads no parity, so an escape already standing there comes back
+// doubled: "## ends \#" formatted to "## ends \\#", whose value gained a
+// backslash and lost the '#' escape, and a third backslash appeared on the
+// next pass. Dropping '#' here costs byte parity only — never a value. A
+// '#' escape is defensive in every position the render can produce (a
+// line-leading run is re-escaped by escapeParagraphLeadingMarker and a
+// heading trailer by renderHeading), so decoding it and letting those rules
+// write it back keeps the document's meaning. Guarding the renderHeading
+// rewrite with the parity test heading_anchor.go already carries
+// (escapedAt, which escapeHeadingAnchorTail uses for exactly this reason)
+// would let '#' rejoin the set.
+//
+// '\' ITSELF IS IN THE SET, and that is what makes the provenance total
+// rather than a guess. With it, Raw is the verbatim source escape form: a
+// backslash run is exactly as the author wrote it, so "\~" (an authored
+// escape) and "\\~" (an authored LITERAL backslash before a tilde) stay
+// distinct all the way to the render, which reads the two apart by the
+// parity of the backslash run (see mdRenderer.sourceEscaped). Keeping any
+// byte in this set WITHOUT '\' would trade one loss for the other: the
+// escape survives and the literal backslash is deleted instead.
+//
+// Text that carries no Raw — built from ADF or by hand — is lifted into the
+// same verbatim form by ast.Text.Rendered, so the render sees one
+// convention whatever the tree's origin.
+const PreservedEscapes = "!\"$%&'()+,-./:;<=>?@[\\]^{|}~"
 
 type parseConfig struct {
 	recoverNotice     func()

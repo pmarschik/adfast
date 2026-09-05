@@ -298,26 +298,65 @@ type Text struct {
 	// resolved (`\+` → "+", `&#x61;` → "a").
 	Value string
 	// Raw holds the escape-preserving source form used only by the prettier
-	// md→md formatter: it keeps prettier's literal escapes (see the markdown
+	// md→md formatter: it keeps the authored escapes (see the markdown
 	// package's PreservedEscapes) undecoded so formatting re-emits them
 	// byte-for-byte, while Value stays fully decoded. A Markdown parse sets
 	// Raw only when it differs from Value; nodes built from ADF or by hand
-	// leave it empty, and Rendered then falls back to Value.
+	// leave it empty, and Rendered derives the same form from Value.
 	Raw string
 }
 
 // Kind implements Node.
 func (*Text) Kind() string { return "text" }
 
-// Rendered returns the text the formatter serializes: the escape-preserving
-// source form (Raw) when a Markdown parse captured it, else the decoded
-// Value. The plain (non-prettier) render and the ADF encode read Value
-// directly; only the prettier formatter's canonicalization consults this.
+// Rendered returns the text the formatter serializes, in ONE convention
+// whatever the node's origin: the escape-preserving source form. That is Raw
+// when a Markdown parse captured it, and otherwise Value with every literal
+// backslash the source form would re-read as an escape written as "\\".
+//
+// The second half matters because the formatter's escape rules read a
+// backslash run's parity as the escape provenance (see the markdown
+// package's PreservedEscapes). Handed a decoded Value straight, they would
+// read an ADF-authored literal backslash before punctuation — text ADF
+// stores as "a b\.c" — as an authored escape and write it out bare, and the
+// next parse would drop the backslash. Doubling it here is not an added
+// escape: it is the same character, spelled the way the source form spells
+// it.
+//
+// The plain (non-prettier) render and the ADF encode read Value directly;
+// only the prettier formatter's canonicalization consults this.
 func (t *Text) Rendered() string {
 	if t.Raw != "" {
 		return t.Raw
 	}
-	return t.Value
+	return escapeLiteralBackslashes(t.Value)
+}
+
+// escapeLiteralBackslashes writes s in the source-escape form: a backslash
+// that precedes ASCII punctuation is doubled, so the source form reads it
+// back as the literal backslash it is. A backslash before anything else
+// (or at the end) already stands for itself and is left alone, which is
+// also what the reference formatter writes ("a \ b" stays "a \ b").
+func escapeLiteralBackslashes(s string) string {
+	if !strings.ContainsRune(s, '\\') {
+		return s
+	}
+	var sb strings.Builder
+	sb.Grow(len(s) + 4)
+	for i := range len(s) {
+		if s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]) {
+			sb.WriteByte('\\')
+		}
+		sb.WriteByte(s[i])
+	}
+	return sb.String()
+}
+
+// isASCIIPunct reports whether c is one of the 32 ASCII punctuation bytes
+// CommonMark lets a backslash escape.
+func isASCIIPunct(c byte) bool {
+	return (c >= '!' && c <= '/') || (c >= ':' && c <= '@') ||
+		(c >= '[' && c <= '`') || (c >= '{' && c <= '~')
 }
 
 // Emphasis is emphasized (italic) phrasing content.

@@ -10,10 +10,24 @@ import (
 // from render.go.
 
 // escapeText escapes special markdown characters in plain text nodes.
-// goldmarkToAst's decodeMarkdownEscapes already strips \X sequences from
-// goldmark raw bytes before building AST nodes, so by the time text reaches
-// here the values are decoded and each backslash is a literal backslash that
-// must be re-escaped.
+//
+// WHICH CONVENTION s IS IN depends on the mode, and every rule below turns
+// on it. In remark mode s is the fully decoded value: goldmarkToAst's
+// decodeMarkdownEscapes strips every \X sequence before building AST nodes,
+// so each backslash left standing is a literal one that must be re-escaped.
+// In prettier mode s is the escape-preserving SOURCE FORM (see
+// PreservedEscapes), where a backslash run is spelled exactly as the author
+// spelled it and its parity says whether the next byte is escaped — which is
+// what sourceEscaped reads.
+//
+// The prettier form reaches here because convert.NormalizeFormat, which the
+// formatter runs before the render and only then, moves ast.Text.Raw onto
+// ast.Text.Value (and ast.Text.Rendered lifts an ADF-origin value into the
+// same form on the way). A tree that has NOT been through that pass still
+// carries the decoded value on Value, so rendering it with WithPrettierText
+// asks these rules to read literal backslashes as escapes, and a backslash
+// the author wrote goes out bare. WithPrettierText and the normalization
+// pass are one setting in two halves, and the facade sets them together.
 //
 // Colons are escaped per mdast-util-directive's unsafe patterns (measured
 // against remark-stringify, see testdata/directive_fixtures.json): a ':'
@@ -87,10 +101,16 @@ func encodedTrail(s string, start int, encodeTrail, noSpaceEscapes bool) (end in
 // rules call for, and advances the per-character state.
 func (r *mdRenderer) writeEscapedByte(sb *strings.Builder, s string, i int, nextLead byte, st *inlineContext, nodeAtLineStart bool) {
 	ch := s[i]
+	// An escape standing in the text covers this byte already, whichever
+	// rule below would have written one (see sourceEscaped). The two gates
+	// outside needsEscape have to ask separately: a cell's "\|" and a
+	// directive label's "\[" would otherwise come back doubled, and the
+	// second backslash would re-read as a literal one.
+	escaped := r.sourceEscaped(s, i)
 	// Table-cell pipe escaping applies even where markdown escaping is
 	// off (link labels): mdast-util-gfm-table's unsafe rule covers the
 	// whole cell.
-	if ch == '|' && st.pipes {
+	if ch == '|' && st.pipes && !escaped {
 		sb.WriteByte('\\')
 	}
 	// Link labels use remark's restricted escape set (measured):
@@ -119,7 +139,7 @@ func (r *mdRenderer) writeEscapedByte(sb *strings.Builder, s string, i int, next
 	// ":A[[]]0"), and a second pass then wrote ":A{}[[]]0". needsEscape
 	// skips a '[' in a directive label so the two rules cannot both fire
 	// and write two backslashes.
-	if (ch == '[' || ch == ']') && st.directiveLabel {
+	if (ch == '[' || ch == ']') && st.directiveLabel && !escaped {
 		sb.WriteByte('\\')
 	}
 	if st.escape && r.needsEscape(s, i, nextLead, st, nodeAtLineStart) {
@@ -129,10 +149,53 @@ func (r *mdRenderer) writeEscapedByte(sb *strings.Builder, s string, i int, next
 	st.prev, st.hasPrev = ch, true
 }
 
+// sourceEscaped reports whether s[i] is ALREADY escaped by a backslash that
+// stands in the text — the escape provenance the prettier path carries in
+// band (see PreservedEscapes and ast.Text.Rendered). Writing a second
+// backslash there would turn the author's escape into a literal backslash
+// and shift the character it protects.
+//
+// The test is the PARITY of the backslash run ending at i, which is what
+// makes an authored escape and an authored literal backslash tell apart at
+// all: CommonMark pairs a run left to right, so an odd run leaves its last
+// backslash bound to s[i] ("\~" is an escape) while an even one leaves s[i]
+// bare ("\\~" is a literal backslash and then a tilde). Reading only s[i-1]
+// answers both the same way, which is the whole bug: the escape survived
+// and the literal backslash was deleted.
+//
+// PreservedEscapes bounds it because that is the set the parse leaves
+// undecoded: an escape of a byte outside it ("\_", "\*", "\`") is decoded
+// away, so a backslash before one of those is a literal backslash whatever
+// the parity, and the byte's own rule still owns whether it needs an escape.
+//
+// Remark mode never sees the provenance form — its text is the decoded
+// Value, where every backslash is literal — so the rule is prettier-only.
+// Prettier mode is the form's only carrier and also its only precondition:
+// see escapeText on where the form comes from and on the one pairing that
+// does not produce it.
+func (r *mdRenderer) sourceEscaped(s string, i int) bool {
+	if !r.cfg.prettierText || i == 0 {
+		return false
+	}
+	if strings.IndexByte(PreservedEscapes, s[i]) < 0 {
+		return false
+	}
+	run := 0
+	for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
+		run++
+	}
+	return run%2 == 1
+}
+
 // needsEscape reports whether s[i] needs a backslash under the active
 // markdown escaping rules (remark-stringify vs prettier). The cases are
 // dispatched to predicates grouped by character class.
 func (r *mdRenderer) needsEscape(s string, i int, nextLead byte, st *inlineContext, nodeAtLineStart bool) bool {
+	// An escape the author wrote is already in the text; none of the rules
+	// below may write a second backslash over it (see sourceEscaped).
+	if r.sourceEscaped(s, i) {
+		return false
+	}
 	switch s[i] {
 	case '_', '\\', '~', '*', '`', '<', '[', '(', ':':
 		return r.escapesInlineMarker(s, i, nextLead, st)
@@ -214,10 +277,10 @@ func (r *mdRenderer) escapesToken(s string, i int, nextLead byte, st *inlineCont
 	case '|':
 		return r.escapeTablePipe(s, i, nextLead, st)
 	case '.':
-		return r.escapeOrderedMarker(s, i, nextLead, nodeAtLineStart) ||
+		return escapeOrderedMarker(s, i, nextLead, nodeAtLineStart) ||
 			r.dotAfterWwwEscapes(s, i, nextLead, st)
 	case ')':
-		return r.escapeOrderedMarker(s, i, nextLead, nodeAtLineStart)
+		return escapeOrderedMarker(s, i, nextLead, nodeAtLineStart)
 	case '&':
 		return r.escapeAmpersand(s, i, nextLead)
 	case '!':
@@ -244,8 +307,26 @@ func (r *mdRenderer) escapeTablePipe(s string, i int, nextLead byte, st *inlineC
 // escapeOrderedMarker: a digit run from the line start followed by
 // '.'/')' and then space/tab/EOL re-parses as an ordered list marker;
 // remark escapes the punctuation.
-func (r *mdRenderer) escapeOrderedMarker(s string, i int, nextLead byte, nodeAtLineStart bool) bool {
-	if r.cfg.prettierText || !digitRunFromLineStart(s, i, nodeAtLineStart) {
+//
+// This fires in prettier mode too, and it has to, even though
+// escapeLeadingOrderedMarker would write the same backslash a moment later.
+// That second rule runs AFTER wrapTextProtected, so a backslash it adds is a
+// byte the wrapper never measured. On the next pass the backslash IS in the
+// text — '.' and ')' are both in PreservedEscapes, so the parse hands it back
+// verbatim — and a paragraph that ended exactly on the wrap column now runs
+// one byte over it and breaks. Two passes, two different documents. Writing
+// the escape here instead puts it in front of the wrapper on the FIRST pass,
+// where prettier itself counts it: prettier escapes at the AST and fills
+// afterwards, so an 80-column line whose marker needs a backslash is 81
+// columns to prettier as well, and it wraps.
+//
+// The two rules do not collide. escapeLeadingOrderedMarker looks for a digit
+// run followed directly by '.' or ')'; once this one has run, the byte after
+// the digits is a backslash and that rule finds nothing to do. It still earns
+// its place for the line starts this one cannot see — the ones the wrapper
+// creates.
+func escapeOrderedMarker(s string, i int, nextLead byte, nodeAtLineStart bool) bool {
+	if !digitRunFromLineStart(s, i, nodeAtLineStart) {
 		return false
 	}
 	n := byteAt(s, i+1, nextLead)
@@ -413,8 +494,15 @@ func (r *mdRenderer) escapeUnderscore(s string, i int, nextLead byte, st *inline
 
 // escapeBackslash: prettier keeps a literal backslash bare unless the next
 // character is ASCII punctuation (where it would re-parse as an escape);
-// remark always escapes it. Escape sequences the formatter parse preserved
-// in the text (see PreservedEscapes) are already literal source bytes.
+// remark always escapes it.
+//
+// In prettier mode this is only ever asked about the FIRST backslash of a
+// run — sourceEscaped answers for the rest — and a run in the provenance
+// form is already the author's own spelling, so a backslash that opens an
+// escape goes out bare and carries that escape through. The one case left
+// to it is a backslash before a byte OUTSIDE PreservedEscapes ('_', '*',
+// '`'), whose escape the parse decoded away: there the backslash is
+// literal, punctuation follows, and it doubles.
 func (r *mdRenderer) escapeBackslash(s string, i int, nextLead byte) bool {
 	if !r.cfg.prettierText {
 		return true
@@ -471,7 +559,7 @@ func (r *mdRenderer) escapesColon(s string, i int, nextLead byte, st *inlineCont
 	if !st.colons {
 		return false
 	}
-	return r.escapesDirectiveColon(s, i, nextLead, st)
+	return escapesDirectiveColon(s, i, nextLead, st)
 }
 
 // escapesDirectiveColon is the directive half of escapesColon, which see: the
@@ -479,15 +567,15 @@ func (r *mdRenderer) escapesColon(s string, i int, nextLead byte, st *inlineCont
 // break. It lives in its own function because the caller now weighs two
 // unrelated rules, and one function holding both was harder to read than the
 // two rules are separately.
-func (r *mdRenderer) escapesDirectiveColon(s string, i int, nextLead byte, st *inlineContext) bool {
-	// A literal backslash the prettier path has just written BARE is a
-	// preserved source escape (see PreservedEscapes) and already escapes
-	// this colon; a second one would render the author's "\:" as a
-	// literal backslash. In remark mode that backslash goes out doubled,
-	// so the colon after it still needs its own escape.
-	if r.cfg.prettierText && i > 0 && s[i-1] == '\\' && !r.escapeBackslash(s, i-1, nextLead) {
-		return false
-	}
+//
+// An authored "\:" is not this rule's business and never reaches it:
+// needsEscape stops at sourceEscaped, which owns every byte an escape in
+// the text already covers. What DOES reach it is a colon after an author's
+// literal backslash ("\\:"), where the run is even and the colon stands
+// unescaped — the reference formatter leaves that colon bare, and this rule
+// deliberately does not, for the reason above. The escape costs one byte of
+// parity and buys the round trip.
+func escapesDirectiveColon(s string, i int, nextLead byte, st *inlineContext) bool {
 	next := nextLead
 	if i+1 < len(s) {
 		next = s[i+1]
