@@ -184,13 +184,64 @@ func borderMarkFromAttrs(attrs map[string]string) adf.Mark {
 
 // mediaSingleFromAttrs wraps a media leaf in its mediaSingle per the
 // directive's layout attributes.
+//
+// A directive that spells no layout still gets one, because layout is
+// REQUIRED on mediaSingle: Jira's node reference marks it so, and
+// Atlassian's adf-schema declares it `layout: { default: 'center' }`
+// (media-single.ts). Which value stands in depends on the media type,
+// and the two arms below are not symmetric — the reference corpus is
+// what decides that, not the schema:
+//
+//   - FILE media takes "align-start", the attachment default, and decode
+//     omits it again. The corpus pins both halves: `layout: align-start`
+//     renders WITHOUT the attribute (testdata/directive_fixtures.json
+//     adf rows for the path-addressed attachment), and a file directive
+//     that omits it encodes WITH it (the markdown row
+//     `::media[shot.png]{#abc collection …}` → `layout: align-start`).
+//     So for file media the attribute is implicit in the directive form
+//     and the round trip is an identity.
+//   - Every OTHER type takes "center", the schema default, and decode
+//     KEEPS it. The corpus pins that too, and pins it as a contrast with
+//     the row above: external media carrying `layout: center` renders as
+//     `::media[shot]{height="50" layout="center" type="external" …}`.
+//     Given the chance to elide center exactly as it elides align-start,
+//     the reference declines. The canonical directive for a non-file
+//     media therefore SPELLS its layout, and an author who omitted it
+//     wrote an under-specified directive that a round trip completes.
+//
+// A ROUND TRIP THAT COMPLETES AN UNDER-SPECIFIED DIRECTIVE is the
+// reference's OWN behavior, not an adfast liberty, and the corpus states
+// it in the one field that can: the markdown fixtures carry the
+// reference's md→ADF→md `roundtrip` beside the source, and two rows
+// there gain an attribute the author never wrote.
+//
+//	`::linkEmbed[https://example.com/embed]`
+//	  roundtrip → `::linkEmbed[https://example.com/embed]{layout="center"}`
+//	`:status[no color]`
+//	  roundtrip → `:status[no color]{color="neutral"}`
+//
+// So the answer to "does the reference add the schema default, drop it,
+// or preserve what it was handed" is ADD — for exactly the class of
+// attribute this one belongs to. Completing it is therefore the
+// established rule for this attribute rather than a new one: embedCard's
+// layout is schema-defaulted to center in the same way and
+// LinkEmbed.EncodeADF above stands "center" in for an unspelled one.
+// mediaSingle was the one wrapper left out of that rule, which left a
+// hand-written external media directive encoding a mediaSingle with no
+// layout at all — accepted only because the receiving ProseMirror schema
+// supplies the default, and rejected by a stricter validator.
+//
+// convert's applySingle mirrors this, so the md→md format leg completes
+// the layout identically and the two projections keep agreeing.
 func mediaSingleFromAttrs(attrs map[string]string, media *adf.Media) *adf.MediaSingle {
 	single := &adf.MediaSingle{Content: []adf.Node{media}}
-	if v := attrs["layout"]; v != "" {
-		single.Layout = new(v)
-	} else if media.Type == "file" {
-		// Re-infer the file-media default layout omitted on decode.
+	switch {
+	case attrs["layout"] != "":
+		single.Layout = new(attrs["layout"])
+	case media.Type == "file":
 		single.Layout = new("align-start")
+	default:
+		single.Layout = new("center")
 	}
 	if v, ok := attrs["layoutWidth"]; ok {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {

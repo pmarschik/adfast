@@ -115,7 +115,11 @@ func TestRewriteReferences_MediaSpellings(t *testing.T) {
 // The image form beside it is the GOOD case again. Either mutation of
 // the walk — restoring the *ast.Image-only match, or reusing the upload
 // scan's dialect.MediaLookupPath — leaves the image alone and turns the
-// directive red:
+// directive red. The transcript below was captured before the mediaSingle
+// wrapper layout was completed on the encode leg, so both of its strings
+// now also carry the layout="center" the canonical directive spells; the
+// PATH, which is what the two strings differ on and what this test is
+// named for, is unaffected:
 //
 //	--- FAIL: TestRewriteReferences_ExternalMediaPath (0.00s)
 //	    rewrite_test.go:150: rewritten:
@@ -144,8 +148,15 @@ func TestRewriteReferences_ExternalMediaPath(t *testing.T) {
 		adfast.FromMarkdown(md, adfast.WithPrettierFormat(), RewriteReferences(nil, shared)),
 		adfast.WithPrettierFormat(), RewriteReferences(nil, shared),
 	)
+	// The layout="center" is the formatter's own canonicalization, not the
+	// rewrite's doing: an external media directive that spells no layout
+	// has the required mediaSingle attribute completed with the schema
+	// default (dialect's mediaSingleFromAttrs carries the reference rows).
+	// This runs with WithPrettierFormat, so the canonical form is what
+	// comes back. The PATH is what this test pins, and the path is
+	// re-based either way.
 	want := "![local](../assets/shot.png)\n\n" +
-		"::media[external]{path=\"../assets/shot.png\" type=\"external\"}\n"
+		"::media[external]{layout=\"center\" path=\"../assets/shot.png\" type=\"external\"}\n"
 	if got != want {
 		t.Errorf("rewritten:\n%q\nwant:\n%q", got, want)
 	}

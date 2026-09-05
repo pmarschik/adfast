@@ -849,6 +849,18 @@ func mediaSingleAttrs(media *adf.Media, single *adf.MediaSingle, om mediaOmissio
 	// Omit the file-media default layout ("align-start"); mediaSingleFromAttrs
 	// re-infers it when a file-type directive carries no layout, so the
 	// round-trip stays lossless while the directive stays terse.
+	//
+	// The elision stops there, and deliberately: "center", which
+	// mediaSingleFromAttrs stands in for every OTHER media type, is written
+	// out rather than omitted. The reference corpus pins the contrast in two
+	// adjacent rows of testdata/directive_fixtures.json — a file media
+	// carrying align-start renders without the attribute, while an external
+	// media carrying center renders as `::media[shot]{height="50"
+	// layout="center" type="external" …}`. Offered the same chance to elide,
+	// the reference declines for external media, so the canonical directive
+	// for a non-file media spells its layout. Eliding it here instead would
+	// make the round trip an identity at the cost of that corpus row, which
+	// is the trade this asymmetry deliberately refuses.
 	if layout := strDeref(single.Layout); layout != "" && (media.Type != "file" || layout != "align-start") {
 		attrs["layout"] = layout
 	}

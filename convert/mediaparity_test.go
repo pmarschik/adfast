@@ -317,10 +317,11 @@ func TestMediaProjectionLegsDivergeAsMeasured(t *testing.T) {
 				"enclosing destination wins, because that is the one the reader clicks.",
 		},
 		{
-			name:   "external media that spells both addresses",
-			row:    "::media[alt]{path=assets/a.png type=external url=https://x/a.png}",
-			format: "::media[alt]{path=\"assets/a.png\" type=\"external\" url=\"https://x/a.png\"}" + good,
-			adf:    "![alt](https://x/a.png)" + good,
+			name: "external media that spells both addresses",
+			row:  "::media[alt]{path=assets/a.png type=external url=https://x/a.png}",
+			format: "::media[alt]{layout=\"center\" path=\"assets/a.png\" type=\"external\" " +
+				"url=\"https://x/a.png\"}" + good,
+			adf: "![alt](https://x/a.png)" + good,
 			why: "An ADF media node has no path field, so the round trip through ADF " +
 				"keeps only the url and reads it back as the plain image. The formatter " +
 				"may not: an ast.Image has one destination, and degrading here deleted " +
@@ -393,7 +394,13 @@ func TestMediaFormatLegHonorsPreserveLocalImages(t *testing.T) {
 	}{
 		{
 			name: "without the option the directive stays",
-			want: "::media[alt]{type=\"external\" url=\"img/a.png\"}" + good,
+			// The layout="center" is the canonical spelling of the required
+			// mediaSingle attribute, which a non-file media directive now
+			// completes on both legs (dialect's mediaSingleFromAttrs carries
+			// the reference rows). What this row pins is the FORM — the
+			// directive survives rather than becoming a picture — and that is
+			// unchanged.
+			want: "::media[alt]{layout=\"center\" type=\"external\" url=\"img/a.png\"}" + good,
 			kind: "preserved-behavior PIN",
 			opts: nil,
 		},
@@ -719,7 +726,7 @@ func TestALinkedImageKeepsTheLinkTitleOnBothLegs(t *testing.T) {
 			name: "a bordered leaf keeps hrefTitle as an attribute",
 			row:  "::media[alt]{type=external url=https://x/a.png borderColor=#000 href=https://home/ hrefTitle=Home}",
 			want: "::media[alt]{borderColor=\"#000\" href=\"https://home/\" hrefTitle=\"Home\" " +
-				"type=\"external\" url=\"https://x/a.png\"}" + good,
+				"layout=\"center\" type=\"external\" url=\"https://x/a.png\"}" + good,
 			kind: "defect proof",
 		},
 		{

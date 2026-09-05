@@ -31,24 +31,21 @@ package convert
 // some node out — because a formatter may reshape an author's syntax but
 // never delete it. Only the ADF encode is allowed to drop.
 //
-// Both are idempotent, and ToADF is invariant under either
-// (ToADF(Normalize(n)) == ToADF(n) for every parsed AST, and the same for
-// NormalizeFormat, because ToADF drops the kept directives itself) — with
-// ONE measured exception, on the media projection. Where the pass
-// degrades a ::media directive to an ast.Image, the image form spells the
-// mediaSingle wrapper's layout ("center" for external media,
-// "align-start" for a downloaded attachment) while the directive form
-// re-infers it for a FILE-type directive only. So for EXTERNAL media that
-// omits a layout and still reaches the image form, ToADF(Normalize(n))
-// carries layout: "center" where ToADF(n) carries no layout at all.
-// Both describe the same placement — "center" is the ADF
-// schema's declared default for the attribute, and adfast's own decode
-// reads the two back as one document — so the exception is a difference
-// in the payload's BYTES, which is still enough to matter to a caller
-// that canonicalizes before it encodes. It is the directive form that
-// under-spells, and closing it belongs in dialect;
-// mediawrapperlayout_test.go holds the measured shape map, the evidence
-// for which form is wrong, and what the candidate fix costs.
+// Both are idempotent, and ToADF is invariant under either:
+// ToADF(Normalize(n)) == ToADF(n) for every parsed AST, and the same for
+// NormalizeFormat, because ToADF drops the kept directives itself.
+//
+// That invariant held with one measured exception until the mediaSingle
+// wrapper's layout was settled. Where the pass degrades a ::media
+// directive to an ast.Image, the image form spells the layout, and the
+// directive form used to re-infer one for a FILE-type directive only —
+// so an EXTERNAL media that omitted a layout and still reached the image
+// form encoded with layout: "center" through the pass and with no layout
+// at all without it. The directive form was the under-spelling one, and
+// it now completes the layout for every media type (dialect's
+// mediaSingleFromAttrs carries the reference evidence; applySingle here
+// mirrors it). The exception is therefore closed rather than qualified,
+// and mediawrapperlayout_test.go pins the whole shape map that way.
 //
 // The prettier md→md formatter is the composition
 // Render∘NormalizeFormat∘Parse; that render is byte-for-byte what routing
@@ -2114,11 +2111,40 @@ func (fn *normalizer) mediaShape(attrs map[string]string, alt string) *fmtMedia 
 	return m
 }
 
-// applySingle mirrors dialect's mediaSingleFromAttrs.
+// applySingle mirrors dialect's mediaSingleFromAttrs, the layout
+// completion included: a non-file media that spells no layout takes the
+// schema default "center", because the canonical directive for it spells
+// its layout (the reference evidence is on dialect's copy). Materializing
+// it HERE and not only in the attribute writer is what keeps the two
+// projections agreeing — the ADF leg encodes center and decode spells it
+// back, so a format leg that left the attribute unwritten would render a
+// bordered or annotated external media without the layout the round trip
+// gives it.
+//
+// File media keeps taking align-start, and mediaSingleAttrs omits that
+// one again on the way out.
+//
+// Yes, this means the FORMATTER writes an attribute the author did not:
+// `::media[alt]{type=external url=…}` comes back with layout="center".
+// That is the rule this leg already follows for every other
+// schema-defaulted directive attribute — `:status[no color]` formats to
+// `:status[no color]{color="neutral"}` and `::linkEmbed[url]` to
+// `::linkEmbed[url]{layout="center"}` — and the reference's own
+// md→ADF→md round trip completes both of those, which is the corpus
+// evidence dialect's copy quotes. The formatter's contract is semantic
+// coherence and idempotence, not byte identity with its input; what it
+// may not do is DELETE, and completing a required attribute is the
+// opposite of that.
 func (m *fmtMedia) applySingle(attrs map[string]string) {
 	m.hasSingle = true
-	if v := attrs["layout"]; v != "" {
+	switch {
+	case attrs["layout"] != "":
+		v := attrs["layout"]
 		m.layout = &v
+	case m.mtype == "file":
+		m.layout = new("align-start")
+	default:
+		m.layout = new("center")
 	}
 	if v, ok := attrs["layoutWidth"]; ok {
 		if f, err := strconv.ParseFloat(v, 64); err == nil {
@@ -2472,7 +2498,11 @@ func mediaSingleAttrs(m *fmtMedia, om mediaOmissions, attrs map[string]string) {
 		return
 	}
 	// Omit the file-media default layout ("align-start") — encode re-infers
-	// it (mirrors dialect's mediaLeafNode).
+	// it (mirrors dialect's mediaLeafNode). Every other type's layout is
+	// written out, "center" included: applySingle completes it above and the
+	// reference corpus spells it on an external media directive, so this
+	// leg's terse form and the ADF leg's stay the same document. Dialect's
+	// mediaSingleAttrs carries the corpus rows.
 	if m.layout != nil && *m.layout != "" && (m.mtype != "file" || *m.layout != "align-start") {
 		attrs["layout"] = *m.layout
 	}
