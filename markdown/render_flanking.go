@@ -119,7 +119,7 @@ func (r *mdRenderer) emphasisMarkerAfter(nodes []ast.Node, i int, prev rune, st 
 // neither is in the host class, so a literal always stops in front of it —
 // which is exactly why swapping the delimiter repairs the case at all.
 //
-// The check reads the RENDERED content, so it is self-cancelling on the
+// The check reads the RENDERED content, so it is self-canceling on the
 // remark leg: an escape written there ("www\.") is not a "www." prefix any
 // more and no candidate matches, which keeps the remark-stringify byte pins
 // untouched without a mode flag. And it applies the parser's own trailing
