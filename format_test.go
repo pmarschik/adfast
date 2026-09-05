@@ -44,8 +44,16 @@ func TestPrettierRenderKeepsDirectiveShapedTextIntact(t *testing.T) {
 	}
 }
 
-// Each case pins FormatMarkdown against measured prettier 3.8 output
-// (--prose-wrap always --print-width 80 --embedded-language-formatting off).
+// Each case pins FormatMarkdown against measured prettier 3.8.1 output
+// (--prose-wrap always --print-width 80 --embedded-language-formatting off),
+// EXCEPT the rows whose comment says the divergence is deliberate. Those
+// carry the measured prettier answer in the comment so the row cannot be
+// mistaken for parity and "fixed" back.
+//
+// The version matters: 3.8.1 is the copy inside the frozen TS reference and
+// is the authority here. A newer prettier is a different formatter, not a
+// second opinion — measured 2026-09-05, 3.9.6 disagrees with it on the tight
+// list-item table below.
 func TestFormatMarkdown_PrettierParity(t *testing.T) {
 	cases := []struct {
 		name string
@@ -91,6 +99,19 @@ func TestFormatMarkdown_PrettierParity(t *testing.T) {
 		{"space hard break preserved", "a  \nb\n", "a  \nb\n"},
 		{"backslash hard break preserved", "a\\\nb\n", "a\\\nb\n"},
 		{"code fence trailing space trimmed", "```\nx   \n```\n", "```\nx\n```\n"},
+		// A DELIBERATE divergence from prettier 3.8.1, and the one row in
+		// this table that is NOT a parity pin. Measured 2026-09-05 with the
+		// flags above, 3.8.1 collapses the whole item into one paragraph:
+		//
+		//	"- a | x | y | | - | - | | 1 | 2 |\n- b\n"
+		//
+		// It runs the old pre-CommonMark remark fork, which does not see a
+		// table on a lazy list-item continuation line. goldmark is
+		// CommonMark and does see it, and reproducing 3.8.1's answer would
+		// mean discarding a table the parser found — lossy on the ADF path,
+		// where the table would stop being a table. So the want below
+		// follows CommonMark, not the authority. Do not "fix" it toward
+		// prettier.
 		{
 			"table attaches to a paragraph in a tight item",
 			"- a\n  | x | y |\n  | - | - |\n  | 1 | 2 |\n- b\n",
