@@ -122,6 +122,65 @@ func TestTableCell_FrontmatterKeepsItsText(t *testing.T) {
 	}
 }
 
+// cellTableTwoRows builds the cell table with a second body row, so the
+// one-line value and the multi-line one are measured in one document: a
+// fold that went too far would show up on the good row.
+func cellTableTwoRows(good, multi ast.Node) ast.Node {
+	return &ast.Root{Children: []ast.Node{&ast.Table{Children: []ast.Node{
+		&ast.TableRow{Children: []ast.Node{textCell("good"), textCell("subject")}},
+		&ast.TableRow{Children: []ast.Node{
+			&ast.TableCell{Children: []ast.Node{cellPara("A")}},
+			&ast.TableCell{Children: []ast.Node{good}},
+		}},
+		&ast.TableRow{Children: []ast.Node{
+			&ast.TableCell{Children: []ast.Node{cellPara("B")}},
+			&ast.TableCell{Children: []ast.Node{multi}},
+		}},
+	}}}}
+}
+
+// TestTableCell_MultiLineCodeBlockStaysOnItsRow measures the ordinary
+// code block: a fence holds several lines, so recovering the text without
+// folding the ends of line put those lines straight into the row. The
+// one-line code block above is the unusual shape.
+func TestTableCell_MultiLineCodeBlockStaysOnItsRow(t *testing.T) {
+	got := Render(cellTableTwoRows(&ast.Code{Value: "one"}, &ast.Code{Value: "x\ny"}))
+	want := "| good | subject |\n| ---- | ------- |\n| A    | `one`   |\n| B    | `x y`   |\n"
+	if got != want {
+		t.Errorf("multiline code block in a cell:\ngot  %q\nwant %q", got, want)
+	}
+	// A CRLF is one end of line and folds to one space, not to two.
+	got = Render(cellTableTwoRows(&ast.Code{Value: "one"}, &ast.Code{Value: "x\r\ny"}))
+	if got != want {
+		t.Errorf("CRLF code block in a cell:\ngot  %q\nwant %q", got, want)
+	}
+	// The value that is nothing but an end of line still has to leave a
+	// span the cell can hold, and that span has to survive a re-parse.
+	got = Render(cellTable(&ast.Code{Value: "\n"}))
+	want = "| good | subject |\n| ---- | ------- |\n| A    | ` `     |\n"
+	if got != want {
+		t.Errorf("code block of one newline in a cell:\ngot  %q\nwant %q", got, want)
+	}
+	if round := Render(Parse([]byte(got))); round != got {
+		t.Errorf("re-render of the folded cell:\ngot  %q\nwant %q", round, got)
+	}
+}
+
+// TestTableCell_MultiLineFrontmatterStaysOnItsRow measures the same fold
+// for the other value the projection recovers. Frontmatter is multi-line
+// by nature, so the folded shape is the normal one here as well.
+func TestTableCell_MultiLineFrontmatterStaysOnItsRow(t *testing.T) {
+	got := Render(cellTableTwoRows(
+		&ast.Frontmatter{Value: "x: 1"},
+		&ast.Frontmatter{Value: "x: 1\ny: 2"},
+	))
+	want := "| good | subject     |\n| ---- | ----------- |\n| A    | `x: 1`      |\n" +
+		"| B    | `x: 1 y: 2` |\n"
+	if got != want {
+		t.Errorf("multiline frontmatter in a cell:\ngot  %q\nwant %q", got, want)
+	}
+}
+
 func TestTableCell_RawHTMLNewlineCannotBreakTheRow(t *testing.T) {
 	// Raw HTML is written verbatim, so a value spanning lines used to put
 	// those lines straight into the row and the table stopped being a

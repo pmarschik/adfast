@@ -141,6 +141,17 @@ func (r *mdRenderer) expandTableSpans(rows []ast.Node) (visual [][]string, colCo
 // paragraph. Keeping the table intact is the one invariant this layer
 // can hold, so the cell keeps the content and gives up the markers.
 //
+// Whatever a case here recovers must fit ONE line — the rule holds for
+// every value the projection carries over, not for raw HTML alone. A
+// recovered value reaches the row with its bytes intact, so a newline in
+// it ends the row and turns the three-line table into four lines, which
+// is a worse loss than the empty cell this projection was written to fix.
+// Every Value-carrying case therefore passes its text through
+// foldCellLines; a new case must do the same. Pipes are the narrower
+// worry: the cell's inline writer escapes them inside the inline nodes it
+// writes, so only a kind written verbatim, as raw HTML is, has to escape
+// its own.
+//
 // The kinds this recurses into are exactly the ones the inline write
 // visitor degrades by writing their children, so flattening them here
 // reproduces what the cell already rendered; the switch adds only the
@@ -172,17 +183,22 @@ func appendCellContent(out []ast.Node, node ast.Node) []ast.Node {
 		// fits a table row; an inline code span is the nearest form that
 		// does, and it keeps both the text and the code-ness. Re-parsing
 		// it yields the same span, so the cell is a render fixpoint.
+		// A code block is usually several lines, so the fold is the
+		// common path here, not the exception. The span's own pipes are
+		// escaped by the cell's inline writer, so only the line ends
+		// need handling.
 		if n.Value == "" {
 			return out
 		}
-		return append(out, &ast.InlineCode{Value: n.Value})
+		return append(out, &ast.InlineCode{Value: foldCellLines(n.Value)})
 	case *ast.Frontmatter:
 		// Metadata inside a cell is not something a parse produces, but
-		// a hand-built tree can hold it and its text must not vanish.
+		// a hand-built tree can hold it and its text must not vanish. It
+		// is a multi-line block by nature, so it folds like a code block.
 		if n.Value == "" {
 			return out
 		}
-		return append(out, &ast.InlineCode{Value: n.Value})
+		return append(out, &ast.InlineCode{Value: foldCellLines(n.Value)})
 	case *ast.HTML:
 		// Raw HTML stays raw — the reference writes it verbatim and so
 		// does the cell, and an inline span is the common case here
@@ -211,8 +227,50 @@ func appendCellContent(out []ast.Node, node ast.Node) []ast.Node {
 	return append(out, node)
 }
 
+// foldCellLines folds every end of line in a recovered value to one space,
+// so the value fits the single line a table row is.
+//
+// This is the half of the one-line requirement that no kind can opt out
+// of: a raw newline inside a cell ends the row wherever it comes from.
+// Measured before the fold, on a two-row table whose body cell holds an
+// ast.Code with Value "x\ny", Render produced a body row of
+// "| A    | `x\ny`   |" — four lines of output instead of three, the
+// table cut in half. The space is the reference's own answer to an end of
+// line the enclosing construct cannot hold: a break inside a table cell
+// serializes to " " rather than to "\\\n".
+//
+// A CRLF is one end of line and folds to one space. The fold is
+// unreachable from a parse, so it costs no round trip: a cell is one
+// line, so no value a parse puts in a cell holds a newline.
+func foldCellLines(s string) string {
+	if !strings.ContainsAny(s, "\n\r") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; c {
+		case '\r':
+			if i+1 < len(s) && s[i+1] == '\n' {
+				i++
+			}
+			b.WriteByte(' ')
+		case '\n':
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
 // cellSafeHTML makes a raw HTML value writable on one table line: every
 // newline becomes a space, and a bare pipe is escaped.
+//
+// The newline half is foldCellLines, shared with every other value this
+// projection recovers. The pipe half is raw HTML's alone: an inline code
+// span's pipes are escaped for it by the cell's inline writer, while raw
+// HTML is written verbatim and so must arrive already safe.
 //
 // Both rewrites are unreachable from a parse, which is why they cannot
 // cost a round trip. A cell is one line, so a parsed HTML value never
@@ -233,24 +291,15 @@ func appendCellContent(out []ast.Node, node ast.Node) []ast.Node {
 // that the enclosing construct cannot hold: a break inside a table cell
 // serializes to " " rather than to "\\\n".
 func cellSafeHTML(s string) string {
-	if !strings.ContainsAny(s, "|\n\r") {
+	s = foldCellLines(s)
+	if !strings.Contains(s, "|") {
 		return s
 	}
 	var b strings.Builder
 	b.Grow(len(s) + 8)
 	backslashes := 0
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		switch c := s[i]; c {
-		case '\r':
-			// A CRLF is one end of line, so it collapses to one space.
-			if i+1 < len(s) && s[i+1] == '\n' {
-				i++
-			}
-			b.WriteByte(' ')
-			backslashes = 0
-		case '\n':
-			b.WriteByte(' ')
-			backslashes = 0
 		case '|':
 			// An odd run of backslashes already escapes this pipe.
 			if backslashes%2 == 0 {
