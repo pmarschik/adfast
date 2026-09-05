@@ -634,6 +634,38 @@ func autolinkText(node *ast.Link) (string, bool) {
 	return "", false
 }
 
+// bareWWWLiteral returns the source spelling of a linkified "www." literal.
+//
+// It is the one bare form whose URL is NOT its text: the parser completes it
+// with the scheme goldmark's own www branch prepends (see the literal
+// conversion), so "www.x" arrives carrying "http://www.x" and misses
+// autolinkText's text-equals-url gate. The format leg then wrote it out as
+// "[www.x](http://www.x)" — link syntax the author never typed, in ordinary
+// prose like "see www.example.com for details".
+//
+// Measured 2026-09-05 on the frozen prettier 3.8.1 install with the parity
+// flags: "see www.x b", "z-www.a.b c" and "a www.x.y, b" are all fixpoints
+// there, while an EXPLICIT link keeps its brackets, so the literal spelling is
+// the reference answer and not a shortcut that loses the link.
+//
+// Only the format leg takes it. The other reference, mdast-util-to-markdown,
+// really does bracket a www literal — "see www.x b" comes back as
+// "see [www.x](http://www.x) b" — so the remark leg keeps that, and the two
+// legs are measured against the tool each one is a port of.
+func bareWWWLiteral(node *ast.Link) (string, bool) {
+	if !node.Bare || node.Explicit || len(node.Children) != 1 {
+		return "", false
+	}
+	t, ok := node.Children[0].(*ast.Text)
+	if !ok || !hasWWWPrefix([]byte(t.Value)) {
+		return "", false
+	}
+	if node.URL != "http://"+t.Value {
+		return "", false
+	}
+	return t.Value, true
+}
+
 func (r *mdRenderer) writeLink(b *strings.Builder, node *ast.Link, st *inlineContext) {
 	// Auto-link: emit <url> angle-bracket form when the label is plain text
 	// matching the URL (including mailto: links where the label is the bare
@@ -648,6 +680,14 @@ func (r *mdRenderer) writeLink(b *strings.Builder, node *ast.Link, st *inlineCon
 		b.WriteString(text)
 		b.WriteByte('>')
 		return
+	}
+	// A linkified "www." literal: prettier keeps the source spelling, so the
+	// format leg does too. See bareWWWLiteral.
+	if r.cfg.prettierText {
+		if text, ok := bareWWWLiteral(node); ok {
+			b.WriteString(text)
+			return
+		}
 	}
 	// The whole [label](url) construct is one unbreakable wrap unit
 	// (prettier moves it wholly to the next line), so its spaces are
