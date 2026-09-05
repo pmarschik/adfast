@@ -913,13 +913,6 @@ func skipFmtStructureClasses(doc adf.Doc) (reason string, skip bool) {
 	if docHasEmoji(doc) {
 		return "emoji node; the markdown projection is deliberately lossy", true
 	}
-	// ::media without a layout attribute converts to a plain image,
-	// whose re-encode materializes the default layout="center" — the
-	// pre-existing media⇄image default-layout asymmetry (identical
-	// before the md→ast→md rewrite).
-	if docHasLayoutlessMediaSingle(doc) {
-		return "layout-less mediaSingle; image re-encode materializes the default layout", true
-	}
 	return "", false
 }
 
@@ -1268,19 +1261,6 @@ func docHasCheckboxLeadText(doc adf.Doc) bool {
 				continue
 			}
 			if text, isText := content[0].(*adf.Text); isText && checkboxLeadRe.MatchString(text.Text) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// docHasLayoutlessMediaSingle reports a mediaSingle without a layout
-// attribute (whose image round trip materializes the default).
-func docHasLayoutlessMediaSingle(doc adf.Doc) bool {
-	for _, root := range doc.Content {
-		for n := range adf.Walk(root) {
-			if ms, ok := n.(*adf.MediaSingle); ok && ms.Layout == nil {
 				return true
 			}
 		}
