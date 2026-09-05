@@ -131,9 +131,17 @@ func TestPrettierFormatIsStableAroundAKeptTextDirective(t *testing.T) {
 		// The renderer's own "\_" escape ends the directive name.
 		// See escapesLeadUnderscore.
 		{"underscore escape separates", "0:0_", "0:0\\_\n"},
-		// The emphasis repair writes the following "0" as "&#x30;",
-		// and a '&' cannot fuse onto a name. See hexEncodesLead.
-		{"hex-encoded lead separates", "*:*0*0*0", "_:0&#x30;_&#x30;\n"},
+		// No repair is written here any more, and none is needed: the
+		// emphasis is intraword, so it goes out with '*' rather than
+		// '_' and neither neighbor has to become a character
+		// reference (see emphasisMarkerAfter). The seed is kept because
+		// the hazard it was found for is still the question — the
+		// directive is followed by a bare "0" and must not fuse with
+		// it — and because the answer has to stay a fixpoint: the
+		// second format of "*:00*0" reads a directive where the first
+		// parse saw none, which is what made the old spelling grow an
+		// attribute block on pass two.
+		{"an intraword emphasis needs no repair to separate", "*:*0*0*0", "*:00*0\n"},
 		// Not a hazard case: the '@' escape is decided per text node,
 		// and splitting ":0_@" into a directive plus "_@" moved a
 		// word byte into the node's predecessor, which read as an
