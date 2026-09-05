@@ -67,22 +67,112 @@ func (r *mdRenderer) emphasisMarkerAfter(nodes []ast.Node, i int, prev rune, st 
 		return marker
 	}
 	next := siblingLeadRune(nodes, i+1)
+	tail := textSiblingRun(nodes, i+1)
 	// Each candidate is measured against ITS OWN rendering: the marker is
 	// the preceding rune for the children, and since the choice made here is
 	// what a nested emphasis reads as that rune, '_' and '*' do not always
 	// render the same content. See renderedChildLead.
 	for _, cand := range [2]byte{'_', '*'} {
-		lead := r.renderedChildLead(nodes[i], cand, st)
-		trail := r.renderedChildTrail(nodes[i], cand, st)
+		content := r.renderChildScratch(nodes[i], cand, st)
+		lead := firstRuneOf(content)
+		trail := lastRuneOf(content)
 		if !canOpenMarker(cand, prev, lead) || !canCloseMarker(cand, trail, next) {
 			continue
 		}
 		if cand == '*' && asteriskRunMerges(prev, lead, trail, next) {
 			continue
 		}
+		if closerLinkifies(cand, content, tail) {
+			continue
+		}
 		return cand
 	}
 	return '_'
+}
+
+// closerLinkifies reports whether the CLOSING marker written after content
+// would be swallowed by a bare-URL literal when the output is parsed again.
+//
+// An underscore is both a byte goldmark's linkify extension triggers on and a
+// byte its host class accepts, so an emphasis whose content ends inside a
+// half-finished literal can have its closer annexed by the address. Measured
+// on the frozen prettier 3.8.1 install, 2026-09-05, on the format leg:
+//
+//	"*www.*..A"        prettier _www._..A     adfast (before) _www._..A
+//	"*www.*.a.A"       prettier _www._.a.A    adfast (before) _www._.a.A
+//	"*https://ex.*.a.A" prettier _https://ex._.a.A
+//
+// The two agree on the bytes, and for prettier that is a fixpoint: its
+// pre-CommonMark parser has no autolink literals, so "_www._..A" is still an
+// emphasis to it. The parse adfast round-trips against DOES linkify, and it
+// reads "www._..A" as one host — micromark's domain rule only refuses an
+// underscore in the last two dot-separated segments, and an EMPTY segment
+// resets that counter, so the reference's parser links these too. So the
+// second format pass emitted "\_[www.\_..A](http://www._..A)": the emphasis
+// was gone and a link the author never wrote was in its place. This is a
+// DELIBERATE divergence from prettier's bytes of the same kind escapeAt
+// already makes for '@' (see linkifiesAsEmail) — the format leg is written
+// for the parser that reads its output back, and silently deleting an
+// author's emphasis is not a byte nit.
+//
+// Only '_' is asked about. A '*' or '~' closer is a linkify TRIGGER too, but
+// neither is in the host class, so a literal always stops in front of it —
+// which is exactly why swapping the delimiter repairs the case at all.
+//
+// The check reads the RENDERED content, so it is self-cancelling on the
+// remark leg: an escape written there ("www\.") is not a "www." prefix any
+// more and no candidate matches, which keeps the remark-stringify byte pins
+// untouched without a mode flag. And it applies the parser's own trailing
+// trim, so a closer the address gives back — "www.x" plus '_' matches
+// "www.x_", which trims to "www.x" and leaves the '_' outside — is not a
+// hazard and keeps its preferred delimiter.
+func closerLinkifies(marker byte, content, tail string) bool {
+	if marker != '_' || content == "" {
+		return false
+	}
+	s := content + string(marker) + tail
+	for p := 0; p <= len(content); p++ {
+		// p == 0 sits right after the OPENING marker, itself a trigger byte.
+		if p > 0 && !urlLiteralOpensAfter(s[p-1]) {
+			continue
+		}
+		rest := []byte(s[p:])
+		m := urlLiteralCandidate(rest)
+		if m == nil || !urlLiteralHostAcceptedAt(rest, len(m)) {
+			continue
+		}
+		if lit := trimURLLiteralEnd(string(m)); lit != "" && p+len(lit) > len(content) {
+			return true
+		}
+	}
+	return false
+}
+
+// urlLiteralOpensAfter reports whether a bare-URL literal may begin one byte
+// after c: goldmark's own trigger set plus the widened ASCII-punctuation
+// boundary punctLinkifyParser adds, and a line ending. It is the render leg's
+// reading of the same rule those two parsers apply.
+func urlLiteralOpensAfter(c byte) bool {
+	return c == '\n' ||
+		strings.IndexByte(linkifyBoundaryBytes, c) >= 0 ||
+		strings.IndexByte(punctLinkifyBoundaries, c) >= 0
+}
+
+// textSiblingRun returns the plain values of the text nodes that start at
+// nodes[i], stopping at the first sibling that is not one. It is the lookahead
+// closerLinkifies needs: a host runs on past a marker into the text behind it,
+// and every other inline kind opens with a bracket or a marker byte that ends
+// the host anyway.
+func textSiblingRun(nodes []ast.Node, i int) string {
+	var b strings.Builder
+	for ; i < len(nodes); i++ {
+		t, ok := nodes[i].(*ast.Text)
+		if !ok {
+			break
+		}
+		b.WriteString(t.Value)
+	}
+	return b.String()
 }
 
 // asteriskRunMerges reports whether an emphasis written with '*' here would
@@ -453,7 +543,19 @@ func (r *mdRenderer) renderedChildTrail(node ast.Node, marker byte, st *inlineCo
 // under the state they would have inside it.
 func (r *mdRenderer) renderChildScratch(node ast.Node, marker byte, st *inlineContext) string {
 	var tmp strings.Builder
-	child := inlineContext{escape: st.escape, colons: st.colons, pipes: st.pipes, prevRune: rune(marker), directiveLabel: st.directiveLabel}
+	// afterLead is the marker for the same reason prevRune is: the scratch has
+	// to write the bytes the real pass will write, and writeWrapped threads the
+	// closing marker to the last child. Without it the scratch misses every
+	// escape that depends on what follows — "www." came out unescaped here and
+	// "www\." in the real render, and closerLinkifies read the wrong one.
+	child := inlineContext{
+		escape:         st.escape,
+		colons:         st.colons,
+		pipes:          st.pipes,
+		prevRune:       rune(marker),
+		afterLead:      marker,
+		directiveLabel: st.directiveLabel,
+	}
 	r.writeInlines(&tmp, ast.Children(node), &child)
 	return tmp.String()
 }
