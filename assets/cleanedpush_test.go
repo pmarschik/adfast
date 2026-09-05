@@ -36,8 +36,12 @@ func offeringUploader(offered *[]string, mediaID string) Uploader {
 // reference the document makes), and the path-keyed read went through the
 // friendly file alone: the read missed, the file was never offered for
 // upload, nothing ever attached a media id to it, and the encode dropped
-// the picture from the payload with "not in the asset store" — sending
-// the author off to re-add an asset the store already held.
+// the picture from the payload — sending the author off to re-add an
+// asset the store already held. (The sentence it dropped it with said
+// "not in the asset store" at the time, which was the second half of the
+// same misdirection; it now names the missing upload instead, and
+// TestUnplacedImageMessageDoesNotClaimTheStoreLacksTheFile holds it to
+// that.)
 //
 // Reading BY MEDIA ID had repaired that folder all along (assetOf →
 // materialize). The fix is the path-keyed twin of the same repair, so the
@@ -117,7 +121,7 @@ func TestPushOffersAnAssetWhoseBlobTheStoreStillHolds(t *testing.T) {
 // it could not place — the message this bug was reported through.
 func wantDropReported(t *testing.T, diags []string) {
 	t.Helper()
-	if len(diags) != 1 || !strings.Contains(diags[0], "has no media id (not in the asset store)") {
+	if len(diags) != 1 || !strings.Contains(diags[0], "has no media id yet (nothing has uploaded it)") {
 		t.Errorf("diagnostics = %v, want the one unplaceable-image message", diags)
 	}
 }
