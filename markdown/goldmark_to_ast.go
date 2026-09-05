@@ -583,7 +583,19 @@ func codeBlockValue(n interface{ Lines() *text.Segments }, src []byte) string {
 		line := n.Lines().At(i)
 		buf.Write(line.Value(src))
 	}
-	return strings.TrimRight(buf.String(), "\n")
+	// Only the LAST line's terminator comes off, not every trailing
+	// newline. Each line goldmark hands out ends in "\n", so the buffer
+	// carries one terminator more than the block has lines, and the
+	// value is the lines joined — a blank line at the end of the block
+	// is one of those lines and has to survive. mdast's own value is
+	// exactly this (micromark 4: "```json\na\n\n```" parses to "a\n",
+	// "```json\n\n\n```" to "\n"), which is why both serializers write
+	// the trailing blank lines back out. Trimming them all instead
+	// deleted them from the markdown AND from the ADF codeBlock text,
+	// and it left the prettier render unstable: a fence ending in a
+	// whitespace-only line rendered a blank last line that the next
+	// pass then dropped.
+	return strings.TrimSuffix(buf.String(), "\n")
 }
 
 func convertGoldmarkList(n *gast.List, src []byte, lc *liftCtx, depth int) *ast.List {
