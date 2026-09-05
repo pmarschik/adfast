@@ -65,7 +65,7 @@ var closerLinkifyCases = []struct {
 	// preferred delimiter stands.
 	name: "a closer the address trims away is not a hazard",
 	in:   "a *www.x* b",
-	want: "a _[www.x](http://www.x)_ b\n",
+	want: "a _www.x_ b\n",
 }}
 
 func TestFormat_EmphasisDelimiterIsNotEatenByAURLLiteral(t *testing.T) {

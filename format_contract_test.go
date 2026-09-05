@@ -646,7 +646,10 @@ func TestURLLiteralEndsWhereTheParserEndsIt(t *testing.T) {
 // host's last two segments, which here are "_" and "A" (see
 // markdown.urlLiteralHostAccepted). The two rows after it are the company that
 // makes this a host rule rather than a ban on the delimiter — a real host still
-// links, inside emphasis and out.
+// links, inside emphasis and out. They print in the source spelling rather than
+// in brackets because that is what the format leg does with a bare literal (see
+// markdown.bareWWWLiteral); the ADF comparison below is what asserts the link
+// is still there.
 func TestEmphasisDelimiterDoesNotBecomeAHost(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -662,12 +665,12 @@ func TestEmphasisDelimiterDoesNotBecomeAHost(t *testing.T) {
 		{
 			name: "emphasis around a real host",
 			md:   "*www.a.A*",
-			want: "_[www.a.A](http://www.a.A)_\n",
+			want: "_www.a.A_\n",
 		},
 		{
 			name: "the same host with no emphasis",
 			md:   "www.a.A",
-			want: "[www.a.A](http://www.a.A)\n",
+			want: "www.a.A\n",
 		},
 	}
 	for _, tt := range tests {
@@ -874,23 +877,23 @@ func TestEscapeProvenanceSurvivesAURLSplit(t *testing.T) {
 			// text kept the literal's first byte.
 			name: "literal backslash pair before a preserved escape",
 			md:   "\\\\\\0+\\+\\(www.0.a0",
-			want: "\\\\\\0+\\+\\([www.0.a](http://www.0.a)0\n",
+			want: "\\\\\\0+\\+\\(www.0.a0\n",
 		},
 		{
 			name: "preserved escape alone",
 			md:   "\\+\\(www.0.a0",
-			want: "\\+\\([www.0.a](http://www.0.a)0\n",
+			want: "\\+\\(www.0.a0\n",
 		},
 		{
 			name: "literal backslash alone",
 			md:   "\\\\\\(www.0.a0",
-			want: "\\\\\\([www.0.a](http://www.0.a)0\n",
+			want: "\\\\\\(www.0.a0\n",
 		},
 		{
 			// Every preserved escape, each standing for one value byte.
 			name: "all preserved escapes",
 			md:   "\\~\\:\\-\\+ www.0.a0",
-			want: "\\~\\:\\-\\+ [www.0.a](http://www.0.a)0\n",
+			want: "\\~\\:\\-\\+ www.0.a0\n",
 		},
 	}
 	for _, tt := range tests {
