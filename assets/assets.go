@@ -118,10 +118,11 @@ type Store interface {
 	// reference paths map to physical files is the store's concern.
 	Dims(path string) (width, height int, ok bool)
 	// Report runs fn with the store answering about media WITHOUT
-	// repairing the folder it answers for. Resolution is not otherwise a
-	// passive read — a store that keeps friendly files beside the
-	// documents creates the one it is asked about (see FSStore.Resolve)
-	// — so a caller that only reports on a document, and must leave the
+	// repairing the folder it answers for. Reading is not otherwise a
+	// passive act — a store that keeps friendly files beside the
+	// documents creates the one it is asked about, by media id and by
+	// reference path alike (see FSStore.Resolve and FSStore.Load) — so a
+	// caller that only reports on a document, and must leave the
 	// working tree exactly as it found it, asks inside Report:
 	//
 	//	var asset convert.MediaAsset
@@ -303,16 +304,28 @@ func (s *FSStore) refToFull(path string) (string, error) {
 // elsewhere) is rejected, so reference paths can never exfiltrate
 // content from outside the store. It returns the physical path to read
 // plus its FileInfo (for size checks before reading).
-// While reporting, a friendly file this folder does not have is read
-// from its blob instead (see readableBlob), so a read-only caller sees
-// the content a repairing one would have created.
+//
+// A friendly file this folder does not have is answered from the store's
+// own blob for it, exactly like resolution by media id: outside a report
+// scope the file is put back first (repairFriendly, the path-keyed twin
+// of assetOf's materialize), while reporting it is read where it lies
+// (readableBlob). That symmetry is what Store.Report promises — a report
+// says what a repairing run would — and it has to hold in BOTH
+// directions: a path-keyed read that missed where an id-keyed one
+// repaired left a picture whose bytes the store holds out of every
+// worklist keyed by path, so a push offered it no upload and dropped it
+// from the payload as if the file had never existed.
 func (s *FSStore) resolveReadable(full string) (string, fs.FileInfo, error) {
 	fi, err := os.Lstat(full)
 	if err != nil {
 		if s.reporting() {
 			return s.readableBlob(full, err)
 		}
-		return "", nil, err
+		repaired, ok := s.repairFriendly(full)
+		if !ok {
+			return "", nil, err
+		}
+		fi = repaired
 	}
 	if fi.Mode().IsRegular() {
 		return full, fi, nil
@@ -356,30 +369,71 @@ func (s *FSStore) resolveReadable(full string) (string, fs.FileInfo, error) {
 // the missing file stood for is unknowable, and answering with either
 // one would be a coin toss reported as fact.
 func (s *FSStore) readableBlob(full string, absent error) (string, fs.FileInfo, error) {
+	_, blob, fi, ok := s.blobForName(filepath.Base(full))
+	if !ok {
+		return "", nil, absent
+	}
+	return blob, fi, nil
+}
+
+// repairFriendly puts back a friendly file this folder no longer has,
+// from the store's blob for the name it carries, and returns the restored
+// entry. It is the path-keyed twin of the repair assetOf performs for a
+// media id, and it declines wherever that one does — no record for the
+// name, an ambiguous one, no blob behind it, an occupied friendly path
+// (materialize refuses to write over or through anything).
+//
+// The repair is confined to the assets folder's own top level, which is
+// where materialize writes: a reference into a subdirectory whose
+// basename happens to match a record is NOT that record's file, and
+// restoring it would create a file at a path no caller named.
+func (s *FSStore) repairFriendly(full string) (fs.FileInfo, bool) {
 	name := filepath.Base(full)
-	var found string
-	var info fs.FileInfo
-	for hash, record := range s.recordsOnDisk() {
+	if at, err := s.securePath(false, name); err != nil || at != full {
+		return nil, false
+	}
+	hash, _, _, ok := s.blobForName(name)
+	if !ok {
+		return nil, false
+	}
+	if !s.materialize(hash, name) {
+		return nil, false
+	}
+	fi, err := os.Lstat(full)
+	if err != nil {
+		return nil, false
+	}
+	return fi, true
+}
+
+// blobForName finds the store's blob for a friendly name: the single
+// index record carrying that name whose content is actually on disk. It
+// is deliberately all-or-nothing about ambiguity — two records under one
+// name (two document folders sharing a blob store) mean the name alone
+// cannot say which content is meant, so neither is answered.
+//
+// It reads the index off disk rather than the in-memory map because the
+// path-keyed reads that reach it hang off dimsAt, which a mutation
+// already holding the index lock also reaches (see recordsOnDisk).
+func (s *FSStore) blobForName(name string) (hash, blob string, info fs.FileInfo, ok bool) {
+	for h, record := range s.recordsOnDisk() {
 		if record.Name != name {
 			continue
 		}
-		blob, err := s.securePath(true, hash+filepath.Ext(name))
+		p, err := s.securePath(true, h+filepath.Ext(name))
 		if err != nil {
 			continue
 		}
-		fi, err := os.Stat(blob)
+		fi, err := os.Stat(p)
 		if err != nil || !fi.Mode().IsRegular() {
 			continue
 		}
-		if found != "" {
-			return "", nil, absent
+		if ok {
+			return "", "", nil, false
 		}
-		found, info = blob, fi
+		hash, blob, info, ok = h, p, fi, true
 	}
-	if found == "" {
-		return "", nil, absent
-	}
-	return found, info, nil
+	return hash, blob, info, ok
 }
 
 // recordsOnDisk reads the vetted index straight from the file, without
@@ -799,6 +853,13 @@ func (s *FSStore) mustAsset(name string) convert.MediaAsset {
 // legacy ids) satisfy a file — content attached in another product
 // container still needs an upload here. Planted symlinks and files over
 // MaxAssetSize are skipped.
+//
+// It is a FOLDER worklist and lists only what the folder holds: an asset
+// whose friendly file is gone, blob and record still in place, has no
+// entry here to walk over. That is not a gap — the path-keyed reads
+// restore such a file (see resolveReadable), so the document-driven
+// worklist PendingRefs, which asks about the references a document makes
+// instead of listing a directory, offers it for upload like any other.
 func (s *FSStore) Pending(scope string) ([]string, error) {
 	s.mu.Lock()
 	s.reloadIndex()
