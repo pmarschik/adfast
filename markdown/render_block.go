@@ -310,16 +310,22 @@ func (r *mdRenderer) renderCodeBlock(b *strings.Builder, node *ast.Code) {
 	}
 	b.WriteString(lb.String())
 	b.WriteString("\n")
-	if node.Value != "" {
-		value := node.Value
-		if r.cfg.prettierText {
-			// Prettier trims trailing whitespace inside code blocks.
-			lines := strings.Split(value, "\n")
-			for i, l := range lines {
-				lines[i] = strings.TrimRight(l, " \t")
-			}
-			value = strings.Join(lines, "\n")
+	value := node.Value
+	if r.cfg.prettierText {
+		// Prettier trims trailing whitespace inside code blocks.
+		lines := strings.Split(value, "\n")
+		for i, l := range lines {
+			lines[i] = strings.TrimRight(l, " \t")
 		}
+		value = strings.Join(lines, "\n")
+	}
+	// The content is a line of its own between the fences, and the two
+	// serializers disagree on an empty block: prettier prints the line
+	// unconditionally, so the block keeps one blank line ("```json\n\n```"),
+	// while remark-stringify writes the line only when there is content
+	// ("```json\n```"). Each mode follows its own reference. Measured with
+	// prettier 3.9.6 and mdast-util-to-markdown 2.
+	if value != "" || r.cfg.prettierText {
 		b.WriteString(value)
 		b.WriteString("\n")
 	}
