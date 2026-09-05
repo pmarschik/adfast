@@ -888,11 +888,7 @@ func (c *adfRowConverter) convertRow(row *adf.TableRow) ast.Node {
 // row span alongside it.
 func (c *adfRowConverter) convertCell(cell adf.Node) (mdCell *ast.TableCell, colSpan, rowSpan int) {
 	// Table cells contain block nodes; flatten to inlines.
-	var inlines []ast.Node
-	for _, block := range adf.NodeContent(cell) {
-		inlines = append(inlines, convertAdfInlines(adf.NodeContent(block), c.rc)...)
-	}
-	mdCell = &ast.TableCell{Children: inlines}
+	mdCell = &ast.TableCell{Children: cellInlines(adf.NodeContent(cell), c.rc)}
 	csRaw, rs := cellSpans(cell)
 	cs := max(csRaw, 1)
 	if cs > 1 {
@@ -902,6 +898,252 @@ func (c *adfRowConverter) convertCell(cell adf.Node) (mdCell *ast.TableCell, col
 		mdCell.RowSpan = rs
 	}
 	return mdCell, cs, rs
+}
+
+// ---------------------------------------------------------------------------
+// Cell projection: a cell's ADF blocks → the inlines one table row holds
+// ---------------------------------------------------------------------------
+
+// cellInlines converts a table cell's ADF content and projects the result
+// onto the inline nodes a GFM table row can carry.
+//
+// The cell's children are full ADF blocks, so they run through the ordinary
+// block conversion first — the only path that knows every kind, including
+// media, cards, extensions and the caller's registered decode hooks — and
+// the projection then flattens what came back.
+//
+// Converting the cell's GRANDCHILDREN as inlines instead, which is what
+// this did before, reached exactly one level down. A paragraph's children
+// are inlines, so a paragraph cell survived; a blockquote's, a list's, a
+// panel's, a nested table's children are blocks, and the inline visitor's
+// hook-or-drop fallback deleted every one of them. A cell holding anything
+// but a paragraph or a heading therefore arrived empty — measured on the
+// wire-ADF path, a blockquote cell, a bullet-list cell, a panel cell, a
+// task-list cell, a nested-table cell and a media cell all rendered as
+// "|   |". That is silent data loss, so the projection recovers the
+// content and gives up only the block markers no row can spell.
+func cellInlines(nodes []adf.Node, rc renderCtx) []ast.Node {
+	p := &cellProjector{}
+	p.children(convertAdfBlocks(nodes, rc))
+	return p.out
+}
+
+// cellProjector accumulates a cell's inline projection together with the
+// one space that stands in for a block boundary the row cannot spell.
+type cellProjector struct {
+	out []ast.Node
+	sep bool
+}
+
+// children projects a run of siblings, marking a boundary wherever a block
+// meets a neighbor. Without it the blocks' texts run together: a cell
+// holding the paragraphs "one" and "two" flattened to "onetwo", and a
+// two-item list to "ab". The reference joins sibling blocks with a blank
+// line, which is an end of line the row cannot hold, and the end of line a
+// cell cannot hold folds to a space (the same answer the reference's own
+// serializer gives a break inside a cell).
+func (p *cellProjector) children(kids []ast.Node) {
+	for i, kid := range kids {
+		if i > 0 && (cellBlockNode(kid) || cellBlockNode(kids[i-1])) {
+			p.boundary()
+		}
+		p.push(kid)
+	}
+}
+
+// boundary records that a block boundary was crossed. The space it stands
+// for is written only once more content follows, so a block that projects
+// to nothing — a rule, an empty paragraph — leaves no space behind, and a
+// cell never picks up a leading or trailing one.
+func (p *cellProjector) boundary() {
+	if len(p.out) > 0 {
+		p.sep = true
+	}
+}
+
+// emit appends one projected inline, flushing a pending boundary first.
+func (p *cellProjector) emit(node ast.Node) {
+	if p.sep {
+		p.sep = false
+		p.writeBoundarySpace()
+	}
+	p.out = append(p.out, node)
+}
+
+// writeBoundarySpace writes the boundary space, folding it into the
+// preceding text node when there is one so the cell keeps one run of text
+// rather than gaining a bare space node between every pair of blocks.
+func (p *cellProjector) writeBoundarySpace() {
+	if last, ok := p.out[len(p.out)-1].(*ast.Text); ok {
+		if !strings.HasSuffix(last.Value, " ") {
+			last.Value += " "
+		}
+		return
+	}
+	p.out = append(p.out, &ast.Text{Value: " "})
+}
+
+// push projects one converted node into the cell.
+//
+// Every block flattens to its content: a block owns whole lines, and a row
+// has one, so its markers cannot be written there. The four cases ahead of
+// that rule are the blocks whose content is NOT in their children — a Value
+// field, or nothing at all — plus the one inline that spells an end of
+// line.
+func (p *cellProjector) push(node ast.Node) {
+	switch n := node.(type) {
+	case *ast.Code:
+		// A fence needs its own lines, so the block form cannot ride in a
+		// row; an inline code span is the nearest form that can, and it
+		// keeps both the text and the code-ness. The language is lost with
+		// the fence. A code block is normally several lines, so the fold is
+		// the common path here rather than the exception.
+		p.emitValue(n.Value)
+	case *ast.Frontmatter:
+		// No ADF kind decodes to frontmatter today, but a decode hook may
+		// return one and its text must not vanish; like a code block it is
+		// multi-line by nature.
+		p.emitValue(n.Value)
+	case *ast.HTML:
+		// Raw HTML stays raw — the renderer writes the value verbatim — so
+		// it has to arrive already fit for a row: line ends folded, and its
+		// own pipes escaped, which the inline writer does not do for a
+		// value it does not interpret.
+		if n.Value != "" {
+			p.emit(&ast.HTML{Value: cellSafeRawHTML(n.Value)})
+		}
+	case *ast.ThematicBreak:
+		// The one block with nothing to lose. Written out it would be
+		// literal "***" text in the row, which carries no information.
+	case *dialect.Colwidths:
+		// The companion convertAdfBlocks emits ahead of a table: its label
+		// is the machine-readable colwidth list of the table that FOLLOWS,
+		// not prose. A nested table dissolves into this cell's own text, so
+		// the widths describe nothing any more, and flattening the label
+		// like any other would write "79,320" into the middle of the row.
+		// It is the only dialect kind whose label is a payload rather than
+		// content (the others hold an alt text, a URL, a query, a title).
+	case *ast.Break:
+		// A hard break inside a cell renders as a backslash and a NEWLINE,
+		// which ends the row and cuts the table in half. It is a boundary
+		// like any other, so it folds to the same space — which is what the
+		// reference serializer writes for a break inside a cell.
+		p.boundary()
+	default:
+		if cellBlockNode(node) {
+			p.children(ast.Children(node))
+			return
+		}
+		p.emit(node)
+	}
+}
+
+// emitValue projects a block that carries its text in a Value field onto
+// the inline code span that fits a row, dropping it when it is empty.
+func (p *cellProjector) emitValue(value string) {
+	if value == "" {
+		return
+	}
+	p.emit(&ast.InlineCode{Value: foldCellLines(value)})
+}
+
+// cellBlockNode reports whether a node owns whole lines in markdown. That
+// is the projection's one classification: it decides both that the node's
+// own markers cannot be written in a row (so only its content comes along)
+// and that the gap to its sibling is a boundary rather than the ordinary
+// adjacency of two inlines inside one paragraph.
+//
+// ast.Spaced answers it for every kind but four, core and foreign alike:
+// the interface is the AST's own record of a block's blank-line structure,
+// so a kind embedding ast.BlockSpacing has declared itself a block, and an
+// extension kind joins the classification by the same embed rather than by
+// being listed here. That matters because the renderer writes NOTHING for a
+// foreign block in inline position — both extension.RenderContext block
+// primitives are no-ops there — so an unflattened one is a silent deletion,
+// measured on a decisionList (its ::decisions companion), a blockCard, an
+// embedCard, an ADF extension and a mediaGroup.
+//
+// The four exceptions:
+//   - Root, ListItem, TableRow and TableCell record no spacing (they are
+//     never a block's sibling) but are containers all the same.
+//   - HTML embeds the spacing yet is the one kind that is block OR inline:
+//     a parse splits inline HTML into tag-shaped nodes inside a paragraph's
+//     text run, and treating those as blocks would put a space in the
+//     middle of a tag pair. push writes its value out either way.
+func cellBlockNode(node ast.Node) bool {
+	switch node.(type) {
+	case *ast.HTML:
+		return false
+	case *ast.Root, *ast.ListItem, *ast.TableRow, *ast.TableCell:
+		return true
+	}
+	_, ok := node.(ast.Spaced)
+	return ok
+}
+
+// foldCellLines folds every end of line in a recovered value to one space,
+// so the value fits the single line a table row is. A CRLF is one end of
+// line and folds to one space.
+//
+// This is the half of the one-line rule no kind can opt out of: a raw
+// newline inside a cell ends the row wherever it came from, and the four
+// output lines that follow are a worse loss than the empty cell this
+// projection was written to repair.
+func foldCellLines(s string) string {
+	if !strings.ContainsAny(s, "\n\r") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; c {
+		case '\r':
+			if i+1 < len(s) && s[i+1] == '\n' {
+				i++
+			}
+			b.WriteByte(' ')
+		case '\n':
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// cellSafeRawHTML makes a raw HTML value writable on one table row: every
+// end of line becomes a space, and a bare pipe is escaped.
+//
+// The pipe half is raw HTML's alone. Every other inline the projection
+// emits has its pipes escaped for it by the cell's inline writer; raw HTML
+// is written verbatim, so an unescaped pipe in it splits the row into an
+// extra column. A pipe already carrying an odd run of backslashes is
+// escaped and stays as it is.
+func cellSafeRawHTML(s string) string {
+	s = foldCellLines(s)
+	if !strings.Contains(s, "|") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s) + 8)
+	backslashes := 0
+	for i := range len(s) {
+		switch c := s[i]; c {
+		case '|':
+			if backslashes%2 == 0 {
+				b.WriteByte('\\')
+			}
+			b.WriteByte(c)
+			backslashes = 0
+		case '\\':
+			backslashes++
+			b.WriteByte(c)
+		default:
+			backslashes = 0
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 // ---------------------------------------------------------------------------
