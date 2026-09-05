@@ -75,6 +75,43 @@ build on it. A breaking change reaches every downstream consumer.
   divergences. Each class has a probe input. Do not silence a new
   failure without that analysis.
 
+### Which prettier is the reference
+
+There is exactly one authoritative prettier, and it is the copy inside
+the frozen TS reference that storysmith-md ships:
+
+```text
+~/.local/share/volta/tools/image/packages/@ixopay/storysmith-md/lib/node_modules/@ixopay/storysmith-md/node_modules/prettier
+```
+
+It is authoritative because it is the version that reference pins
+(3.8.1 today), and matching that reference byte for byte is the whole
+point of the prettier mode. A prettier taken from any other checkout
+formats a document the product never formats. Drive it with the flags
+the parity pins use — `--parser markdown --prose-wrap always
+--print-width 80 --embedded-language-formatting off` — and with
+`--no-config`, so no surrounding checkout's `.prettierrc` reaches it.
+Formatting is a pure local pass, so running it needs no network and no
+credentials.
+
+A newer prettier is not a second opinion about the same rules; it is a
+different formatter. Prettier replaced its markdown parser after 3.8, so
+3.9.6 — which sits in the developer-hub checkout on this machine and is
+easy to reach for by accident — disagrees with the authority on
+emphasis parsing and nesting, on `*` and `_` escaping, on setext
+headings, on a table inside a tight list item, and on single-tilde
+strikethrough. Every one of those is a surface adfast renders, so a rule
+measured on the wrong install lands as a parity regression rather than a
+parity fix.
+
+Because the two sit side by side, a measurement quoted in a comment, a
+test, or a commit message must name the version it came from. A note
+that says only "measured against prettier" cannot be re-checked, and the
+next reader cannot tell whether it describes the product's formatter or
+somebody's node_modules. Several comments under `markdown/` cite 3.9.6.
+Those cases were re-measured against 3.8.1 and the two agree on all of
+them, so the comments stand; the citation is the part to read with care.
+
 ### Change fan-out (update these together)
 
 Many changes ripple across the code, the byte-exact fixtures, and
