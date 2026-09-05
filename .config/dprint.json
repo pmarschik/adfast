@@ -3,15 +3,17 @@
 
   // The repo root carries a `dprint.json` symlink to this file. dprint only
   // discovers a config named `dprint.json`, `dprint.jsonc`, `.dprint.json` or
-  // `.dprint.jsonc`, and a config inside `.config/` counts for `.config/`
-  // alone. Without the symlink a bare `dprint check` finds nothing here, falls
-  // back to the config in the home directory of whoever runs it, and reports
-  // files against a plugin set this repo never chose. `mise run fmt` and the
-  // hooks pass `-c .config/dprint.json`, so both routes read the same file.
+  // `.dprint.jsonc`; it does not look inside `.config/`. Without the symlink a
+  // bare `dprint check` finds nothing here, falls back to the config in the
+  // home directory of whoever runs it, and reports files against a plugin set
+  // this repo never chose. `mise run fmt` and the hooks pass
+  // `-c .config/dprint.json`, so both routes read the same file. Still true on
+  // 0.56.1, measured: drop the symlink and a bare run picks up the home config.
   //
-  // The same rule keeps `.config/**` out of every dprint run: the directory
-  // holding the config is the one scope the config cannot format. Files there
-  // are formatted by hand.
+  // dprint 0.55.1 also skipped the directory holding the config, so `.config/**`
+  // reached no gate at all — nine files here, with `-c` or without it. 0.56.1
+  // walks it like any other directory, which is why the pin in
+  // `.config/mise/config.toml` may not go back below 0.56.1.
 
   // devkit pins plugins for JSON, Markdown, TOML and YAML. There is no
   // JavaScript plugin, so `wasm/smoke.mjs` and `wasm/wasm_exec.js` are out of
