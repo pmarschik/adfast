@@ -108,13 +108,85 @@ func (r *mdRenderer) expandTableSpans(rows []ast.Node) (visual [][]string, colCo
 				continue
 			}
 			ex.drain()
-			ex.place(r.renderCellString(cell.Children), cell)
+			ex.place(r.renderCellString(cellContent(cell.Children)), cell)
 		}
 		ex.drain()
 		visual[ri] = ex.cells
 		colCount = max(colCount, ex.col)
 	}
 	return visual, colCount
+}
+
+// cellContent projects a table cell's children onto the nodes that can be
+// written on one table line, flattening every block wrapper it meets.
+//
+// A cell in the pivot AST may hold blocks: the ADF model puts blocks in a
+// tableCell, and a caller may build one by hand. A table row is one line,
+// so the block's own markers cannot be written — but its CONTENT must
+// survive, and before this projection some of it did not. Measured on the
+// bare AST (Render of a two-row table whose body cell holds the node):
+// an ast.Code cell rendered "|   |" and an ast.Frontmatter cell rendered
+// "|   |" — the text was gone, because both keep their text in a Value
+// field rather than in Children, and the inline fallback that degrades a
+// block in inline position writes only children.
+//
+// The markers are dropped deliberately, not by omission. The reference
+// serializer (mdast-util-to-markdown with mdast-util-gfm-table, the
+// frozen dependency tree) hands each block child to its own block
+// handler and concatenates the results, so it does write them — and for
+// any block that spans lines the result is no longer a table. Measured
+// on the same two-row shape: an ast.Code cell serializes to
+// "| H           |\n| ----------- |\n| ```go\nA\n``` |\n", whose third
+// row is three lines and re-parses as a broken table followed by a
+// paragraph. Keeping the table intact is the one invariant this layer
+// can hold, so the cell keeps the content and gives up the markers.
+//
+// The kinds this recurses into are exactly the ones the inline write
+// visitor degrades by writing their children, so flattening them here
+// reproduces what the cell already rendered; the switch adds only the
+// kinds that carried their text somewhere the fallback never looked.
+func cellContent(children []ast.Node) []ast.Node {
+	var out []ast.Node
+	for _, child := range children {
+		out = appendCellContent(out, child)
+	}
+	return out
+}
+
+// appendCellContent appends node's cell projection to out.
+func appendCellContent(out []ast.Node, node ast.Node) []ast.Node {
+	switch n := node.(type) {
+	case *ast.Code:
+		// The fence and the language need their own lines, so neither
+		// fits a table row; an inline code span is the nearest form that
+		// does, and it keeps both the text and the code-ness. Re-parsing
+		// it yields the same span, so the cell is a render fixpoint.
+		if n.Value == "" {
+			return out
+		}
+		return append(out, &ast.InlineCode{Value: n.Value})
+	case *ast.Frontmatter:
+		// Metadata inside a cell is not something a parse produces, but
+		// a hand-built tree can hold it and its text must not vanish.
+		if n.Value == "" {
+			return out
+		}
+		return append(out, &ast.InlineCode{Value: n.Value})
+	case *ast.ThematicBreak:
+		// The one block with no content at all: there is nothing for the
+		// cell to lose. The reference writes "***", which inside a cell
+		// re-parses as literal text rather than as a rule, so it carries
+		// no information either.
+		return out
+	case *ast.Root, *ast.Paragraph, *ast.Heading, *ast.Blockquote, *ast.List,
+		*ast.ListItem, *ast.Table, *ast.TableRow, *ast.TableCell,
+		*ast.ContainerDirective, *ast.LeafDirective:
+		for _, kid := range ast.Children(node) {
+			out = appendCellContent(out, kid)
+		}
+		return out
+	}
+	return append(out, node)
 }
 
 // spanExpander is expandTableSpans' running state: the rowspan
