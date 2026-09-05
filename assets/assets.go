@@ -368,8 +368,22 @@ func (s *FSStore) resolveReadable(full string) (string, fs.FileInfo, error) {
 // refuses that case with the absence it was called for: which content
 // the missing file stood for is unknowable, and answering with either
 // one would be a coin toss reported as fact.
+//
+// It is confined to the assets folder's own top level for the same
+// reason repairFriendly is: a reference into a SUBDIRECTORY whose
+// basename happens to match a record is not that record's file, and the
+// repairing run answers nothing for it. Answering here anyway made
+// report mode the MORE permissive of the two — a consumer asked about
+// assets/sub/shot.png while reporting got the id, the dimensions and the
+// bytes of the top-level record shot.png, so a dead link read as live:
+// it dropped out of the broken-reference report, and prune counted the
+// blob as still referenced and left it on disk forever.
 func (s *FSStore) readableBlob(full string, absent error) (string, fs.FileInfo, error) {
-	_, blob, fi, ok := s.blobForName(filepath.Base(full))
+	name := filepath.Base(full)
+	if at, err := s.securePath(false, name); err != nil || at != full {
+		return "", nil, absent
+	}
+	_, blob, fi, ok := s.blobForName(name)
 	if !ok {
 		return "", nil, absent
 	}
