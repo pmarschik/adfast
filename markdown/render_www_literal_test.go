@@ -61,7 +61,7 @@ var wwwLiteralSpellingCases = []struct {
 }, {
 	// GOOD CASE. An EXPLICIT link is what the author wrote, brackets and
 	// all, and it keeps them on both legs — the label happening to equal
-	// the host is not licence to unwrap it.
+	// the host is not license to unwrap it.
 	name:    "an explicit link to the same host keeps its brackets",
 	in:      "[www.x](http://www.x)",
 	fmtWant: "[www.x](http://www.x)\n",

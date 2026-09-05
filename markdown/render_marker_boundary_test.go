@@ -26,10 +26,10 @@ import (
 // would not have told the two threadings apart; the four together do.
 var markerAfterCases = []struct {
 	name string
-	// nodes is the paragraph's inline run, built rather than parsed.
-	nodes []ast.Node
 	// want is the reference's whole body for that tree.
 	want string
+	// nodes is the paragraph's inline run, built rather than parsed.
+	nodes []ast.Node
 }{{
 	// THE ':' ROW. Its unsafe entry escapes only before '/', and the closing
 	// marker is not one, so the colon stays bare — where the byte behind the
