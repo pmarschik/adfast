@@ -135,6 +135,17 @@ the ADF.
 | `:fontSize[text]{small}`                                | _retired_            | Parses (bare value or `size="…"`) but no product supports the mark — it is dropped to plain text with a `fontsize-dropped` diagnostic. Do not author it; text is kept, size lost                                                                                          |
 | `:media{#<media-uuid> collection}`                      | mediaInline          | Inline attachment chip. `type` defaults to `file` and is left out when canonical; a bare `collection` is an empty collection, and its absence means none; `href`/`hrefTitle` carry the link mark and `annotationId`/`annotationType` the annotation mark, as on `::media` |
 
+**A name written alone is prose, not a directive.** Every kind above
+carries its payload in a label or an attribute block, and `:name` in the
+middle of a sentence is spelled exactly like a word — so `see :media in
+the log` and `deploy:status is set` are text, and the colon survives to
+ADF. Write any payload and the name is a directive again
+(`:media{#1}`, `:status[Done]`); the empty forms `:name[]` and `:name{}`
+carry none and are prose too. Escaping (`\:media`) and a code span
+(`` `:media` ``) work as always and are the clearer way to say it in
+running text. This applies to the text form only: `::media` on its own
+line and `:::info` are directives with or without a payload.
+
 Mark directives nest with regular emphasis:
 `:color[**bold red**]{color="#ff5630"}`. Inline mark directives wrap per
 text run in fixed nesting order (outside → inside): `:annotation`,

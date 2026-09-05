@@ -541,6 +541,23 @@ place and the reason is written here: the corpus stays the single home
 for what adfast produces, so an exception table beside the fixture test
 would only be a second one. A named regression test pins each of these:
 
+- **A dialect text directive written with no label and no attributes is
+  prose.** remark-directive reads `:media` as a text directive, and so
+  does the parse here — but the dialect declines to promote it, so the
+  node is the text `:media`. The text form is the only one whose
+  spelling collides with ordinary prose (`:::info` and `::media` each
+  need their own line and a doubled colon), and every kind carries its
+  payload in a label or an attribute, so a payload-less one had nothing
+  to build from: `see :status in the log` **formatted to**
+  `see  in the log`, and `see :media in the log` round-tripped byte for
+  byte while the pushed ADF carried a media chip addressing no
+  attachment. Any payload makes the name a directive again —
+  `:media{#1}`, `:status[Done]` — and the empty forms `:name[]` and
+  `:name{}` carry none, so they are prose too. That last one is what
+  makes the empty attribute block below inert. A registration of the
+  caller's own (`confluence.Macros`, whose `:toc` is meaningful with no
+  parameters) supplies its own constructors and keeps its bare names.
+  See `dialect/bare.go` and `bare_directive_test.go`.
 - **A text directive that stays open gets an empty attribute block.**
   The bare `:name` form ends in a name rune, and the labelled `:name[l]`
   form ends at the position where a `{…}` block starts. Whatever follows
@@ -549,9 +566,11 @@ would only be a second one. A named regression test pins each of these:
   hex-encode of the rune next to it, and that repair cannot reach into a
   directive name without a rename of the directive. `:name{}` is
   semantically inert for every registered kind, terminates the token,
-  and ends the form in punctuation. `*:media!*` therefore renders as
-  `:media{}_!_` rather than as the unstable `:media_!_` of remark. The
-  formatter needs the block in more places than the renderer does. It
+  and ends the form in punctuation. A node that renders bare therefore
+  renders as `:media{}_!_` rather than as the unstable `:media_!_` of
+  remark. Since the bare-name rule below, the node that reaches this
+  repair comes from ADF rather than from `*:media!*`, whose `:media` is
+  prose. The formatter needs the block in more places than the renderer does. It
   adds no escape of its own and writes back the source form the parse
   captured, so a `[` or a `_` that the source left bare fuses onto the
   name, where a re-derived escape would have separated it. See

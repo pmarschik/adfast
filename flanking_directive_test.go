@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/pmarschik/adfast"
+	"github.com/pmarschik/adfast/adf"
 )
 
 // A bare text directive ends in its name, which is word class for every
@@ -14,6 +15,15 @@ import (
 // marker — cannot reach a directive name without renaming the directive.
 // The renderer therefore emits the inert empty attribute block so the rune
 // before the marker is '}'. See markdown.needsPunctTrail.
+//
+// The rows below run through ADF, and a dialect name written with no
+// label and no attributes is prose on that leg (see dialect's bare-name
+// rule), so the repair no longer has a bare DIALECT directive to protect
+// here — the word travels as text and the emphasis keeps it. What still
+// reaches the repair on this leg is a form the author gave a payload:
+// the labeled and attributed rows below, and a directive whose payload
+// the ADF leg drops. TestSourcelessChipFromADFGetsTheTail covers the
+// latter, which is the one shape that still renders bare.
 func TestBareDirectiveBeforeEmphasisGetsPunctuationTail(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -24,24 +34,24 @@ func TestBareDirectiveBeforeEmphasisGetsPunctuationTail(t *testing.T) {
 		{
 			name: "punctuation lead, emphasis",
 			md:   "*:media!*",
-			want: ":media{}_!_\n",
+			want: "_:media!_\n",
 		},
 		{
 			name: "punctuation lead, strong",
 			md:   "**:media!**",
-			want: ":media{}**!**\n",
+			want: "**:media!**\n",
 		},
 		{
 			name: "punctuation lead, strikethrough",
 			md:   "~~:media!~~",
-			want: ":media{}~~!~~\n",
+			want: "~~:media!~~\n",
 		},
 		{
-			// The space lead still needs the character reference; the two
-			// repairs compose rather than replace each other.
-			name: "whitespace lead keeps the hex reference",
+			// Prose needs neither repair: the word is a text node by the
+			// time it is rendered, and a text node may flank.
+			name: "whitespace lead needs no repair",
 			md:   "*:media x!*",
-			want: ":media{}_&#x20;x!_\n",
+			want: "_:media x!_\n",
 		},
 		{
 			// A label already ends the form in punctuation, so the empty
@@ -60,9 +70,12 @@ func TestBareDirectiveBeforeEmphasisGetsPunctuationTail(t *testing.T) {
 			want: ":media[0]{}{0=\" \"}\n",
 		},
 		{
-			name: "brace after a bare directive",
+			// Prose again: the escape marker is the text node's own
+			// repair for a colon that would open a directive, and it
+			// keeps the following brace out of the form.
+			name: "brace after a bare name",
 			md:   ":media{0=\"\n\"}",
-			want: ":media{}{0=\" \"}\n",
+			want: "\\:media{0=\" \"}\n",
 		},
 		{
 			// An attribute block already terminates the form; a following
@@ -83,6 +96,41 @@ func TestBareDirectiveBeforeEmphasisGetsPunctuationTail(t *testing.T) {
 				t.Fatalf("not idempotent:\n first:  %q\n second: %q", got, second)
 			}
 		})
+	}
+}
+
+// The one inline node that still renders as a bare name is a media chip
+// that addresses nothing: ADF may carry a mediaInline with neither id nor
+// collection, and there is no attribute left to write for it. The
+// punctuation tail is what keeps the emphasis after it flanking, so this
+// is the live subject of markdown.needsPunctTrail.
+//
+// The chip does not survive the trip, and that is the point of the
+// bare-name rule rather than a defect of the repair: ":media{}" carries
+// no more than ":media" does, so it re-parses as the word, and the second
+// render writes the word as text. Two passes, then stable — the reader
+// sees a word instead of a chip that addresses no attachment. See
+// dialect.SourcelessMedia for why an unaddressed chip is defective in the
+// first place.
+func TestSourcelessChipFromADFGetsTheTail(t *testing.T) {
+	t.Parallel()
+	const src = `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[` +
+		`{"type":"mediaInline","attrs":{"type":"file"}},` +
+		`{"type":"text","text":"!","marks":[{"type":"em"}]}]}]}`
+	var doc adf.Doc
+	if err := json.Unmarshal([]byte(src), &doc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	first := adfast.ToMarkdown(adfast.FromADF(doc))
+	if want := ":media{}_!_\n"; first != want {
+		t.Fatalf("first render = %q, want %q", first, want)
+	}
+	second := roundTripMarkdown(first)
+	if want := "\\:medi&#x61;_!_\n"; second != want {
+		t.Fatalf("second render = %q, want %q", second, want)
+	}
+	if third := roundTripMarkdown(second); third != second {
+		t.Fatalf("not stable after the degradation:\n second: %q\n third:  %q", second, third)
 	}
 }
 

@@ -23,11 +23,16 @@ import (
 // concatenated in the order below and each group keeps its own internal
 // order, so the dispatch order is the reading order of the four
 // functions taken together.
+//
+// Every text-directive constructor in the assembled set is wrapped by
+// guardBareText, so a ":name" carrying neither label nor attributes
+// stays the prose it is indistinguishable from (see bare.go).
 func Registrations() []extension.Registration {
 	regs := blockRegistrations()
 	regs = append(regs, inlineRegistrations()...)
 	regs = append(regs, markRegistrations()...)
-	return append(regs, extendedRegistrations()...)
+	regs = append(regs, extendedRegistrations()...)
+	return guardBareText(regs)
 }
 
 // blockRegistrations returns the kinds that decode from an ADF BLOCK
