@@ -400,10 +400,14 @@ func TestExtended_MediaCaptions(t *testing.T) {
 			},
 		}),
 		":::media{layout=\"wide\" type=\"external\" url=\"https://example.com/i.png\"}\nplain\n:::\n", nil)
-	// Multi-paragraph caption bodies join with hard breaks.
+	// Multi-paragraph caption bodies join with hard breaks. The container
+	// spells no layout, so the encode completes the required mediaSingle
+	// attribute with the schema default the way every other row here
+	// already carries it (dialect's mediaSingleFromAttrs holds the
+	// reference rows for the completion).
 	md := ":::media[alt]{type=\"external\" url=\"https://example.com/i.png\"}\nline one\n\nline two\n:::\n"
 	got := mdToADF(md)
-	want := doc(&adf.MediaSingle{Content: []adf.Node{
+	want := doc(&adf.MediaSingle{Layout: new("center"), Content: []adf.Node{
 		&adf.Media{Type: "external", URL: "https://example.com/i.png", Alt: "alt"},
 		&adf.Caption{Content: []adf.Node{txt("line one"), &adf.HardBreak{}, txt("line two")}},
 	}})

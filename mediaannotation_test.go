@@ -353,10 +353,10 @@ func TestAnnotatedMediaRoundTripsBackToTheSameMark(t *testing.T) {
 //
 //	--- FAIL: TestFormatterKeepsTheAnnotatedMediaDirective
 //	    the formatter changed the document:
-//	     want "::media[the logo]{annotationId=\"ann-1\" annotationType=\"inlineComment\" type=\"external\" url=\"https://x/logo.png\"}\n"
+//	     want "::media[the logo]{annotationId=\"ann-1\" annotationType=\"inlineComment\" layout=\"center\" type=\"external\" url=\"https://x/logo.png\"}\n"
 //	      got "![the logo](https://x/logo.png)\n"
 //	    the formatter changed the document:
-//	     want "::media[the logo]{annotationId=\"ann-1\" annotationType=\"inlineComment\" href=\"https://home.example/\" type=\"external\" url=\"https://x/logo.png\"}\n"
+//	     want "::media[the logo]{annotationId=\"ann-1\" annotationType=\"inlineComment\" href=\"https://home.example/\" layout=\"center\" type=\"external\" url=\"https://x/logo.png\"}\n"
 //	      got "[![the logo](https://x/logo.png)](https://home.example/)\n"
 //	    the formatter changed the document:
 //	     want "see\n:media[the logo]{#abc-123 annotationId=\"ann-1\" annotationType=\"inlineComment\" collection}\nhere\n"
@@ -365,7 +365,7 @@ func TestAnnotatedMediaRoundTripsBackToTheSameMark(t *testing.T) {
 //	    the two media projections disagree
 //	      in:     "::media[alt]{type=external url=https://x/a.png annotationId=ann-1 annotationType=inlineComment}\n\n…"
 //	      format: "![alt](https://x/a.png)\n\n…"
-//	      adf:    "::media[alt]{annotationId=\"ann-1\" annotationType=\"inlineComment\" type=\"external\" url=\"https://x/a.png\"}\n\n…"
+//	      adf:    "::media[alt]{annotationId=\"ann-1\" annotationType=\"inlineComment\" layout=\"center\" type=\"external\" url=\"https://x/a.png\"}\n\n…"
 //
 // Note the third row: the chip loses the pair AND the sentence unwraps,
 // because the attributes were what pushed it past the print width. All
@@ -374,25 +374,49 @@ func TestAnnotatedMediaRoundTripsBackToTheSameMark(t *testing.T) {
 // beside them stay green, so the mutation is a deletion of the anchor
 // rather than a change of form for every picture.
 func TestFormatterKeepsTheAnnotatedMediaDirective(t *testing.T) {
-	for _, md := range []string{
-		`::media[the logo]{annotationId="ann-1" annotationType="inlineComment" ` +
-			`type="external" url="https://x/logo.png"}` + "\n",
-		`::media[the logo]{annotationId="ann-1" annotationType="inlineComment" ` +
-			`href="https://home.example/" type="external" url="https://x/logo.png"}` + "\n",
+	// in is what the author wrote; want is the canonical form. They differ
+	// on one thing only: an external media directive that spells no layout
+	// has the required mediaSingle attribute completed with the schema
+	// default, exactly as `:status[x]` gains color="neutral" and
+	// `::linkEmbed[url]` gains layout="center" (the reference round-trip
+	// rows for all three are cited on dialect's mediaSingleFromAttrs). The
+	// FORM is what this test is named for, and the form is what the rows
+	// pin: the directive survives, anchor and all, rather than collapsing
+	// to a picture.
+	for _, tc := range []struct{ in, want string }{
+		{
+			in: `::media[the logo]{annotationId="ann-1" annotationType="inlineComment" ` +
+				`type="external" url="https://x/logo.png"}` + "\n",
+			want: `::media[the logo]{annotationId="ann-1" annotationType="inlineComment" ` +
+				`layout="center" type="external" url="https://x/logo.png"}` + "\n",
+		},
+		{
+			in: `::media[the logo]{annotationId="ann-1" annotationType="inlineComment" ` +
+				`href="https://home.example/" type="external" url="https://x/logo.png"}` + "\n",
+			want: `::media[the logo]{annotationId="ann-1" annotationType="inlineComment" ` +
+				`href="https://home.example/" layout="center" type="external" ` +
+				`url="https://x/logo.png"}` + "\n",
+		},
 		// The chip plus the pair is longer than the print width, so the
 		// canonical form has the sentence wrapped around it. This is that
 		// form already, which makes the row a fixpoint check on the wrapped
-		// spelling rather than on the one-line one.
-		"see\n" +
-			`:media[the logo]{#abc-123 annotationId="ann-1" annotationType="inlineComment" collection}` +
-			"\nhere\n",
+		// spelling rather than on the one-line one. An inline chip has no
+		// mediaSingle wrapper, so no layout reaches it.
+		{
+			in: "see\n" +
+				`:media[the logo]{#abc-123 annotationId="ann-1" annotationType="inlineComment" collection}` +
+				"\nhere\n",
+			want: "see\n" +
+				`:media[the logo]{#abc-123 annotationId="ann-1" annotationType="inlineComment" collection}` +
+				"\nhere\n",
+		},
 		// The rows beside them: an unannotated picture stays an image, and
-		// a plain link stays a link.
-		wantPlainMedia + "\n",
-		wantPlainLink + "\n",
+		// a plain link stays a link. Both are fixpoints.
+		{in: wantPlainMedia + "\n", want: wantPlainMedia + "\n"},
+		{in: wantPlainLink + "\n", want: wantPlainLink + "\n"},
 	} {
-		if got := fmtMD(md); got != md {
-			t.Errorf("the formatter changed the document:\n want %q\n  got %q", md, got)
+		if got := fmtMD(tc.in); got != tc.want {
+			t.Errorf("the formatter changed the document:\n want %q\n  got %q", tc.want, got)
 		}
 	}
 }

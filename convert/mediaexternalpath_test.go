@@ -61,13 +61,21 @@ const externalPathDoc = "::media[alt]{path=assets/shot.png type=external url=htt
 // said).
 func TestFormatLegKeepsAnExternalMediaPath(t *testing.T) {
 	t.Parallel()
-	const want = "::media[alt]{path=\"assets/shot.png\" type=\"external\" url=\"https://e.com/x.png\"}\n" +
+	// The three external rows spell layout="center": it is the required
+	// mediaSingle attribute, which a non-file media directive completes on
+	// both legs now (dialect's mediaSingleFromAttrs carries the reference
+	// rows). The file-media "pinned" row below stays terse, because
+	// align-start is elided for that type. What this test pins either way
+	// is the PATH, and every path still survives.
+	const want = "::media[alt]{layout=\"center\" path=\"assets/shot.png\" type=\"external\" " +
+		"url=\"https://e.com/x.png\"}\n" +
 		"\n" +
-		":::media[cap]{path=\"assets/cap.png\" type=\"external\" url=\"https://e.com/c.png\"}\n" +
+		":::media[cap]{layout=\"center\" path=\"assets/cap.png\" type=\"external\" " +
+		"url=\"https://e.com/c.png\"}\n" +
 		"A caption\n" +
 		":::\n" +
 		"\n" +
-		"::media[nourl]{path=\"assets/nourl.png\" type=\"external\"}\n" +
+		"::media[nourl]{layout=\"center\" path=\"assets/nourl.png\" type=\"external\"}\n" +
 		"\n" +
 		"::media[pinned]{#0a1b2c3d-0e1f-2a3b-4c5d-6e7f8a9b0c1d path=\"assets/pinned.png\"}\n" +
 		"\n" +
@@ -123,15 +131,27 @@ func TestFormatLegExternalMediaPathIsAFixpoint(t *testing.T) {
 // the directive form leaves out, so ToADF(Normalize(n)) and ToADF(n)
 // disagreed for this shape; now they agree.
 //
-// For THIS shape. The wrapper attribute still splits the two encodes
-// wherever an external media directive omits a layout and reaches the
-// image form anyway — this fix blocked the projection for the shapes
-// that spell a path, and blocking is the whole reason they became
-// invariant. That wider gap is pinned, with the evidence for which of
-// the two forms is the wrong one, in mediawrapperlayout_test.go.
+// For THIS shape, and now for every shape: the wrapper attribute used to
+// split the two encodes wherever an external media directive omitted a
+// layout and reached the image form anyway. The directive form completes
+// it for every media type now, so that wider gap is closed too — see
+// mediawrapperlayout_test.go for the reference evidence that settled
+// which of the two forms was wrong.
 //
-// This is a DEFECT PROOF: on the pre-fix implementation the normalized
-// tree encodes with the wrapper layout and the two documents differ.
+// Closing it cost this test its degrade DETECTOR, which is worth saying
+// plainly rather than quietly re-pinning. The check used to be "the
+// first block carries no layout attribute", which worked only while a
+// kept external directive encoded without one. Both forms now encode
+// mediaSingle{layout: "center"} with the same media leaf, so for this
+// shape the two ADF payloads are byte-identical whether the pass kept
+// the directive or degraded it, and no assertion on the ADF can tell
+// them apart. The survival is still observable one step earlier, on the
+// AST the pass returns: a kept directive renders with its path=, a
+// degraded one renders as ![alt](url) and the path is gone. That is the
+// property this test is named for, so the check moved there.
+//
+// This is a DEFECT PROOF: on the implementation before the path fix the
+// normalized tree rendered as the plain image and the path was deleted.
 func TestExternalMediaPathSurvivesTheEncodeLeg(t *testing.T) {
 	t.Parallel()
 	const row = "::media[alt]{path=assets/shot.png type=external url=https://e.com/x.png}"
@@ -144,16 +164,12 @@ func TestExternalMediaPathSurvivesTheEncodeLeg(t *testing.T) {
 		t.Errorf("ToADF is not invariant under Normalize for external media with a path"+
 			"\n  in:         %q\n  ToADF:      %s\n  normalized: %s", md, raw, normalized)
 	}
-	// The row under test is the document's first block. The plain image
-	// riding along in parityDoc encodes WITH layout: "center", which is
-	// right for it and is why the check reads one node and not the whole
-	// payload.
-	if len(normDoc.Content) == 0 {
-		t.Fatalf("the normalized encode produced no content: %s", normalized)
-	}
-	if first := adfNodeJSON(t, normDoc.Content[0]); strings.Contains(first, "layout") {
-		t.Errorf("the encode leg degraded the directive to an image (the image form pins the "+
-			"wrapper layout): %s", first)
+	// The path lives on the AST, not in ADF, so the survival is asserted
+	// on what the pass returns rather than on what it encodes to.
+	kept := markdown.Render(Normalize(markdown.Parse([]byte(md))), markdown.WithPrettierText())
+	if !strings.Contains(kept, `path="assets/shot.png"`) {
+		t.Errorf("the pass degraded the directive to an image and deleted the author's path"+
+			"\n  in:  %q\n  got: %q", md, kept)
 	}
 }
 
