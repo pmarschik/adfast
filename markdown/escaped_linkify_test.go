@@ -187,35 +187,41 @@ func TestEscapedLinkify_ReportsThePostEscapeAutolinkSpan(t *testing.T) {
 	}
 }
 
-// TestEscapedLinkify_DoesNotWidenPastTheLiteralSpelling is a
-// PRESERVED-BEHAVIOR PIN: every row here parses the same before and after
-// the post-escape linkify parser, and that is the point. The escape is
-// only allowed to leave the verdict where the LITERAL character puts it,
-// never to add a link the unescaped spelling does not get — which is why
-// the parser's boundary set is goldmark's own trigger set and not "any
-// punctuation".
+// TestEscapedLinkify_MatchesTheLiteralSpelling is the invariant this file
+// exists for: an escape may only leave the verdict where the LITERAL
+// character puts it. Every row is asserted in BOTH spellings, and the two
+// must agree — that is the property, not any particular verdict.
 //
-// Rows two and three are also a KNOWN, STABLE divergence from the
-// reference, recorded here so a later widening is a deliberate act:
-// micromark's tokenizer takes ANY Unicode punctuation as a left boundary
-// and links "a.http://x" and "a!http://x", escaped or not. Both legs of
-// the format agree in this package, so no meaning moves — but the two
-// implementations do not agree with each other.
-func TestEscapedLinkify_DoesNotWidenPastTheLiteralSpelling(t *testing.T) {
+// THE VERDICT ITSELF MOVED when the boundary set widened. Rows one and two
+// used to record a known divergence: this package took goldmark's five-byte
+// trigger set as the whole left-boundary rule and left "x.http://c.d" and
+// "x!http://c.d" as prose, escaped or not, where the reference links them.
+// punctLinkifyParser closes that, and escapedLinkifyBoundaries is derived
+// from the same set so the escaped spelling moved with it rather than after
+// it. Rows three and four are unchanged and are the good cases: a boundary
+// this package still does not claim, and an escape with no address behind
+// it, both of which must stay prose in both spellings.
+func TestEscapedLinkify_MatchesTheLiteralSpelling(t *testing.T) {
 	tests := []escapePairCase{{
-		name:    "dot boundary links in neither spelling",
+		name:    "dot boundary links in both spellings",
 		escaped: "ok http://a.b and x\\.http://c.d\n",
 		literal: "ok http://a.b and x.http://c.d\n",
-		want:    []string{"http://a.b|http://a.b"},
+		want:    []string{"http://a.b|http://a.b", "http://c.d|http://c.d"},
 	}, {
-		name:    "bang boundary links in neither spelling",
+		name:    "bang boundary links in both spellings",
 		escaped: "ok http://a.b and x\\!http://c.d\n",
 		literal: "ok http://a.b and x!http://c.d\n",
-		want:    []string{"http://a.b|http://a.b"},
+		want:    []string{"http://a.b|http://a.b", "http://c.d|http://c.d"},
 	}, {
 		// A backslash before a NON-boundary byte must not turn into a
 		// boundary either: the escape is inert and the address stays
 		// fused to the "x".
+		//
+		// The LITERAL spelling here is also a standing divergence, named
+		// in punctLinkifyBoundaries: "x\\http://c.d" holds a real
+		// backslash character, the reference reads it as punctuation and
+		// links, and this package cannot claim that byte because
+		// escapedLinkifyParser owns it.
 		name:    "escaped backslash boundary links in neither spelling",
 		escaped: "ok http://a.b and x\\\\http://c.d\n",
 		literal: "ok http://a.b and x\\http://c.d\n",
