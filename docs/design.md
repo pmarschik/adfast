@@ -816,10 +816,24 @@ the encode leg may drop what ADF has no node for (a generic leaf
 directive, a generic container that does not reduce to one child, the
 generic text directive that flattens to its literal `:name`), and the
 format leg may not. **The format leg is total: every node in, some node
-out.** A Markdown formatter may reshape an author's syntax but must never
+out — and every attribute in, some attribute out.** A Markdown formatter
+may reshape an author's syntax but must never
 delete it, and prettier, which has no directive grammar at all, leaves an
 unknown directive verbatim. Only the ADF encode is allowed to drop. The
 invariant survives the split, because `ToADF` drops the kept nodes itself.
+
+Totality reaches the attribute level for the same reason it reaches the
+node level: a directive's payload is as much authored text as its name
+is. A kind that re-derives its canonical attributes would otherwise
+silently drop the ones it cannot read, so the format leg splits by what
+the re-derivation produces. An **atom** carries its unread attributes
+onto the re-derived node, which needs no new tree shape because the atom
+keeps riding the same empty mark context. A **mark** re-derives nothing
+to hang them on — ADF gives underline no such attribute — so it is kept
+whole instead. One corollary is easy to miss: a kind whose entire
+canonical payload is optional can re-derive to a bare `:name` with no
+unread attribute involved at all, which the bare-name rule then reads
+back as prose, so the format leg writes such a default back out.
 `FromMarkdown`, and
 the lower-level `markdown.Parse`, returns the _faithful_ parse tree with
 no canonicalization. An advanced consumer can therefore still see the
