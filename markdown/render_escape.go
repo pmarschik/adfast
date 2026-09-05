@@ -277,10 +277,10 @@ func (r *mdRenderer) escapesToken(s string, i int, nextLead byte, st *inlineCont
 	case '|':
 		return r.escapeTablePipe(s, i, nextLead, st)
 	case '.':
-		return escapeOrderedMarker(s, i, nextLead, nodeAtLineStart) ||
+		return escapeOrderedMarker(s, i, nextLead, nodeAtLineStart, st.pipes) ||
 			r.dotAfterWwwEscapes(s, i, nextLead, st)
 	case ')':
-		return escapeOrderedMarker(s, i, nextLead, nodeAtLineStart)
+		return escapeOrderedMarker(s, i, nextLead, nodeAtLineStart, st.pipes)
 	case '&':
 		return r.escapeAmpersand(s, i, nextLead)
 	case '!':
@@ -325,8 +325,15 @@ func (r *mdRenderer) escapeTablePipe(s string, i int, nextLead byte, st *inlineC
 // the digits is a backslash and that rule finds nothing to do. It still earns
 // its place for the line starts this one cannot see — the ones the wrapper
 // creates.
-func escapeOrderedMarker(s string, i int, nextLead byte, nodeAtLineStart bool) bool {
-	if !digitRunFromLineStart(s, i, nodeAtLineStart) {
+//
+// inCell turns the rule off inside a table cell. A cell is not a block
+// container, so no list can start there and the backslash would be noise the
+// reference does not write. The rule reaches a cell at all only because
+// renderCellString seeds the inline context with prev='\n', which makes every
+// cell look like a line start; st.pipes is set nowhere else, so it is the one
+// signal that says "cell" rather than "line start".
+func escapeOrderedMarker(s string, i int, nextLead byte, nodeAtLineStart, inCell bool) bool {
+	if inCell || !digitRunFromLineStart(s, i, nodeAtLineStart) {
 		return false
 	}
 	n := byteAt(s, i+1, nextLead)
