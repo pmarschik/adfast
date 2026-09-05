@@ -139,17 +139,35 @@ const (
 	// fires per unused definition, naming its label and destination.
 	// Emitted by ToADF.
 	CodeUnusedDefinitionDropped = "unused-definition-dropped"
-	// CodeLinkDestinationDropped reports a link whose whole label
-	// converted to nothing, so its destination left the document: an ADF
-	// link is a MARK, and a mark needs a node to ride on. The one case a
-	// markdown parse actually produces is a label with no text anywhere
-	// in it — "[![]()](https://home/)", an image with neither alt text
-	// nor a destination to name it after. A linked image the asset store
-	// cannot place is NOT this as long as it has a label: the picture
-	// drops (CodeUnresolvedAsset) but the label carries the enclosing
-	// destination as its mark. A link with no destination to lose
-	// ("[]()") is not reported. One diagnostic fires per emptied link,
-	// naming the href. Emitted by ToADF.
+	// CodeLinkDestinationDropped reports a link whose label kept no node
+	// able to carry the mark, so its destination left the document: an
+	// ADF link is a MARK, and a mark needs a node that can hold one. Two
+	// shapes reach it, and the message says which:
+	//
+	//   - The label converted to nothing at all — "[![]()](https://home/)",
+	//     an image with neither alt text nor a destination to name it
+	//     after.
+	//   - The label converted to an inline leaf that carries no marks:
+	//     "[:mention[Jane]{#1}](https://home/)", and the same for :status,
+	//     :emoji, :date, :placeholder, :extension and :media. These are
+	//     real ADF nodes, so the label is visible on the page — only the
+	//     destination is gone. adfast does NOT attach the mark to them
+	//     instead: no Atlassian payload has ever been observed to mark
+	//     one of these leaves (measured over 110MB of recorded Jira
+	//     documents: every marks key sat on a text node, none on the
+	//     7,453 bare inline leaves), so emitting one would ship a shape
+	//     the product is likely to strip on write and would move the loss
+	//     one hop later, past the point adfast can still report it. The
+	//     author's remedy is to put text inside the link beside the leaf.
+	//
+	// A label that carries the destination in PART — an unlinked mention
+	// between two linked words — is not reported: the href is still in
+	// the document and still clickable, so nothing was dropped. Nor is a
+	// linked image the asset store cannot place, as long as it has a
+	// label: the picture drops (CodeUnresolvedAsset) but the label
+	// carries the enclosing destination as its mark. A link with no
+	// destination to lose ("[]()") is not reported either. One diagnostic
+	// fires per emptied link, naming the href. Emitted by ToADF.
 	//
 	// A linked image whose picture DOES convert is not this: the
 	// destination becomes the link mark on the media node (block and
