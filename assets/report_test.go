@@ -105,7 +105,10 @@ func TestReportEndsWithItsScope(t *testing.T) {
 // about the paths the document names — the id behind a reference, its
 // dimensions, its bytes — and those go through the friendly file too. In
 // a report scope they come from the blob, so a document whose assets
-// folder was cleaned still reads as the document it is.
+// folder was cleaned still reads as the document it is; outside one they
+// come from the file the repair puts back. Both halves are asserted here
+// because the mode is a claim about the DIFFERENCE between them, and the
+// only sanctioned difference is the write.
 func TestReportAnswersPathKeyedReadsFromTheBlob(t *testing.T) {
 	store, friendly := cleanedDoc(t)
 
@@ -125,13 +128,20 @@ func TestReportAnswersPathKeyedReadsFromTheBlob(t *testing.T) {
 	})
 	wantAbsent(t, friendly)
 
-	// And outside a report scope the reads stay as they were: a path with
-	// no file behind it is a miss, because these reads answer from the
-	// file the document names.
-	wantNoLookup(t, store, "", "assets/shot.png")
-	wantNoDims(t, store, "assets/shot.png")
-	wantLoadRefused(t, store, "assets/shot.png")
-	wantAbsent(t, friendly)
+	// Outside the scope the same reads say the same thing and put the file
+	// back, exactly as resolution by media id does — that equality IS the
+	// mode's promise, and it has to hold in both directions.
+	wantLookup(t, store, "", "assets/shot.png", uuidA)
+	wantDims(t, store, "assets/shot.png", cleanedW, cleanedH)
+	wantLoad(t, store, "assets/shot.png")
+	wantExists(t, friendly)
+
+	// GOOD case, outside the scope too: a name the store holds nothing for
+	// is still a miss, and the repair invents no file for it.
+	wantNoLookup(t, store, "", "assets/never.png")
+	wantNoDims(t, store, "assets/never.png")
+	wantLoadRefused(t, store, "assets/never.png")
+	wantAbsent(t, filepath.Join(filepath.Dir(friendly), "never.png"))
 }
 
 // TestReportRefusesAnAmbiguousFriendlyName: a friendly name is unique
