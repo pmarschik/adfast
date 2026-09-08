@@ -68,12 +68,21 @@ var autolinkFormCases = []autolinkCase{{
 	src:  "See www.a.example here\n",
 	want: []string{"www.a.example|www.a.example|http://www.a.example|bare|url"},
 }, {
-	// goldmark linkifies "ftp://" and GFM does not. The view reports the
-	// parser's verdict and leaves the policy to the caller, which needs
-	// the written scheme in Text to apply one.
-	name: "an ftp autolink is reported with its written scheme",
+	// goldmark's linkify extension adds "ftp://" to GFM's scheme set and this
+	// view used to report the link it produced. The scheme set is GFM's now
+	// (see urlLiteralScheme), so there is no link and no span: the reference
+	// leaves a bare ftp address as prose, and a caller reading this view no
+	// longer has to filter a scheme out to match it.
+	name: "a bare ftp address is not an autolink",
 	src:  "See ftp://a.example/f here\n",
-	want: []string{"ftp://a.example/f|ftp://a.example/f|ftp://a.example/f|bare|url"},
+	want: nil,
+}, {
+	// The good case beside it: the same address in angle brackets IS a link
+	// in both implementations, which is where an author who wants one goes.
+	// The scheme set gates the BARE form only.
+	name: "an angle-bracket ftp autolink is still reported",
+	src:  "See <ftp://a.example/f> here\n",
+	want: []string{"<ftp://a.example/f>|ftp://a.example/f|ftp://a.example/f|angle|url"},
 }, {
 	name: "both forms in one paragraph, in document order",
 	src:  "See <https://a.example>, and https://b.example.\n",

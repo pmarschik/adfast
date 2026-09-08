@@ -439,6 +439,43 @@ var urlLiteralHostCases = []urlLiteralHostCase{{
 	src:  "https://ex.com~foo",
 	raw:  "https://ex.com",
 	text: "https://ex.com",
+}, {
+	// THE DIGIT TLD, at the pattern layer. Both recognizers of the reference
+	// take a digit in the domain, so BOTH columns hold the whole address; the
+	// class used to be `[a-zA-Z_]`, which ended the match at "https://ex.c"
+	// and sent that shorter, wrong address out as the href. See
+	// tlddigit_test.go for the document leg and the measured reference rows.
+	name: "a digit in the TLD no longer truncates the literal",
+	src:  "https://ex.c0m",
+	raw:  "https://ex.c0m",
+	text: "https://ex.c0m",
+}, {
+	name: "a digit in the TLD with a path and a port",
+	src:  "https://ex.c0m:8080/p",
+	raw:  "https://ex.c0m:8080/p",
+	text: "https://ex.c0m:8080/p",
+}, {
+	// THE DIGIT AND THE '_' COMPOSE, and this row is why the digit could not
+	// wait. The TLD class carries '_' so the gate can SEE an underscore in the
+	// last segment and refuse the address; a digit ending the class one byte
+	// early left the '_' trailing, the gate's trailing-punctuation trim
+	// dropped it, and "https://ex.a" linked. Measured, the reference reads the
+	// whole thing as prose. The pattern matches and the GATE refuses — which
+	// is the pairing hostRejected exists to state.
+	name:         "a digit after an underscore keeps the underscore in the last segment",
+	src:          "https://ex.a_1",
+	raw:          "https://ex.a_1",
+	text:         "https://ex.a_1",
+	hostRejected: true,
+}, {
+	// THE SCHEME SET IS GFM's. goldmark's linkify extension adds "ftp://" and
+	// the reference has no such scheme, so neither pattern here does. See
+	// linkifyscheme_test.go for the document leg beside the four other bare
+	// schemes that were never literals.
+	name: "an ftp scheme is not a bare URL",
+	src:  "ftp://ex.com/f",
+	raw:  "",
+	text: "",
 }}
 
 func TestURLLiteralPatternsSplitOnTheHost(t *testing.T) {

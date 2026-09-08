@@ -561,6 +561,13 @@ var gfmEmailRe = regexp.MustCompile(`^[a-zA-Z0-9.+_-]+@[a-zA-Z0-9_-]+(?:\.[a-zA-
 // accepted scheme, in both cases, is therefore the whole list: the pattern
 // itself is what decides the scheme.
 //
+// 'f' IS NOT IN THAT LIST, and the pre-gate is the second half of dropping
+// "ftp://" — see urlLiteralScheme for why GFM's set has no ftp in it. The
+// pattern alone would already refuse the address, so this line is redundant
+// for the VERDICT; it is here so the pre-gate and the pattern name the same
+// scheme set, because a stale letter would send every "f…" line through a
+// regexp that can no longer match one.
+//
 // The SCHEME-LESS "www." pattern is this package's own for the same reason,
 // and it has to be given here or the raw recognizer disagrees with the rest
 // of the package: goldmark's stock pattern demands a SECOND dot after the
@@ -577,7 +584,7 @@ func linkifyOptions() []extension.LinkifyOption {
 		extension.WithLinkifyURLRegexp(urlLiteralAnchoredRe),
 		extension.WithLinkifyWWWRegexp(urlLiteralWWWAnchoredRe),
 		extension.WithLinkifyAllowedProtocols([][]byte{
-			[]byte("h"), []byte("H"), []byte("f"), []byte("F"),
+			[]byte("h"), []byte("H"),
 		}),
 	}
 }
