@@ -588,6 +588,14 @@ kinds are still accepted and rendered.
 - **`blockTaskItem`** — DOWNGRADED to a plain `taskItem`, with its block
   body flattened to inline content. The distinct kind is not kept.
 
+  The flattener concatenates the blocks with nothing between them, so two
+  paragraphs would save as one run-together word. `confluence.MarkdownOptions`
+  therefore supplies the join itself before the save: a space, grown onto the
+  preceding paragraph's own trailing text node where there is one, and
+  otherwise a separator paragraph holding a single space — a code block cannot
+  take the space into its text without editing the code. The downgrade is still
+  a downgrade; what adfast adds is that the words stay apart.
+
 `confluence.UnsupportedKinds` = `blockTaskItem` (one kind). `fontSize` is
 **excluded** deliberately. adfast retires the mark and never produces it,
 because the `:fontSize` directive drops to plain text with a
