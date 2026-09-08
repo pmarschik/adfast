@@ -104,6 +104,51 @@ const (
 	// href, which is the one shape in this file where the wrong URL went out
 	// rather than none.
 	//
+	// THE TLD CLASS ALSO TAKES A DIGIT, and that one is a WRONG-HREF fix
+	// rather than a widening: goldmark's `[a-zA-Z]+` stopped at the digit and
+	// the SHORTER host went out as the link's target, so the rendered text and
+	// the address it pointed at named two different hosts — the same failure
+	// mode as the non-ASCII TLD above, and worse than no link, because a
+	// missing link is visible and a wrong href is not. This alternative is
+	// tried before the dotless one, so its short match won outright. Measured
+	// against the reference (remark-parse 11 + remark-gfm 4, both recognizers):
+	//
+	//	"see https://ex.c0m here"       ref https://ex.c0m       was https://ex.c
+	//	"see https://ex.co2m/x here"    ref https://ex.co2m/x    was https://ex.co
+	//	"see https://ex.c0m:8080/p b"   ref https://ex.c0m:8080/p was https://ex.c
+	//	"see www.ex.c0m here"           ref http://www.ex.c0m    was http://www.ex.c
+	//	"a [ https://ex.c0m b"          ref https://ex.c0m       was https://ex.c
+	//
+	// BOTH RECOGNIZERS TAKE IT, which is why the byte goes in the SHARED host
+	// rule and not in one of the two: micromark's tokenizer domain consumes
+	// any code that is neither whitespace nor `\p{P}`/`\p{S}`, and a digit is
+	// neither; mdast-util's decoded-text host is `[-.\w]+`, and `\w` holds the
+	// digits. Their isCorrectDomain then demands an ALPHANUMERIC in each of
+	// the last two segments, which a digit supplies on its own — measured,
+	// "see https://ex.0 b" and "see https://ex.00 b" both come back linked.
+	//
+	// IT ALSO CLOSES A HOLE THE '_' BYTE BELOW LEFT OPEN, and that one is the
+	// reason the digit cannot wait: the two bytes compose. "https://ex.a_1"
+	// matched the TLD "a_", the digit ended it, the gate's trailing-punctuation
+	// trim then dropped the '_' it was there to see, and a link to
+	// "https://ex.a" went out where the reference reads the whole thing as
+	// prose. With the digit in the class the TLD is "a_1", the underscore is
+	// still in the last segment when the gate looks, and the address is
+	// refused — measured, ref "(no link)", was "https://ex.a".
+	//
+	// THE ONE ROW IT COSTS is a TLD whose FIRST character is a digit and whose
+	// host then continues with a byte urlLiteralHostByte takes but this class
+	// does not ('-', '~', '@', '%', '+', '#', '='). Such a host used to fail
+	// this alternative outright and fall through to the DOTLESS one, which
+	// spans the whole of urlLiteralHostByte, so it happened to reach the
+	// reference's answer: "https://ex.0com-x" linked whole. It now stops at
+	// "https://ex.0com" — which is exactly where the letter-led spelling
+	// "https://ex.com-x" has always stopped, and it is the PATH gap this
+	// file's header describes rather than a new rule. The trade is one
+	// accidentally-right extent for the wrong-href rows above, and it makes
+	// the digit-led and letter-led spellings answer alike instead of
+	// differently.
+	//
 	// THE TLD CLASS ALSO TAKES '_', and that byte is there for the GATE and
 	// not for the pattern: urlLiteralHostAccepted refuses every host with an
 	// underscore in its last two segments, so a TLD that uses this byte is
@@ -121,7 +166,7 @@ const (
 	// "*www..*" formats to "_www.._" and linked "http://www". The gate reads
 	// the domain the reference reads, so an empty one is refused there.
 	urlLiteralHostDotted = urlLiteralHostByte + `{0,256}\.` +
-		`(?:[a-zA-Z_]|` + urlLiteralHostRune + `)+(?::\d+)?`
+		`(?:[a-zA-Z0-9_]|` + urlLiteralHostRune + `)+(?::\d+)?`
 	// urlLiteralHostByte is goldmark's own host character class, spelled once
 	// so the three host alternatives below cannot drift apart. The bytes are
 	// goldmark's, unchanged.
@@ -211,14 +256,31 @@ const (
 	// inside this class. That is the one open gap this file's header
 	// describes, and the rows pinned in urlliteral_test.go measure it.
 	urlLiteralPath = `(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`
-	// urlLiteralScheme is the scheme set goldmark's linkify extension
-	// accepts, now matched WITHOUT REGARD TO CASE, which is the reference's
-	// rule in BOTH its recognizers and was the whole of the "HTTPS://EX.COM"
-	// gap. "ftp" is goldmark's addition to GFM and stays: it is an accepted
-	// divergence of its own, and coupling the host rule to the scheme would
-	// add a second, undocumented asymmetry.
+	// urlLiteralScheme is the bare-URL scheme set: GFM's own, matched WITHOUT
+	// REGARD TO CASE, which is the reference's rule in BOTH its recognizers
+	// and was the whole of the "HTTPS://EX.COM" gap.
 	//
-	// SPELLED OUT PER LETTER, NOT `(?i:https?|ftp)`, and that is a measured
+	// "ftp" IS NOT IN IT, and that is a DIVERGENCE REMOVED rather than a
+	// narrowing for its own sake. GFM's autolink literal covers "http://",
+	// "https://", "www." and the email form and NOTHING else; goldmark's
+	// linkify extension adds "ftp://" on top, and this package had inherited
+	// it. So a bare ftp address became a link node here while the reference
+	// left it as prose, which is markup this package invented and no diff
+	// against the source could show. Measured against the reference
+	// (remark-parse 11 + remark-gfm 4), both recognizers:
+	//
+	//	"see ftp://ex.com here"   ref (no link)   was ftp://ex.com
+	//	"a [ ftp://ex.com b"      ref (no link)   was ftp://ex.com
+	//
+	// A LINK THE AUTHOR DID NOT WRITE IS THE COSTLY DIRECTION. Every other
+	// scheme an author might write bare — "mailto:", "file://", "ssh://" —
+	// already stays prose in both implementations, so ftp was the single
+	// exception and not the start of a set; leaving it in kept one scheme
+	// linkifying for no reason a reader of the document could see. An author
+	// who wants the link still has "<ftp://ex.com>" and "[text](ftp://ex.com)",
+	// neither of which goes through this pattern.
+	//
+	// SPELLED OUT PER LETTER, NOT `(?i:https?)`, and that is a measured
 	// difference rather than a style. Go's `(?i)` applies Unicode simple case
 	// folding, which puts the long s U+017F in the same orbit as "s" — so the
 	// folded form accepts "httpſ://ex.com/x" as a URL. The reference accepts
@@ -232,7 +294,7 @@ const (
 	// The `{2}` is the same per-letter class repeated, not a shortcut past
 	// one: gocritic's regexpSimplify asks for it, and it is the spelling and
 	// not the rule that changes.
-	urlLiteralScheme = `(?:[hH][tT]{2}[pP][sS]?|[fF][tT][pP])://`
+	urlLiteralScheme = `[hH][tT]{2}[pP][sS]?://`
 	// urlLiteralWWW is the scheme-less "www." literal. goldmark completes the
 	// scheme for it, so it is not a URL as written, and every caller of this
 	// package treats it separately.
