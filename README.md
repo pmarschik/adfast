@@ -600,7 +600,9 @@ annotation, fragment, and dataConsumer marks among them. Therefore
 `jira.UnsupportedKinds` is `placeholder`, which the render drops, plus
 `multiBodiedExtension` and `extensionFrame`, which the Jira REST endpoint
 rejects with INVALID_INPUT. `confluence.UnsupportedKinds` is
-`blockTaskItem`, which Confluence downgrades to a plain taskItem. Both
+`blockTaskItem`, which Confluence downgrades to a plain taskItem —
+`confluence.MarkdownOptions` supplies the space that downgrade would
+otherwise leave out, so the flattened blocks do not run together. Both
 sets are wired through `jira.MarkdownOptions` and
 `confluence.MarkdownOptions`. `fontSize` is in neither set, although both
 products reject it. adfast **retires** the mark and never produces one,
@@ -1133,7 +1135,7 @@ one, so the check would be moot.
 | codeBlock                                     | ✓    | ✓          | converted      | fenced code block; fence grows past embedded backtick runs; language survives                                                                                                                                                                                               |
 | bulletList / orderedList / listItem           | ✓    | ✓          | converted      | `-` / `1.` lists; marker alternation between adjacent lists; `order` start preserved                                                                                                                                                                                        |
 | taskList / taskItem                           | ✓    | ✓          | converted      | `- [ ]` / `- [x]`; `localId` regenerates as empty on encode                                                                                                                                                                                                                 |
-| blockTaskItem                                 | ✓    | —          | converted      | `- [ ]` + indented blocks; a single-paragraph item re-encodes as the inline taskItem. Jira renders it first-class; Confluence downgrades it to a plain taskItem                                                                                                             |
+| blockTaskItem                                 | ✓    | —          | converted      | `- [ ]` + indented blocks; a single-paragraph item re-encodes as the inline taskItem. Jira renders it first-class; Confluence downgrades it to a plain taskItem, and `confluence.MarkdownOptions` supplies the space that downgrade omits                                   |
 | decisionList / decisionItem                   | ✓    | ✓          | converted      | `::decisions` + following plain bullet list; encodes with state DECIDED; Jira renders decisions first-class (live 2026-07-22)                                                                                                                                               |
 | table / tableRow / tableHeader / tableCell    | ✓    | ✓          | converted      | GFM pipe table; colspan/rowspan via `>`/`^` markers; colwidth attrs via `::colwidths`; column alignment rides the synthetic never-wire `align` attribute (ADF has none), which the product bundles lower onto the alignment mark of each cell block                         |
 | panel                                         | ✓    | ✓          | converted      | `:::info` …; unknown panelType degrades to `info`                                                                                                                                                                                                                           |
