@@ -228,11 +228,30 @@ func withoutBlankParagraphs(children []ast.Node) []ast.Node {
 // hasVisibleInline reports whether a run of inline nodes renders as anything at
 // all — a paragraph holding only an empty text node is blank, one holding an
 // image or a media chip is not, and neither carries plain text.
+//
+// Only text carries its visibility in its own plain text. Every other inline
+// kind is visible on sight: an image, a break, a code span, a raw HTML chunk
+// and every dialect chip (a status, a media chip, an emoji) render as
+// something while projecting to no plain text at all, which is why the
+// default branch below answers yes without looking. The wrapper kinds —
+// emphasis, strong, strikethrough and a link label — carry no text of their
+// own either, so they ask the same question of their children instead of
+// projecting to plain text: a wrapper is visible exactly when something
+// inside it is. Projecting the wrapper (what this used to do) judged one and
+// the same node two ways depending on depth — a status chip alone in a
+// paragraph was visible, the same chip under emphasis was not — and the
+// paragraph around it was then dropped whole, deleting the author's line with
+// no diff to show for it. A wrapper with nothing visible inside it still
+// answers no, which keeps an empty emphasis as blank as it has always been.
 func hasVisibleInline(children []ast.Node) bool {
 	for _, node := range children {
 		switch node.(type) {
-		case *ast.Text, *ast.Emphasis, *ast.Strong, *ast.Delete, *ast.Link:
+		case *ast.Text:
 			if ast.PlainText([]ast.Node{node}) != "" {
+				return true
+			}
+		case *ast.Emphasis, *ast.Strong, *ast.Delete, *ast.Link:
+			if hasVisibleInline(ast.Children(node)) {
 				return true
 			}
 		default:
