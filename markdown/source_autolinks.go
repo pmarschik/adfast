@@ -85,10 +85,13 @@ func Autolinks(src []byte) []Autolink { return NewSource(src).Autolinks() }
 // of which a caller mirroring another Markdown implementation has to decide
 // for itself:
 //
-//   - The SCHEME set. goldmark linkifies `ftp://` alongside `http://` and
-//     `https://`; GFM's autolink literal spec covers only the latter two
-//     and `www.`. A caller matching GFM filters on the scheme it finds in
-//     Text.
+//   - The SCHEME set. The parser is configured to the GFM set — `http://`,
+//     `https://` and `www.` — so a bare `ftp://`, `mailto:`, `file://` or
+//     `ssh://` is prose and no span for it reaches this view. It used to
+//     linkify a bare `ftp://` and this note told a GFM-matching caller to
+//     filter on the scheme it found in Text; that filter is no longer
+//     needed. The angle form `<ftp://a.example>` is a different
+//     construct and still an autolink, as it is in GFM.
 //   - The `www.` form, where Target is not the written text. Wrapping such
 //     an address in angle brackets would produce `<www.a.example>`, which
 //     is a link to a relative path and not to the site. Comparing Target

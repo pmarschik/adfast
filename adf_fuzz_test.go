@@ -448,10 +448,21 @@ func gfmEmailInvalid(md string) bool {
 	return false
 }
 
-// urlLiteralRe matches GFM literal-autolink URLs (a copy of the markdown
-// package's linkify pattern; the path part optional).
+// urlLiteralRe matches GFM literal-autolink URLs. It APPROXIMATES the markdown
+// package's linkify pattern rather than copying it, and the direction of the
+// approximation is what matters: this drives a fuzz SKIP, so matching more than
+// the parser does hides inputs, while matching less only costs a skip that was
+// never needed. Keep it no wider than the real pattern.
+//
+// The scheme set is `https?://` and `www.` — the GFM set the parser is
+// configured to. It carried `ftp` while goldmark still linkified a bare
+// `ftp://`; the parser no longer does, so `ftp` here would skip inputs the
+// fuzzer should see.
+//
+// The TLD part is deliberately narrower than the real one, which takes digits
+// and `_`. Widening it would widen a skip.
 var urlLiteralRe = regexp.MustCompile(
-	"(?:(?:https?|ftp)://|www\\.)[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-z]+(?::\\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\\(\\);,'\">\\^{}\\[\\]`]*)?",
+	"(?:https?://|www\\.)[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-z]+(?::\\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\\(\\);,'\">\\^{}\\[\\]`]*)?",
 )
 
 // bareKnownDirectiveRe matches a known empty-content text directive token
@@ -502,10 +513,10 @@ var markerOnlyChainRe = regexp.MustCompile(`(?m)^[ \t]*(?:[-*+] +)+[-*+]?[ \t]*$
 var digitPunctLeadRe = regexp.MustCompile(`^\d*[.)]`)
 
 // escapedColonURLRe: see the escaped-colon-before-URL skip.
-var escapedColonURLRe = regexp.MustCompile(`\\:(?:www\.|https?://|ftp://)`)
+var escapedColonURLRe = regexp.MustCompile(`\\:(?:www\.|https?://)`)
 
 // escapedPunctURLRe: see the escaped-punctuation-before-URL skip.
-var escapedPunctURLRe = regexp.MustCompile(`\\[^A-Za-z0-9\s](?:www\.|https?://|ftp://)`)
+var escapedPunctURLRe = regexp.MustCompile(`\\[^A-Za-z0-9\s](?:www\.|https?://)`)
 
 // colonBeforeDirectiveRe: see the colon-before-directive skip — a
 // mid-line colon run (any length ≥2, raw or escaped) fused onto a
