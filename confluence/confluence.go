@@ -91,6 +91,13 @@ func SmartLinks(baseURL string) convert.SmartLinks {
 // the literal kind "blockTaskItem"; sending taskItem-with-paragraphs
 // answers the other question, not this one.)
 //
+// The kind stays listed here — Confluence still does not preserve it, and
+// the diagnostic still tells the caller so — but the mangled prose is no
+// longer part of the deal: MarkdownOptions supplies the separator itself
+// before submission, so the blocks arrive already joined and the
+// downgrade concatenates a document that reads correctly. See
+// SeparateBlockTaskItems.
+//
 // fontSize is NOT listed: Confluence strips the mark, but adfast retires
 // it entirely (it never produces a fontSize mark — the directive drops to
 // plain text with a fontsize-dropped diagnostic), so an
@@ -116,7 +123,11 @@ var UnsupportedKinds = []string{"blockTaskItem"}
 // what makes the encoded document wire-safe: a heading's "{#id}" suffix
 // becomes the anchor macro Confluence stores (see LowerAnchors), and a
 // table's column alignment becomes the alignment block mark on the
-// blocks in each aligned column (see adf.LowerTableAlign).
+// blocks in each aligned column (see adf.LowerTableAlign). A third
+// lowering defends the one kind Confluence downgrades rather than keeps:
+// a multi-block blockTaskItem gets the separator the downgrade omits, so
+// its blocks do not concatenate into run-together prose (see
+// SeparateBlockTaskItems).
 //
 // The facade shares one option type, so these compose with RenderOptions
 // and pass to any primitive or to adfast.WithPipelineOptions; each
@@ -127,7 +138,7 @@ func MarkdownOptions(baseURL string) []adfast.Option {
 		adfast.WithCodeLanguages(CodeLanguages),
 		adfast.WithUnsupportedKinds("confluence", UnsupportedKinds),
 		adfast.WithExtensions(Macros()),
-		adfast.WithDocTransforms(LowerAnchors, adf.LowerTableAlign),
+		adfast.WithDocTransforms(LowerAnchors, adf.LowerTableAlign, SeparateBlockTaskItems),
 	}
 }
 
