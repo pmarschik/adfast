@@ -9,7 +9,14 @@ typos = "1.47.2"
 go = "1.27.0"
 golangci-lint = "2.13.0"
 dprint = "0.56.1"
-gofumpt = "0.9.2"
+# 0.12.0 is the first release built against go1.27, which is what the `go` pin
+# above resolves to. Every earlier one — 0.9.2 and 0.11.0 both measured — is
+# built against an older Go and disagrees with the pinned toolchain's printer
+# about composite-literal alignment, so it rewrote the generated
+# dialect/emoji_map.go into a shape `gofmt -l` and CI then rejected. The whole
+# diff was whitespace (524 lines, 0 under `diff -w`): a printer disagreement,
+# never a gofumpt rule. Do not lower this below the Go pin.
+gofumpt = "0.12.0"
 cocogitto = "7.0.0"
 
 [env]
