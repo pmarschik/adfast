@@ -274,3 +274,96 @@ func TestBoundaryLiteralsAllResolveToASpan(t *testing.T) {
 		})
 	}
 }
+
+// entityOpeningBytes are the three bytes a character reference is spelled
+// with: the '&' that opens one, the '#' that makes it numeric, and the ';'
+// that closes it. Named here because the property below is about the SET they
+// are absent from, not about any one of them.
+const entityOpeningBytes = "&#;"
+
+// TestNoEntityByteIsALinkifyBoundary IS A PIN, NOT A REGRESSION TEST. It
+// passes at the commit that adds it and it fails nothing today; its whole job
+// is to fail on a FUTURE widening, with the reason attached, so that widening
+// is a decision rather than an accident.
+//
+// THE DEFECT IT GUARDS IS CURRENTLY UNREACHABLE, and the pin exists because
+// the unreachability is a property of two constants and nothing stronger.
+// goldmark ends a line by appending its trailing run with parent.AppendChild
+// rather than MergeOrAppendTextSegment (parser.parseBlock), so every inline
+// TRIGGER byte splits the trailing text node at that byte. render_escape.go's
+// character-reference rule reads the bytes around a '&' INSIDE ONE TEXT NODE,
+// so a split it did not expect makes it defuse a reference that needs no
+// defusing — "x&#x20;" going out as "x\&#x20;" where the base is a fixpoint,
+// which changes what the document MEANS and not merely how it is spelled.
+//
+// What makes it unreachable is that neither trigger set holds a byte a
+// character reference can be opened at: an entity is "&" then '#' or a letter,
+// so a trigger at any of the three bytes above is the only way to split one,
+// and neither linkifyBoundaryBytes nor punctLinkifyBoundaries holds any of
+// them. The second half below asserts the damage directly, because the
+// assertion above is a statement about two constants and a widening could
+// arrive by a different route. Measured with '&', '#' and ';' added to
+// punctLinkifyBoundaries, against the base in the left column:
+//
+//	                base                          with the three bytes in
+//	"x&#x20;"       "x&#x20;"                     "x\&#x20;"          CHANGED
+//	"x&plus;y"      "x+y"                         "x\&plus;y"         CHANGED
+//	"x&#x20;*a*"    "x _a_"                       "x _a_"
+//	"x&amp;*a*"     "x&_a_"                       "x&_a_"
+//	"x&*a*"         "x&_a_"                       "x&_a_"
+//	"***0*0**0"     "**_&#x30;_&#x30;**&#x30;"    same, but re-rendering as
+//	                a fixpoint                    "…**\&#x30;" — NOT a fixpoint
+//
+// The first two rows are the meaning change: a character reference the author
+// wrote is escaped into the literal text of itself. The last row is the same
+// damage arriving as a lost round trip rather than a changed render, which is
+// why both shapes of assertion are here — a fixpoint check alone passes the
+// first two rows, and an output check alone passes the last.
+//
+// THE FIX IS NOT HERE if this ever fails. Widening a set to one of these bytes
+// closes a real divergence — the reference opens a bare URL literal after all
+// three — and the way to close it is to make the escape rule read the rendered
+// output rather than the text node it is inside. Deleting this pin to get a
+// green run reintroduces a silent meaning change; see punctLinkifyBoundaries
+// for the measurement that took the bytes out in the first place.
+func TestNoEntityByteIsALinkifyBoundary(t *testing.T) {
+	t.Parallel()
+	for _, set := range []struct{ name, bytes string }{
+		{"linkifyBoundaryBytes", linkifyBoundaryBytes},
+		{"punctLinkifyBoundaries", punctLinkifyBoundaries},
+		// Derived from punctLinkifyBoundaries today, asserted anyway: an
+		// escape must not decide whether a URL is a link, so if the two ever
+		// stop tracking each other this byte class has to stay out of both.
+		{"escapedLinkifyBoundaries", escapedLinkifyBoundaries},
+	} {
+		for _, b := range entityOpeningBytes {
+			if strings.ContainsRune(set.bytes, b) {
+				t.Errorf("%s holds %q, a character-reference byte: a trigger there splits the text node "+
+					"a character reference lives in, and render_escape.go then defuses a reference that needs none",
+					set.name, b)
+			}
+		}
+	}
+	// The shapes the absence protects, pinned as exact output: a widening that
+	// slipped past the assertion above shows up here as a character reference
+	// escaped into the literal text of itself.
+	for _, c := range []struct{ src, want string }{
+		{"x&#x20;\n", "x&#x20;\n"},
+		{"x&plus;y\n", "x+y\n"},
+		{"x&#x20;*a*\n", "x _a_\n"},
+		{"x&amp;*a*\n", "x&_a_\n"},
+		{"x&*a*\n", "x&_a_\n"},
+	} {
+		if got := Render(Parse([]byte(c.src))); got != c.want {
+			t.Errorf("render of %q = %q, want %q: a character reference was defused", c.src, got, c.want)
+		}
+	}
+	// The same damage in the shape where it costs a ROUND TRIP rather than the
+	// first render — the emphasis nest renders identically either way, and
+	// only its re-render tells the two apart.
+	const nested = "***0*0**0\n"
+	first := Render(Parse([]byte(nested)))
+	if second := Render(Parse([]byte(first))); first != second {
+		t.Errorf("render of %q is not a fixpoint:\n first:  %q\n second: %q", nested, first, second)
+	}
+}
