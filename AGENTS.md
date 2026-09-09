@@ -14,9 +14,15 @@ in doc.go.
 - `go test -fuzz FuzzRoundTripIdempotent ./...` — grow the round-trip
   corpus
 
-Run the formatters through `mise`. A `gofmt` or a `dprint` taken from
-`PATH` measures something other than this repo and reports files that are
-already correct:
+**Format and check through the tasks, not through the tools.** `mise run
+fmt` formats everything the repo owns, `mise run lint` and `mise run check`
+verify it, and both already hand every tool this repo's own config. There is
+no reason to invoke `dprint` by hand, and a hand-typed one is how the repo
+got measured against a stranger's config: see the `dprint` bullet below.
+
+The bullets below matter only when you are debugging a tool's report. A
+`gofmt` or a `dprint` taken from `PATH` measures something other than this
+repo and reports files that are already correct:
 
 - `mise exec -- gofmt -l .`, not `gofmt -l .`. The `gofmt` on `PATH` is
   whichever Go the shell happens to have, while `.config/mise/config.toml`
@@ -31,13 +37,13 @@ already correct:
   the hooks ever rewrite that file, regenerate it with
   `go run ./internal/genemoji -output dialect/emoji_map.go` rather than
   keeping the rewrite.
-- `dprint` needs `-c .config/dprint.json` every time:
-  `mise exec dprint -- dprint check -c .config/dprint.json`. Discovery cannot
-  find a config under `.config/`, so a bare run once fell back to the home
-  config of whoever ran it. `DPRINT_CONFIG_DISCOVERY = "false"` in
-  `.config/mise/config.toml` now makes that bare run fail (exit 11) rather
-  than report this repo against a plugin set it never chose. The `mise` and
-  `hk` tasks already pass `-c`; only a hand-typed command can get it wrong.
+- `dprint` cannot discover `.config/dprint.json`: it looks only for
+  `dprint.json(c)` or `.dprint.json(c)` walking up from the cwd. A bare
+  `dprint check` therefore used to load the home config of whoever ran it and
+  report this repo against a plugin set it never chose.
+  `DPRINT_CONFIG_DISCOVERY = "false"` in `.config/mise/config.toml` now makes
+  that run fail with exit 11 instead of answering wrongly. If you see it,
+  you called dprint directly — run `mise run fmt` or `mise run lint`.
 
 ## Conventions
 

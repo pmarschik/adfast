@@ -56,7 +56,7 @@ func TestFormatKeepsADirectiveTheKindCannotRead(t *testing.T) {
 		// The remaining atoms, one per missing payload.
 		{name: "emoji with no shortName", src: "see :emoji{id=x} in the log", want: "see :emoji{#x} in the log\n"},
 		{name: "mention with no name", src: "see :mention{x=1} in the log", want: "see :mention{x=\"1\"} in the log\n"},
-		{name: "date with no timestamp and an unparseable label", src: "see :date[nonsense]{x=1} in the log", want: "see :date[nonsense]{x=\"1\"} in the log\n"},
+		{name: "date with no timestamp and an unparsable label", src: "see :date[nonsense]{x=1} in the log", want: "see :date[nonsense]{x=\"1\"} in the log\n"},
 		{name: "placeholder with a text attribute the kind does not read", src: "see :placeholder{text=Hi} in the log", want: "see :placeholder{text=\"Hi\"} in the log\n"},
 		// The inline extension is spelled ":extension" — the one dialect
 		// name that spans all three directive surfaces.
