@@ -36,11 +36,15 @@ import (
 // parsers take urlLiteralAnchoredRe, whose host may be dotless, and the
 // DECODED-TEXT scan takes urlLiteralRe, whose host may not.
 //
-// THE PATTERNS ARE NOT THE WHOLE ANSWER. urlLiteralHostAccepted, at the foot
-// of this file, is the second half of it: micromark's domain rule refuses an
-// underscore in either of the host's last two dot-separated segments, and
-// that is a scanner over the segments rather than a character class, so no
-// pattern here can carry it. Every caller runs the pattern and then the gate.
+// THE PATTERNS ARE NOT THE WHOLE ANSWER. The two gates at the foot of this
+// file are the second half of it, and they SPLIT THE SAME WAY THE PATTERNS DO:
+// micromark's domain rule refuses an underscore in either of the host's last
+// two dot-separated segments, mdast-util's isCorrectDomain refuses that AND a
+// segment with no alphanumeric in it, and both are scanners over the segments
+// rather than character classes, so no pattern here can carry either. Every
+// caller runs the pattern and then the gate for its own side:
+// urlLiteralHostAccepted for a RAW-SOURCE match, urlLiteralHostAcceptedInText
+// for a DECODED-TEXT one.
 //
 // ONE KNOWN GAP, left open deliberately because closing it widens past what
 // was measured: THE PATH. goldmark's path must open on '/', '#' or '?' and
@@ -136,18 +140,51 @@ const (
 	// still in the last segment when the gate looks, and the address is
 	// refused — measured, ref "(no link)", was "https://ex.a".
 	//
-	// THE ONE ROW IT COSTS is a TLD whose FIRST character is a digit and whose
-	// host then continues with a byte urlLiteralHostByte takes but this class
-	// does not ('-', '~', '@', '%', '+', '#', '='). Such a host used to fail
-	// this alternative outright and fall through to the DOTLESS one, which
-	// spans the whole of urlLiteralHostByte, so it happened to reach the
-	// reference's answer: "https://ex.0com-x" linked whole. It now stops at
-	// "https://ex.0com" — which is exactly where the letter-led spelling
-	// "https://ex.com-x" has always stopped, and it is the PATH gap this
-	// file's header describes rather than a new rule. The trade is one
-	// accidentally-right extent for the wrong-href rows above, and it makes
-	// the digit-led and letter-led spellings answer alike instead of
-	// differently.
+	// THE TLD CLASS ALSO TAKES '-', and that one is a WRONG-HREF fix of the
+	// same kind, on the byte a PUNYCODE TLD is made of. goldmark's class ended
+	// the dotted alternative at the hyphen and the shorter host went out as the
+	// href, so a link whose TEXT read "https://ex.xn--p1ai" POINTED AT
+	// "https://ex.xn" — a different host, and a reachable one. Measured against
+	// the reference (remark-parse 11.0.0 + remark-gfm 4.0.1), both recognizers:
+	//
+	//	"see https://ex.xn--p1ai here"  ref https://ex.xn--p1ai  was https://ex.xn
+	//	"see https://a-b.c-d b"         ref https://a-b.c-d      was https://a-b.c
+	//	"see https://ex.com-x b"        ref https://ex.com-x      was https://ex.com
+	//	"see https://a.b- b"            ref https://a.b-          was https://a.b
+	//	"see www.ex.c-d b"              ref http://www.ex.c-d     was http://www.ex.c
+	//	"a [ https://a.-b b"            ref https://a.-b          was (no link)
+	//
+	// BOTH RECOGNIZERS TAKE THE BYTE, so it belongs in the SHARED host rule for
+	// the same reason the digit does: micromark's domainInside consumes a '-'
+	// explicitly (`code !== 45 && unicodePunctuation(code)` is its test, so the
+	// hyphen is spared the punctuation stop), and mdast-util's decoded-text host
+	// is `[-.\w]+`, which opens on it.
+	//
+	// IT IS THE ONE TLD BYTE THAT NEEDS THE GATE SPLIT, and adding it without
+	// that split would have been a defect of its own. Unlike the digit, a '-'
+	// can make a TLD with NO ALPHANUMERIC IN IT — "https://ex.--", "www..-" —
+	// and there the two recognizers genuinely disagree: micromark's tokenizer
+	// links the address (it has no alphanumeric rule at all) while
+	// mdast-util's isCorrectDomain refuses it. Measured:
+	//
+	//	"see https://ex.-- b"   raw links https://ex.--   decoded (no link)
+	//	"see www..- b"          raw links http://www..-   decoded (no link)
+	//	"see https://a.-b b"    raw links https://a.-b    decoded https://a.-b
+	//
+	// Before the byte, the pattern happened to enforce the alphanumeric rule for
+	// BOTH sides — the class had no '-', so "ex.--" failed the dotted
+	// alternative and only the raw-source DOTLESS one caught it. With the byte
+	// in, the dotted alternative matches, so urlLiteralRe reaches the address
+	// too and only urlLiteralHostAcceptedInText can refuse it. That is why the
+	// gate had to split before this class could move; see
+	// urlLiteralHostAcceptedInText.
+	//
+	// IT ALSO CLOSES THE ROW THE DIGIT COST. A TLD whose FIRST character is a
+	// digit and whose host then continues with a '-' used to fail this
+	// alternative and fall through to the DOTLESS one, which spans the whole of
+	// urlLiteralHostByte, so "https://ex.0com-x" happened to link whole while
+	// the letter-led "https://ex.com-x" stopped at "https://ex.com". Both now
+	// reach the reference's answer through this class, and they answer alike.
 	//
 	// THE TLD CLASS ALSO TAKES '_', and that byte is there for the GATE and
 	// not for the pattern: urlLiteralHostAccepted refuses every host with an
@@ -166,7 +203,7 @@ const (
 	// "*www..*" formats to "_www.._" and linked "http://www". The gate reads
 	// the domain the reference reads, so an empty one is refused there.
 	urlLiteralHostDotted = urlLiteralHostByte + `{0,256}\.` +
-		`(?:[a-zA-Z0-9_]|` + urlLiteralHostRune + `)+(?::\d+)?`
+		`(?:[-a-zA-Z0-9_]|` + urlLiteralHostRune + `)+(?::\d+)?`
 	// urlLiteralHostByte is goldmark's own host character class, spelled once
 	// so the three host alternatives below cannot drift apart. The bytes are
 	// goldmark's, unchanged.
@@ -420,9 +457,42 @@ var urlLiteralAnchoredRe = regexp.MustCompile(
 var urlLiteralSchemeRe = regexp.MustCompile(`^(?:` + urlLiteralScheme + `)`)
 
 // urlLiteralHostAccepted reports whether a candidate literal — the whole
-// address the patterns above matched, scheme or "www." prefix included — has
-// a host micromark's domain production accepts: NO UNDERSCORE IN EITHER OF
-// THE LAST TWO dot-separated segments.
+// address the patterns above matched, scheme or "www." prefix included — has a
+// host the RAW-SOURCE side accepts. It is the gate for urlLiteralAnchoredRe and
+// urlLiteralWWWAnchoredRe, and it is the WIDER of the two gates, exactly as
+// urlLiteralHost is the wider of the two patterns.
+//
+// IT IS A UNION OF THE REFERENCE'S TWO RULES, because in a plain paragraph a
+// candidate is offered to BOTH recognizers: micromark's tokenizer runs first,
+// and a candidate it refuses is still there as text when
+// mdast-util-gfm-autolink-literal's transform sweeps the tree. So the
+// observable answer for raw source is "either recognizer takes it", and the two
+// halves are each measured:
+//
+//   - micromark's tokenizer — urlLiteralDomainTokenized, over
+//     urlLiteralRawDomain. It takes a host with no alphanumeric in it, so
+//     "see https://ex.-- b" comes back linked, and it refuses a host that OPENS
+//     on punctuation right after the "://", so "see https://-.- b" comes back
+//     as prose.
+//   - mdast-util's transform — urlLiteralDomainCorrect, over
+//     urlLiteralTextDomain. It takes the punctuation-led host the tokenizer
+//     refused, which is why "see https://-a.com b" and "see https://.x b" come
+//     back linked.
+//
+// Neither half implies the other, and dropping either one is measurable.
+// Without the tokenizer half "https://ex.--" loses a link the reference makes;
+// without the transform half "https://-a.com" and "https://.x" do.
+//
+// THE TWO HALVES READ TWO DIFFERENT DOMAINS, which is why each has its own
+// reader rather than sharing one. micromark ends its domain before a
+// trailing-punctuation run and mdast-util does not; mdast-util's domain class
+// is the ASCII `[-.\w]+` and micromark's runs to a path opener. Both
+// differences were measured against the reference over a 2340-body host sweep:
+// handing the tokenized half the untrimmed domain, and stripping the "www."
+// prefix before its after-protocol check, lost 35 rows the tokenizer links
+// ("www.-.a", "www.--.a", "www..-.a"), and handing the transform half a
+// TRIMMED domain invented 170 links it refuses ("www.aa_" and its family,
+// where the trim carries off the underscore isCorrectDomain is looking for).
 //
 // WHY A FUNCTION AND NOT A PATTERN, which is the whole reason this rule sat
 // unmodeled while the widenings around it landed. The rule is a scanner in
@@ -468,6 +538,49 @@ var urlLiteralSchemeRe = regexp.MustCompile(`^(?:` + urlLiteralScheme + `)`)
 //     only when the run reaches the END OF THE URL, so "https://ex_/y" keeps
 //     its underscore and is prose, while "https://ex_" loses it and links.
 func urlLiteralHostAccepted(literal string) bool {
+	schemed := urlLiteralSchemeRe.MatchString(literal)
+	return urlLiteralDomainTokenized(urlLiteralRawDomain(literal), schemed) ||
+		urlLiteralDomainCorrect(urlLiteralTextDomain(literal))
+}
+
+// urlLiteralHostAcceptedInText is the DECODED-TEXT gate, and it is
+// mdast-util-gfm-autolink-literal's isCorrectDomain and nothing else. It is
+// the gate for urlLiteralRe, whose caller — relinkifyTexts, through
+// findURLLiterals — scans the text the tokenizer left behind and so has only
+// the transform's verdict to match.
+//
+// THE ALPHANUMERIC RULE IS THE HALF THAT LIVES ONLY HERE, and it is what made
+// the '-' in urlLiteralHostDotted's TLD class safe to add. isCorrectDomain
+// demands an alphanumeric in each of the host's last two dot-separated
+// segments; micromark's domain production has no such test, so the two
+// recognizers SPLIT on a TLD made of nothing but punctuation, and that split is
+// the reference's own. Measured against remark-parse 11.0.0 + remark-gfm 4.0.1,
+// one body per row, the second column being the same literal after a dangling
+// "[ " so only the transform sees it:
+//
+//	"https://ex.--"   raw https://ex.--    decoded (no link)
+//	"https://ex.-"    raw https://ex.-     decoded (no link)
+//	"www..-"          raw http://www..-    decoded (no link)
+//	"https://a.-b"    raw https://a.-b     decoded https://a.-b
+//	"https://a.b-"    raw https://a.b-     decoded https://a.b-
+//
+// A SINGLE SHARED GATE CANNOT HOLD BOTH COLUMNS. Put the rule in the shared
+// gate and "https://ex.--" stops linking, which loses a link the reference
+// makes; leave it out of both and urlLiteralRe starts linking it, which is a
+// link the reference does not make and which only appeared once the TLD class
+// reached the hyphen. Splitting is what lets each pattern keep its own
+// recognizer's answer, and TestURLLiteralRawPatternIsTheWiderOne is where the
+// ordering between them is stated.
+func urlLiteralHostAcceptedInText(literal string) bool {
+	return urlLiteralDomainCorrect(urlLiteralTextDomain(literal))
+}
+
+// urlLiteralRawDomain returns the domain micromark's tokenizer would consume
+// out of a candidate literal: the scheme or the "www." prefix off the FRONT,
+// everything from a path opener off the BACK, and a trailing-punctuation run
+// gone only when no path follows. It returns "" when there is no domain left to
+// judge.
+func urlLiteralRawDomain(literal string) string {
 	host := literal
 	switch m := urlLiteralSchemeRe.FindString(host); {
 	case m != "":
@@ -494,21 +607,154 @@ func urlLiteralHostAccepted(literal string) bool {
 		}
 		host = host[:i]
 	}
+	return host
+}
+
+// urlLiteralTextDomain returns the domain mdast-util's transform would capture
+// out of a candidate literal: its findUrl pattern is
+// `(https?://|www(?=\.))([-.\w]+)([^ \t\r\n]*)`, so the scheme comes off the
+// front, the "www." prefix STAYS — "Treat `www` as part of the domain", its own
+// comment says, and isCorrectDomain then sees "www" as a segment — and the
+// domain runs to the first byte outside `[-.\w]`, which in JavaScript's
+// non-Unicode `\w` is the ASCII `[-.A-Za-z0-9_]` and nothing more.
+//
+// NOTHING IS TRIMMED OFF THE BACK, and that is the difference from
+// urlLiteralRawDomain that earns this second reader. The transform runs
+// isCorrectDomain on the domain as captured and only then trims the whole URL,
+// so the trailing run is still there when the rule looks — and the rule is
+// looking for an UNDERSCORE, which the trim would carry away. Adding a trim
+// here was measured against the reference over a 2340-body host sweep and
+// invented 170 links, "www.aa_" and its family: the captured domain is
+// "www.aa_", whose last segment holds the underscore the transform refuses,
+// while the trimmed "www.aa" is a clean two-segment host and links.
+//
+// A TRAILING DOT IS THEREFORE A SEGMENT OF ITS OWN — an empty one, which the
+// rule skips, so it SHIFTS the pair of segments tested by one. This reader
+// carries that shift because the reference does; it is not yet observable
+// here, because the patterns end a match before a trailing dot and so the
+// shifted host never reaches the gate. Measured, "see www.-.a. b" comes back
+// linked from both of the reference's recognizers — the segments tested are ""
+// and "a", and the punctuation-only "-" is never looked at — while here the
+// pattern matches "www.-.a" and the gate refuses that on the "-". See
+// TestHyphenTLDResidueIsPinned for that row and the rest of the family.
+//
+// A NON-ASCII BYTE ENDS IT, which is how the reference reaches
+// "https://www.點看.com" — micromark's own example, linked whole by both
+// recognizers. The transform's domain there is just "www.", whose tested
+// segments are "" and "www"; the rest is its path, which is `[^ \t\r\n]*` and
+// tests nothing. So the alphanumeric rule never applies to a non-ASCII segment,
+// and this reader stops where the reference's does rather than letting one
+// through to a test the reference does not run on it.
+func urlLiteralTextDomain(literal string) string {
+	s := literal
+	if m := urlLiteralSchemeRe.FindString(s); m != "" {
+		s = s[len(m):]
+	}
+	i := 0
+	for i < len(s) && (s[i] == '-' || s[i] == '.' || s[i] == '_' || isURLLiteralAlnum(s[i])) {
+		i++
+	}
+	return s[:i]
+}
+
+// urlLiteralLastTwoSegments splits a domain into its last dot-separated segment
+// and the one before it, which are the only two segments micromark's domain
+// production tracks. A domain with no dot is its own last segment and has no
+// second-to-last one, and an empty second-to-last segment holds no underscore
+// either way, so "" means "no segment to judge" — which is micromark's own
+// state, its domainAtPunctuation leaving the penultimate slot undefined until a
+// second '.' arrives.
+func urlLiteralLastTwoSegments(host string) (last, prev string) {
+	last, prev = host, ""
+	if i := strings.LastIndexByte(host, '.'); i >= 0 {
+		last, prev = host[i+1:], host[:i]
+	}
+	if i := strings.LastIndexByte(prev, '.'); i >= 0 {
+		prev = prev[i+1:]
+	}
+	return last, prev
+}
+
+// urlLiteralDomainTokenized is micromark's domain production over
+// urlLiteralRawDomain: a domain that is not empty and has NO UNDERSCORE IN
+// EITHER OF ITS LAST TWO dot-separated segments. It runs NO alphanumeric test —
+// its own domainInside spares '-' from the punctuation stop
+// (`code !== 45 && unicodePunctuation(code)`) and its domainAfter asks only for
+// the underscores and for one consumed character — which is why
+// "see https://ex.-- b" comes back linked from the reference.
+//
+// afterProtocol IS THE SECOND ARGUMENT, and it applies to the SCHEMED FORM
+// ONLY. micromark checks the character right after the "://" separately and
+// refuses whitespace and `\p{P}`/`\p{S}` there, so its tokenizer never reaches
+// the domain for "https://-.-". Its scheme-less branch has no such check at
+// all: wwwStart *checks* the "www." prefix and then runs the domain production
+// from the leading 'w', "so we can discard the `www.` we parsed … we consider
+// it as a part of the domain", so the character after the prefix is never in
+// the afterProtocol position. Applying the check to both forms was measured
+// against the reference and lost "www.-.a", "www.--.a" and "www..-.a", each of
+// which the tokenizer links.
+//
+// The check belongs with the domain rule rather than in the pattern because
+// urlLiteralHostAccepted is a union: without it the tokenized half would claim
+// every punctuation-led host and the transform half — which is what actually
+// links "https://-a.com" and "https://.x" — would never be consulted. Measured,
+// the reference reads "see https://-.- b" as prose, and this package did too
+// until the TLD class reached the hyphen and made the address matchable.
+//
+// ASCII IS THE WHOLE TEST because ASCII is all that can reach it. The patterns
+// let a host open on urlLiteralHostByte, on `[a-zA-Z0-9]`, or on
+// urlLiteralHostRune, and that last class already excludes `\p{P}`/`\p{S}` — so
+// a non-ASCII lead is punctuation-free by construction, and an ASCII lead that
+// is not alphanumeric is punctuation or a symbol by inspection of
+// urlLiteralHostByte.
+func urlLiteralDomainTokenized(host string, afterProtocol bool) bool {
 	if host == "" {
 		return false
 	}
-	last := host
-	rest := ""
-	if i := strings.LastIndexByte(host, '.'); i >= 0 {
-		last, rest = host[i+1:], host[:i]
-	}
-	if strings.Contains(last, "_") {
+	if afterProtocol && host[0] < 0x80 && !isURLLiteralAlnum(host[0]) {
 		return false
 	}
-	if i := strings.LastIndexByte(rest, '.'); i >= 0 {
-		rest = rest[i+1:]
+	last, prev := urlLiteralLastTwoSegments(host)
+	return !strings.Contains(last, "_") && !strings.Contains(prev, "_")
+}
+
+// urlLiteralDomainCorrect is mdast-util-gfm-autolink-literal's isCorrectDomain
+// over urlLiteralTextDomain: TWO OR MORE dot-separated segments, and each of
+// the last two holding NO UNDERSCORE and AT LEAST ONE ALPHANUMERIC. An empty
+// segment is skipped, as it is there — the reference runs neither test on a
+// falsy part, which is what links "https://.x" and, through the trailing-dot
+// shift urlLiteralTextDomain describes, "www.-.a.".
+//
+// THE ALPHANUMERIC TEST IS ASCII, exactly as the reference's `/[a-zA-Z\d]/` is,
+// and it needs no non-ASCII escape hatch because urlLiteralTextDomain already
+// stops at a non-ASCII byte for the same reason the reference's `[-.\w]+` does.
+func urlLiteralDomainCorrect(host string) bool {
+	parts := strings.Split(host, ".")
+	if len(parts) < 2 {
+		return false
 	}
-	return !strings.Contains(rest, "_")
+	for _, seg := range parts[len(parts)-2:] {
+		if seg != "" && !urlLiteralSegmentCorrect(seg) {
+			return false
+		}
+	}
+	return true
+}
+
+func urlLiteralSegmentCorrect(seg string) bool {
+	if strings.Contains(seg, "_") {
+		return false
+	}
+	for i := range len(seg) {
+		if isURLLiteralAlnum(seg[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func isURLLiteralAlnum(b byte) bool {
+	return b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
 }
 
 // urlLiteralCandidate returns the raw-source literal at the head of line, nil
@@ -590,15 +836,20 @@ func urlLiteralHostAcceptedAt(line []byte, matchLen int) bool {
 	return urlLiteralHostAccepted(string(cand))
 }
 
-// findURLLiterals is urlLiteralRe.FindAllStringIndex with the host gate
-// applied, which is the form the DECODED-TEXT scan needs. A rejected match is
-// dropped whole rather than retried shorter — that is the reference's own
-// behavior, whose transform returns false for the match instead of trimming
+// findURLLiterals is urlLiteralRe.FindAllStringIndex with the DECODED-TEXT
+// host gate applied, which is the form the decoded-text scan needs. A rejected
+// match is dropped whole rather than retried shorter — that is the reference's
+// own behavior, whose transform returns false for the match instead of trimming
 // the domain and looking again.
+//
+// THE GATE HERE IS urlLiteralHostAcceptedInText and not the raw-source one,
+// because this scan has only the transform's verdict to match. Reaching for
+// urlLiteralHostAccepted instead links "https://ex.--" and "www..-", which the
+// transform refuses.
 func findURLLiterals(s string) [][]int {
 	var out [][]int
 	for _, loc := range urlLiteralRe.FindAllStringIndex(s, -1) {
-		if urlLiteralHostAccepted(s[loc[0]:loc[1]]) {
+		if urlLiteralHostAcceptedInText(s[loc[0]:loc[1]]) {
 			out = append(out, loc)
 		}
 	}

@@ -77,26 +77,33 @@ func TestDigitInTLDKeepsTheWholeHost(t *testing.T) {
 	}
 }
 
-// THE ROW THE FIX COSTS, pinned so it is a decision and not a surprise.
+// THE ROW THE DIGIT FIX COST IS CLOSED AGAIN, and this test is where the two
+// spellings are held together.
 //
-// A TLD whose FIRST character is a digit and whose host then continues with a
-// byte urlLiteralHostByte takes but the TLD class does not ('-', '~', '@',
-// '%', '+', '#', '=') used to fail the DOTTED host alternative outright and
-// fall through to the DOTLESS one, which spans the whole of
-// urlLiteralHostByte — so it happened to reach the reference's answer.
-// "https://ex.0com-x" linked whole. It now stops at "https://ex.0com".
+// A TLD whose FIRST character is a digit and whose host then continued with a
+// '-' used to fail the DOTTED host alternative outright and fall through to
+// the DOTLESS one, which spans the whole of urlLiteralHostByte — so
+// "https://ex.0com-x" linked whole by accident while the letter-led
+// "https://ex.com-x" stopped at "https://ex.com". Widening the TLD class for
+// the digit made the two agree, on the SHORT answer, and that was pinned here
+// as the digit fix's price.
 //
-// That is not a new rule: it is exactly where the letter-led spelling
-// "https://ex.com-x" has always stopped, and it is the PATH gap urlliteral.go's
-// header describes and deliberately holds open. The trade is one
-// accidentally-right extent for the wrong-href rows above, and it makes the
-// digit-led and letter-led spellings answer alike instead of differently.
-// Closing it means the gap moves as one piece, with the trail rule.
-func TestDigitLedTLDStopsWhereTheLetterLedOneDoes(t *testing.T) {
+// The '-' in the same class then closed it, on the reference's answer this
+// time. Measured against the reference (remark-parse 11.0.0 + remark-gfm
+// 4.0.1), both recognizers, one body per row:
+//
+//	"see https://ex.0com-x b"  ref https://ex.0com-x  was https://ex.0com
+//	"see https://ex.com-x b"   ref https://ex.com-x   was https://ex.com
+//
+// The test stays because the two spellings answering ALIKE is the property,
+// and it is the property either way the shared class moves: a change that
+// takes the '-' back out has to break this row and the punycode rows in
+// TestHyphenInTLDKeepsTheWholeHost together.
+func TestDigitLedTLDAnswersLikeTheLetterLedOne(t *testing.T) {
 	const src = "See https://ex.0com-x and https://ex.com-x here.\n"
 	want := []string{
-		"https://ex.0com|https://ex.0com",
-		"https://ex.com|https://ex.com",
+		"https://ex.0com-x|https://ex.0com-x",
+		"https://ex.com-x|https://ex.com-x",
 	}
 	if got := linkVerdicts(src); !slices.Equal(got, want) {
 		t.Errorf("links of %q = %v, want %v", src, got, want)

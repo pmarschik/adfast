@@ -69,13 +69,20 @@ var wwwLiteralCases = []struct {
 	// THE NEGATIVES. The prefix alone is not a host, and the dotless
 	// alternative opens on an alphanumeric exactly as the schemed one does
 	// ("https://-x" is prose too).
-	// The prefix alone leaves an EMPTY DOMAIN once it is stripped, and the
-	// reference's domain production must consume at least one character, so
-	// the gate refuses it as the pattern does.
-	name:         "the prefix alone is not a host",
-	src:          "www.",
-	want:         "",
-	hostRejected: true,
+	// THE PATTERN IS THE REFUSAL HERE, and the gate column says so by being
+	// false. The prefix alone leaves an EMPTY DOMAIN once it is stripped, so
+	// micromark's domain production — which must consume one character —
+	// refuses it; mdast-util's isCorrectDomain does NOT, because it keeps the
+	// prefix as a segment ("Treat `www` as part of the domain", its own
+	// comment) and skips the empty one after the dot. Measured, the reference
+	// links "see www. b" as `http://www` from BOTH recognizers, its splitUrl
+	// trimming the trailing dot. This package keeps it prose on purpose and
+	// urlLiteralWWW is where that decision lives — see the "www.._" note in
+	// urlliteral.go, which is the format-leg reason — so the gate is free to
+	// answer as the reference does.
+	name: "the prefix alone is not a host",
+	src:  "www.",
+	want: "",
 }, {
 	name: "a hyphen does not open the host",
 	src:  "www.-x",
@@ -162,10 +169,9 @@ var wwwLiteralCases = []struct {
 	want:         "WWW.a_b.com",
 	hostRejected: true,
 }, {
-	name:         "an uppercase prefix alone is not a host",
-	src:          "WWW.",
-	want:         "",
-	hostRejected: true,
+	name: "an uppercase prefix alone is not a host",
+	src:  "WWW.",
+	want: "",
 }}
 
 func TestWWWLiteralPattern(t *testing.T) {
@@ -274,11 +280,18 @@ func TestWWWLiteralIsReportedAsARawAutolinkSpan(t *testing.T) {
 // row of wwwLiteralCases through the parser and asserts the raw span is
 // exactly what urlLiteralRe reads at that offset.
 //
-// ONE PATTERN AND ONE GATE, which is why the rejected rows expect no span at
-// all rather than a shorter one: urlLiteralHostAccepted refuses a candidate
-// whole, and the raw recognizer has to refuse it the same way the decoded-text
-// scan does. A gate wired into only one of the two would show up here as a
-// span for a host the tree has no link for.
+// A GATE REFUSES A CANDIDATE WHOLE, which is why the rejected rows expect no
+// span at all rather than a shorter one, and the raw recognizer has to refuse
+// it the same way it refuses it in the tree. A gate wired into the pattern's
+// callers but not into the raw recognizer would show up here as a span for a
+// host the tree has no link for.
+//
+// The gate the raw recognizer runs is urlLiteralHostAccepted. It is not the
+// only one — urlLiteralHostAcceptedInText is the decoded-text scan's, and the
+// two are deliberately different, the reference's own two recognizers
+// disagreeing about a host with no alphanumeric in its TLD. The rows here reach
+// the raw one, so hostRejected is the column that speaks for them; the split
+// itself is pinned in urlliteral_test.go.
 //
 // This is the property that makes one pattern one verdict. goldmark ships
 // its own scheme-less pattern (`www\.…{1,256}\.[a-z]+`), and while the
