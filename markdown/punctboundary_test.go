@@ -70,6 +70,14 @@ var punctBoundaryCases = []struct {
 	//	"z@www.a.b c"     ->  "mailto:z@www.a.b"  at 0-9
 	{name: "at sign", boundary: "@", links: true, wwwWant: "mailto:z@www.a.b"},
 	{name: "close bracket", boundary: "]", links: true},
+	// '<' was the last byte held back, and for a reason outside the parser:
+	// Source.Autolinks used to read a '<' at Node.Pos as the ANGLE form and so
+	// DROPPED the literal instead of placing it (measured with the byte in the
+	// set and the sniff still there: tree link present, Autolinks() empty,
+	// UnlocatedAutolinks() 1). The form is now carried on the node — see
+	// autolinkIsAngle — so the byte is a plain boundary here and the guard
+	// below places it at 2-12 like every other row.
+	{name: "less than", boundary: "<", links: true},
 	{name: "caret", boundary: "^", links: true},
 	{name: "backtick", boundary: "`", links: true},
 	{name: "open brace", boundary: "{", links: true},
@@ -95,16 +103,6 @@ var punctBoundaryCases = []struct {
 	{name: "ampersand", boundary: "&", links: false, why: "character-reference byte"},
 	{name: "hash", boundary: "#", links: false, why: "character-reference byte"},
 	{name: "semicolon", boundary: ";", links: false, why: "character-reference byte"},
-
-	// HELD BACK for the second reason: Source.Autolinks reads a '<' at
-	// Node.Pos as the ANGLE form, so a linkify parser triggering there makes
-	// it DROP the node instead of reporting a span. Measured with '<' in the
-	// set: "z<http://a.b c" has a tree link, Autolinks() is empty, and
-	// UnlocatedAutolinks() is 1. The reference links it at 2-12, so this row
-	// records a real remaining divergence and not a settled verdict — see
-	// punctLinkifyBoundaries, and TestBoundaryLiteralsAllResolveToASpan for
-	// the guard that fails if the byte is added without fixing that view.
-	{name: "less than", boundary: "<", links: false, why: "a '<' at Pos means the angle form to the span view"},
 
 	// UNREACHABLE: another parser answers first and does not decline. The
 	// link parser returns the bracket as text, so nothing behind it is asked.
@@ -228,18 +226,25 @@ func TestPunctBoundarySetsAgree(t *testing.T) {
 // do damage that no linking assertion notices.
 //
 // Source.Autolinks does not read the parser's sets. It resolves an autolink's
-// written extent from Node.Pos — the byte BEFORE the address — and it reads a
-// '<' there as the ANGLE form, whose address must be closed by a '>'. Its doc
-// justifies that by the parser's trigger set, so widening the set silently
-// invalidates the justification: the node stops resolving and is DROPPED,
-// counted in UnlocatedAutolinks and reported nowhere. A link assertion still
-// passes, because the tree link is fine.
+// written extent from Node.Pos — the byte BEFORE the address — so a boundary
+// byte the parser starts claiming arrives at that view as a byte it has to
+// place, and a byte it cannot place is DROPPED: counted in UnlocatedAutolinks
+// and reported nowhere. A link assertion still passes, because the tree link
+// is fine.
+//
+// THAT IS NOT HYPOTHETICAL, and it is why this test exists rather than a
+// linking table alone. The view used to decide an autolink's FORM by sniffing
+// Node.Pos for a '<', justified by no linkify parser triggering on that byte —
+// so claiming '<' here made "z<http://a.b c" build a correct AutoLink, read it
+// as the angle form, find no '>' behind the address, and drop it. Measured with
+// '<' in punctLinkifyBoundaries and the sniff still in place, this test failed
+// on both bodies with UnlocatedAutolinks() == 1 and an empty Autolinks(). The
+// form is now carried on the node instead (autolinkIsAngle), the byte is in the
+// set, and both bodies place at 2-12 and 2-9.
 //
 // So the property is asserted the honest way: every boundary byte this package
-// claims must leave a bare literal that resolves to a TIGHT span AND leaves
-// the unlocated count at zero. Measured with '<' added to
-// punctLinkifyBoundaries, this test fails on both bodies with
-// UnlocatedAutolinks() == 1.
+// claims must leave a bare literal that resolves to a TIGHT span AND leave the
+// unlocated count at zero.
 func TestBoundaryLiteralsAllResolveToASpan(t *testing.T) {
 	t.Parallel()
 	for _, b := range linkifyBoundaryBytes + punctLinkifyBoundaries {

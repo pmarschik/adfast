@@ -32,10 +32,15 @@ type Autolink struct {
 	Text Span
 	// Bare reports whether the autolink was inferred from running text
 	// ("see https://a.example") rather than written in angle brackets
-	// ("see <https://a.example>"). This is the distinction the node alone
-	// cannot make — see Autolinks — and the one a normalizer rewriting bare
-	// URLs into the bracketed form needs, because rewriting the bracketed
-	// form again would double its brackets.
+	// ("see <https://a.example>"). It is the distinction a normalizer
+	// rewriting bare URLs into the bracketed form needs, because rewriting
+	// the bracketed form again would double its brackets.
+	//
+	// goldmark's own node does not carry this: it reports one AutoLink kind
+	// for both spellings. What answers it is an attribute this package's
+	// autolink parser stamps on the bracketed form — see autolinkIsAngle —
+	// which is inside the parse and not something a caller holding a tree
+	// can reconstruct from the bytes around the node.
 	Bare bool
 	// Email reports whether the address is an email address rather than a
 	// URL. An email autolink is bracketed the same way and reported the
@@ -117,20 +122,36 @@ func (s *Source) Autolinks() []Autolink {
 // could NOT resolve to a written extent, and therefore left out of its
 // result. A caller can tell an empty view from an incomplete one with it.
 //
-// NO INPUT IS KNOWN TO MAKE IT NONZERO, and that is reported here rather
-// than left as an implied guarantee. The shape a DEFINITION's resolver has
-// to discount — a container prefix ending in a partly consumed tab, whose
-// leftover columns the parser pads with spaces that stand for no byte — does
-// not reach an autolink, for the reason UnlocatedDefinitions' test records:
-// an autolink is an inline of a paragraph or a heading, and those trim each
-// line's leading whitespace, padding included, before the inline pass reads
-// them. Every tab-prefixed shape measured for this view resolved.
+// NO INPUT IS KNOWN TO MAKE IT NONZERO — a measurement over the inputs this
+// package tests, and deliberately not phrased as a guarantee, because the
+// same sentence was once written here as one and was FALSIFIED. It claimed
+// soundness from a parser's trigger set: autolinkExtent decided an autolink's
+// written form by sniffing the byte at Node.Pos for a '<', and the note said
+// that was safe because no linkify parser triggers on '<'. Widening
+// punctLinkifyBoundaries to the '<' the reference accepts — one constant, one
+// file over — made "z<http://a.b c" build a correct AutoLink that this view
+// then read as the angle form, found no closing '>' for, and dropped:
+// Autolinks() empty, this count 1, and a tree that carried the link all
+// along. The form is carried on the node now (see autolinkIsAngle) and that
+// input resolves, but the lesson is that a zero here is a thing to re-measure
+// and not to assume. TestBoundaryLiteralsAllResolveToASpan re-measures it for
+// every boundary byte the parsers claim.
 //
-// The count is still the honest half of resolve-or-drop. Two gates can drop
-// a node — the address bytes must be spelled at the offset the parser
-// recorded, and a text directive's label must be spelled where its own
-// extent says it is — and neither is a gate this package can prove
-// unreachable from outside goldmark.
+// One shape is known NOT to reach an autolink, which is worth stating because
+// a DEFINITION's resolver has to discount it: a container prefix ending in a
+// partly consumed tab, whose leftover columns the parser pads with spaces
+// that stand for no byte. An autolink is an inline of a paragraph or a
+// heading, and those trim each line's leading whitespace, padding included,
+// before the inline pass reads them. Every tab-prefixed shape measured for
+// this view resolved.
+//
+// The count is the honest half of resolve-or-drop, and what it reports is the
+// three gates: the address bytes must be spelled at the offset the parser
+// recorded, an ANGLE form's brackets must be spelled around them, and a text
+// directive's label must be spelled where its own extent says it is. None of
+// the three is a gate this package can prove unreachable from outside
+// goldmark, so a caller that must distinguish an empty view from an
+// incomplete one reads this rather than trusting the paragraph above.
 func (s *Source) UnlocatedAutolinks() int {
 	s.Autolinks()
 	return s.autolinksUnlocated
@@ -222,8 +243,34 @@ func shiftAutolink(a Autolink, by int) Autolink {
 	return a
 }
 
-// autolinkExtent resolves one autolink to its written extent, and decides
-// which of the two written forms it is.
+// autolinkIsAngle reports whether n is the ANGLE form — written
+// `<https://a.example>` — rather than a literal the linkify parsers inferred
+// from running text.
+//
+// THE FORM IS CARRIED, NOT SNIFFED, and that is the whole point of this
+// helper. angleAutoLinkParser wraps goldmark's core autolink parser — the
+// only parser in this package that accepts the bracketed spelling — and
+// stamps the node it produces with the `angleAutoLink` attribute. Presence is
+// the answer, which is how convertGoldmarkAutoLink already reads it, so the
+// span view and the AST conversion agree on the form by construction.
+//
+// WHAT IT REPLACED, because the replacement is the fix and not a tidy-up:
+// this used to be `src[Node.Pos()] == '<'`, justified by no linkify parser
+// triggering on `<`. That made the view's correctness a hostage of a
+// PARSER'S TRIGGER SET one file over. Widening punctLinkifyBoundaries to the
+// `<` the reference accepts built a correct AutoLink at a Pos pointing at
+// that `<` with no `>` behind the address, so the sniff called it the angle
+// form, the `>` check failed, and the node was DROPPED: the tree answered
+// "there is a link here" and this view answered "there is none". Measured
+// with `<` in the set and the sniff still in place, `z<http://a.b c` gave
+// Autolinks() == [] and UnlocatedAutolinks() == 1.
+func autolinkIsAngle(n *gast.AutoLink) bool {
+	_, angle := n.AttributeString("angleAutoLink")
+	return angle
+}
+
+// autolinkExtent resolves one autolink to its written extent, in the form
+// autolinkIsAngle reports for it.
 //
 // THE PROBLEM. goldmark keeps an autolink's source segment in an unexported
 // field, and exposes only its VALUE (AutoLink.Label) — so the address is
@@ -245,11 +292,13 @@ func shiftAutolink(a Autolink, by int) Autolink {
 // accepted only when the source SPELLS THE ADDRESS THERE. Nothing is
 // assumed: an offset that does not verify drops the node.
 //
-// THE FORM. `<` is not one of the five characters the linkify parser
-// triggers on (` `, `*`, `_`, `~`, `(`), and it is not a character the
-// fragment-head route can leave before an address either, because it opens
-// an inline of its own. So a `<` at Pos means the ANGLE form, and its
-// closing `>` is verified too. Everything else that resolves is BARE.
+// The form narrows that to one offset each. The ANGLE form's address is at
+// Pos+1 by construction — Pos is the bracket — so both brackets are
+// verified, and the BARE form is the two-offset case above. The bracket
+// check is VERIFICATION of a span this function is about to claim covers a
+// `<`, not the derivation of the form: a bare literal whose boundary byte
+// happens to be `<`, which is what "z<http://a.b" is, reaches the bare
+// branch and resolves to the address alone.
 func autolinkExtent(n *gast.AutoLink, src []byte) (Autolink, bool) {
 	pos := n.Pos()
 	if pos < 0 || pos > len(src) {
@@ -263,7 +312,10 @@ func autolinkExtent(n *gast.AutoLink, src []byte) (Autolink, bool) {
 		Target: string(n.URL(src)),
 		Email:  n.AutoLinkType == gast.AutoLinkEmail,
 	}
-	if pos < len(src) && src[pos] == '<' {
+	if autolinkIsAngle(n) {
+		if pos >= len(src) || src[pos] != '<' {
+			return Autolink{}, false
+		}
 		text, ok := addressAt(src, pos+1, addr)
 		if !ok || text.Stop >= len(src) || src[text.Stop] != '>' {
 			return Autolink{}, false
