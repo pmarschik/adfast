@@ -368,30 +368,32 @@ func (*wwwCaseLinkifyParser) parseMixedCaseWWW(parent gast.Node, block text.Read
 // the node it is inside, which is render_escape.go's business and not this
 // parser's, so the three bytes stay out and "z&http://a.b" stays prose.
 //
-// '<' is held back for a different reason, and it is the one omission that
-// trades one divergence for another rather than avoiding a regression.
-// Source.Autolinks resolves an autolink's written extent from Node.Pos, which
-// is the byte BEFORE the address, and it reads a '<' there as the ANGLE form —
-// the form whose address must be closed by a '>'. Its doc states outright that
-// this is sound BECAUSE no linkify parser triggers on '<'. Registering one
-// makes "z<http://a.b c" build an AutoLink whose Pos is that '<' with no '>'
-// behind the address, so the extent fails to resolve and the node is DROPPED
-// from that view instead of reported. Measured both ways, whole bodies:
+// '<' IS CLAIMED, and it was the last byte held back for a reason outside
+// this parser. Source.Autolinks resolves an autolink's written extent from
+// Node.Pos, which is the byte BEFORE the address, and it used to read a '<'
+// there as the ANGLE form — the form whose address must be closed by a '>'.
+// Its doc justified that sniff BY THIS SET, so adding the byte made
+// "z<http://a.b c" build a correct AutoLink whose extent then failed to
+// resolve, and the node was DROPPED from that view instead of reported.
+// Measured all three ways, whole bodies:
 //
-//	                  '<' in this set          '<' out (here)
-//	"z<http://a.b c"  tree link, span view []  no link at all
-//	                  UnlocatedAutolinks() 1   UnlocatedAutolinks() 0
-//	"z<www.a.b c"     tree link, span view []  no link at all
-//	                  UnlocatedAutolinks() 1   UnlocatedAutolinks() 0
+//	                  '<' out, sniff          '<' in, sniff            '<' in, carried form (here)
+//	"z<http://a.b c"  no link at all          tree link, span view []  link, span 2-12
+//	                  UnlocatedAutolinks() 0  UnlocatedAutolinks() 1   UnlocatedAutolinks() 0
+//	"z<www.a.b c"     no link at all          tree link, span view []  link, span 2-9
+//	                  UnlocatedAutolinks() 0  UnlocatedAutolinks() 1   UnlocatedAutolinks() 0
 //
 // The reference links both — "z<http://a.b c" reports "http://a.b" at 2-12 —
-// so NEITHER column matches it. The byte stays out because closing the gap
-// properly is source_autolinks.go's business: that view has to tell the two
-// written forms apart by something other than the byte at Pos before a parser
-// may trigger here. TestBoundaryLiteralsAllResolveToASpan holds the line in the
-// meantime — it fails on the unlocated count the moment a byte with this hazard
-// is added.
-const punctLinkifyBoundaries = "!\"$%'),+-./=>?@[]^`{|}"
+// so only the third column matches it, and the first two are the divergence
+// this byte used to record. What made the byte claimable is that the span view
+// no longer derives the form from a neighboring byte: angleAutoLinkParser
+// stamps the bracketed spelling with the "angleAutoLink" attribute and
+// autolinkIsAngle reads it, so a literal whose left boundary happens to be
+// '<' is a BARE autolink there, as it is here.
+// TestBoundaryLiteralsAllResolveToASpan is what pairs the two files — it fails
+// on the unlocated count the moment a byte this set claims stops resolving to
+// a span.
+const punctLinkifyBoundaries = "!\"$%'),+-./<=>?@[]^`{|}"
 
 // punctLinkifyParser linkifies a bare URL literal that follows an ASCII
 // punctuation byte outside goldmark's five-byte trigger set.
