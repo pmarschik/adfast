@@ -922,16 +922,17 @@ func singleParagraphItem(item *ast.ListItem) (*ast.Paragraph, bool) {
 	return p, ok
 }
 
-// blockTaskItemLead reports whether the item's first block is a
-// non-empty paragraph — the only shape whose checkbox survives the
-// markdown round trip (a bare "- [ ]" marker re-parses as literal
-// text), and the schema's blockTaskItem lead anyway.
+// blockTaskItemLead reports whether the item's first block is a paragraph
+// — the schema's blockTaskItem lead, and the shape whose checkbox survives
+// the markdown round trip. The paragraph may be empty: a marker alone on
+// its line still heads the blocks indented under it, and flattening such
+// an item would drop every non-paragraph block it carries.
 func blockTaskItemLead(children []ast.Node) bool {
 	if len(children) == 0 {
 		return false
 	}
-	p, ok := children[0].(*ast.Paragraph)
-	return ok && len(p.Children) > 0
+	_, ok := children[0].(*ast.Paragraph)
+	return ok
 }
 
 // convertDecisionItems converts the items of a ::decisions-marked bullet

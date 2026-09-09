@@ -1909,20 +1909,22 @@ func singleParagraphTaskItem(item *ast.ListItem) (*ast.Paragraph, bool) {
 	return p, ok
 }
 
+// taskItemLead mirrors convert's blockTaskItemLead: a paragraph lead, empty
+// or not, keeps the item's blocks instead of flattening them.
 func taskItemLead(children []ast.Node) bool {
 	if len(children) == 0 {
 		return false
 	}
-	p, ok := children[0].(*ast.Paragraph)
-	return ok && len(p.Children) > 0
+	_, ok := children[0].(*ast.Paragraph)
+	return ok
 }
 
 func taskBlocksRenderable(blocks []ast.Node) bool {
 	if len(blocks) == 0 {
 		return false
 	}
-	p, ok := blocks[0].(*ast.Paragraph)
-	return ok && len(p.Children) > 0
+	_, ok := blocks[0].(*ast.Paragraph)
+	return ok
 }
 
 // ---------------------------------------------------------------------------

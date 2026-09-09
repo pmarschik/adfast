@@ -844,6 +844,12 @@ func parseOrderedMarker(line []byte) (num, gap int, ok bool) {
 // followed by whitespace and actual content on the same line.
 var taskCheckboxValidRe = regexp.MustCompile(`^\[[ xX]\][ \t]+[^ \t\r\n]`)
 
+// taskCheckboxBareRe is a marker that ends its own line: nothing but
+// optional trailing whitespace follows the closing bracket. Such a marker
+// carries no lead text, so it only counts as a checkbox when the item has
+// further blocks for the checkbox to head (see scanTaskCheckbox).
+var taskCheckboxBareRe = regexp.MustCompile(`^\[[ xX]\][ \t]*\r?\n?$`)
+
 type taskCheckbox struct {
 	raw     string // literal "[x]"/"[X]"/"[ ]" source text
 	present bool   // goldmark produced a TaskCheckBox node
@@ -881,10 +887,26 @@ func scanTaskCheckbox(li *gast.ListItem, src []byte) taskCheckbox {
 	}
 	return taskCheckbox{
 		present: true,
-		valid:   taskCheckboxValidRe.Match(line),
+		valid:   taskCheckboxValid(line, block),
 		checked: cb.IsChecked,
 		raw:     raw,
 	}
+}
+
+// taskCheckboxValid reports whether a checkbox goldmark found on the item's
+// first block line is a task marker rather than literal bracket text.
+//
+// remark-gfm needs lead text on the marker line, and a marker alone on its
+// line is literal there — but only because it has nothing to head. When the
+// item continues with an indented block, the marker does head something:
+// dropping it there would strand the block in a plain bullet and print a
+// stray "[ ]" where the checkbox belongs, so the marker is kept and the item
+// carries an empty lead.
+func taskCheckboxValid(line []byte, block gast.Node) bool {
+	if taskCheckboxValidRe.Match(line) {
+		return true
+	}
+	return block.NextSibling() != nil && taskCheckboxBareRe.Match(line)
 }
 
 func convertGoldmarkTable(table *east.Table, src []byte, lc *liftCtx, depth int) ast.Node {

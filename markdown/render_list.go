@@ -440,22 +440,33 @@ func (r *mdRenderer) renderTaskList(b *strings.Builder, node *ast.List, bullet s
 			continue
 		}
 		inlines := firstParagraphInlines(item)
-		if len(inlines) == 0 {
-			// remark renders an empty task item as a bare marker — "- [ ] "
-			// with no content would re-parse as a literal "[ ]". Follow
-			// blocks without a leading paragraph are unreachable from the
-			// conversions (they degrade before rendering) and are dropped
-			// here like the historical renderer did.
+		if len(inlines) == 0 && !taskItemHasFollowBlocks(item) {
+			// remark renders a wholly empty task item as a bare marker —
+			// "- [ ] " with no content at all would re-parse as a literal
+			// "[ ]". Follow blocks without a leading paragraph are
+			// unreachable from the conversions (they degrade before
+			// rendering) and are dropped here like the historical renderer
+			// did.
 			b.WriteString(bullet)
 			b.WriteString("\n")
 			continue
 		}
 		b.WriteString(bullet)
+		marker := " [ ]"
 		if item.Checked != nil && *item.Checked {
-			b.WriteString(" [x] ")
-		} else {
-			b.WriteString(" [ ] ")
+			marker = " [x]"
 		}
+		b.WriteString(marker)
+		if len(inlines) == 0 {
+			// An empty lead with blocks under it: the marker ends its own
+			// line (no trailing space to strip) and the blocks follow
+			// indented, which is the shape the parse leg reads back as this
+			// same empty-lead task item.
+			b.WriteString("\n")
+			r.renderTaskItemFollowBlocks(b, item)
+			continue
+		}
+		b.WriteString(" ")
 		// Wrap like any list item: the "- [ ] " prefix consumes 6 columns
 		// and continuation lines align under the content.
 		saved := r.prefixWidth
@@ -492,6 +503,17 @@ func (r *mdRenderer) renderTaskItemFollowBlocks(b *strings.Builder, item *ast.Li
 	for i := 1; i < len(item.Children); i++ {
 		r.renderItemFollowBlock(b, item, i, "  ", 0, false, false, &alt)
 	}
+}
+
+// taskItemHasFollowBlocks reports whether a task item carries blocks after
+// its lead paragraph — the shape that keeps the checkbox meaningful even
+// when the lead itself is empty.
+func taskItemHasFollowBlocks(item *ast.ListItem) bool {
+	if len(item.Children) < 2 {
+		return false
+	}
+	_, ok := item.Children[0].(*ast.Paragraph)
+	return ok
 }
 
 // firstParagraphInlines returns the inline children of a list item's first
