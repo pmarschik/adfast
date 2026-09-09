@@ -147,10 +147,14 @@ func (r *mdRenderer) expandTableSpans(rows []ast.Node) (visual [][]string, colCo
 // it ends the row and turns the three-line table into four lines, which
 // is a worse loss than the empty cell this projection was written to fix.
 // Every Value-carrying case therefore passes its text through
-// foldCellLines; a new case must do the same. Pipes are the narrower
-// worry: the cell's inline writer escapes them inside the inline nodes it
-// writes, so only a kind written verbatim, as raw HTML is, has to escape
-// its own.
+// foldCellLines; a new case must do the same.
+//
+// That is now a belt on top of braces, not the only guard: the same rule
+// runs over the finished cell string in renderCellString, because the
+// bytes that break a row also arrive through writers this projection
+// never sees. See cellSafeLine, which is where the invariant is stated.
+// Keeping it here as well costs nothing — both halves are idempotent —
+// and it keeps each recovered value readable where it is rewritten.
 //
 // The kinds this recurses into are exactly the ones the inline write
 // visitor degrades by writing their children, so flattening them here
@@ -204,8 +208,8 @@ func appendCellContent(out []ast.Node, node ast.Node) []ast.Node {
 		// does the cell, and an inline span is the common case here
 		// because a parse splits inline HTML into tag-only nodes. But
 		// verbatim is not automatically safe: a value carrying a newline
-		// or a bare pipe breaks the row it sits in. See cellSafeHTML.
-		safe := cellSafeHTML(n.Value)
+		// or a bare pipe breaks the row it sits in. See cellSafeLine.
+		safe := cellSafeLine(n.Value)
 		if safe == n.Value {
 			return append(out, node)
 		}
@@ -264,24 +268,43 @@ func foldCellLines(s string) string {
 	return b.String()
 }
 
-// cellSafeHTML makes a raw HTML value writable on one table line: every
-// newline becomes a space, and a bare pipe is escaped.
+// cellSafeLine makes text writable on the one line a table row is: every
+// end of line becomes a space, and a bare pipe is escaped. It is the whole
+// of the cell invariant — a GFM cell is ONE LINE whose pipes are escaped —
+// stated once, in one function.
 //
-// The newline half is foldCellLines, shared with every other value this
-// projection recovers. The pipe half is raw HTML's alone: an inline code
-// span's pipes are escaped for it by the cell's inline writer, while raw
-// HTML is written verbatim and so must arrive already safe.
+// It runs at two places, and the second is the load-bearing one:
 //
-// Both rewrites are unreachable from a parse, which is why they cannot
-// cost a round trip. A cell is one line, so a parsed HTML value never
-// holds a newline; and a pipe written inside a cell's HTML keeps its
-// backslash in the value itself — parsing "| <a title=\"a\\|b\">x</a> |"
-// yields the html node `<a title="a\|b">`, already escaped, which this
-// leaves alone. A bare pipe therefore only reaches here from a
-// hand-built tree or an ADF conversion, where before this it split the
-// row into two columns: "<b>a|b</b>" rendered "| <b>a|b</b> |".
+//   - on a value the projection above recovers verbatim (raw HTML), which
+//     would otherwise reach the row with its own bytes intact;
+//   - on the FINISHED cell string, in renderCellString.
 //
-// The reference does neither. Measured on a two-row table whose body
+// The boundary application is what makes the invariant hold, because the
+// bytes that break a row have no writer in common. An end of line reached
+// the output through a text value, a code span's value, a link or image
+// URL, a link title, a directive attribute value and the hard-break
+// writer, and through every inline wrapper that nests them — an emphasis,
+// a strikethrough, a directive label. A bare pipe reached it through the
+// three fields the per-writer escaping never consulted (a link title, an
+// image URL, an image title) plus a directive attribute, while the same
+// escaping already covered text values and link URLs. Sixteen shapes, no
+// common writer, and no way to stay exhaustive over the writers still to
+// come — so the rule is applied once, where a cell's bytes are finished,
+// instead of sixteen times upstream. The hard break is the single
+// construct that still has to know it is in a cell, because its rendered
+// form is a backslash AND an end of line and folding only the end of line
+// would leave the backslash behind; see writeHardBreak.
+//
+// Every rewrite here is unreachable from a parse, which is why the rule
+// cannot cost a round trip. A cell is one line, so no value a parse puts
+// in a cell holds an end of line; and a pipe written inside a cell keeps
+// its backslash in the value itself — parsing "| <a title=\"a\\|b\">x</a> |"
+// yields the html node `<a title="a\|b">`, already escaped, which the odd
+// backslash run below leaves alone. An unsafe byte therefore only reaches
+// here from a hand-built tree or an ADF conversion, which is exactly the
+// wire path.
+//
+// The reference does neither half. Measured on a two-row table whose body
 // cell holds the node (mdast-util-to-markdown with mdast-util-gfm-table),
 // an html value of "<div>\nA\n</div>" serializes to a third row of three
 // lines and "<b>a|b</b>" to a row of three columns — its unsafe patterns
@@ -290,7 +313,7 @@ func foldCellLines(s string) string {
 // code block. The space is the reference's own answer to an end of line
 // that the enclosing construct cannot hold: a break inside a table cell
 // serializes to " " rather than to "\\\n".
-func cellSafeHTML(s string) string {
+func cellSafeLine(s string) string {
 	s = foldCellLines(s)
 	if !strings.Contains(s, "|") {
 		return s

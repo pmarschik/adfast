@@ -97,11 +97,23 @@ func (r *mdRenderer) renderInlineStringFrom(nodes []ast.Node, prev byte) string 
 
 // renderCellString renders inline nodes inside a table cell, where
 // remark-stringify does not apply the phrasing colon-escape rule.
+//
+// The result passes through cellSafeLine, which holds the invariant a GFM
+// cell has and a paragraph does not: it is ONE LINE, and its pipes are
+// escaped. This is the only place every byte of a cell is known, and the
+// bytes that break a cell have no writer in common — an end of line
+// reached the row through a text value, a code span, a link or image URL,
+// a link title, a directive attribute and the hard-break writer, and
+// through every inline wrapper nesting them; a bare pipe reached it
+// through the three fields the per-writer escaping never consulted. So
+// the rule is enforced here rather than sixteen times upstream. See
+// cellSafeLine for the measured reference behavior and for why neither
+// rewrite can cost a round trip.
 func (r *mdRenderer) renderCellString(nodes []ast.Node) string {
 	var b strings.Builder
 	st := inlineContext{prev: '\n', hasPrev: true, escape: true, colons: false, pipes: true, prevRune: '\n'}
 	r.writeInlines(&b, nodes, &st)
-	return b.String()
+	return cellSafeLine(b.String())
 }
 
 func (r *mdRenderer) writeInlines(b *strings.Builder, nodes []ast.Node, st *inlineContext) {
@@ -465,8 +477,8 @@ func (r *mdRenderer) writeTextInline(b *strings.Builder, nodes []ast.Node, i int
 //
 // A space is what the reference writes there (mdast-util-to-markdown
 // returns " " when an end of line is unsafe in the enclosing construct),
-// and it is the same fold the cell projection already applies to every
-// value it recovers; see foldCellLines. The break has to answer this in
+// and it is the same fold every other value a cell carries already takes;
+// see cellSafeLine. The break has to answer this in
 // the writer rather than by folding the finished line, because its
 // rendered form is a backslash AND an end of line: folding only the end
 // of line would strand the backslash in the text ("a\ b" instead of
