@@ -11,8 +11,10 @@ in doc.go.
 - `mise run fmt` — format the code
 - `mise run lint` — run the linters
 - `mise run test` — run the tests
-- `go test -fuzz FuzzRoundTripIdempotent ./...` — grow the round-trip
-  corpus
+- `go test -run xxx -fuzz FuzzRoundTripIdempotent -fuzztime=90s .` — grow
+  the round-trip corpus. The package argument is `.`, not `./...`; see
+  "Running the fuzzers" below for why neither `./...` nor `./markdown/`
+  works.
 
 **Format and check through the tasks, not through the tools.** `mise run
 fmt` formats everything the repo owns, `mise run lint` and `mise run check`
@@ -84,6 +86,42 @@ build on it. A breaking change reaches every downstream consumer.
   inputs that remark is equally unstable on, and goldmark parser
   divergences. Each class has a probe input. Do not silence a new
   failure without that analysis.
+
+#### Running the fuzzers, and the two ways it goes wrong
+
+Both of these have cost real time, and both fail quietly rather than
+loudly.
+
+- **`FuzzRoundTripIdempotent` lives in the ROOT package**
+  (`adf_fuzz_test.go`), not in `./markdown/`, and the package argument has
+  to name it exactly. `./...` refuses outright — `cannot use -fuzz flag
+  with multiple packages` — and the natural next guess, `./markdown/`,
+  is the dangerous one: it prints `no fuzz tests to fuzz`, then `PASS`, and
+  exits 0. So "I ran the fuzzer" can mean nothing was measured. Measured
+  2026-09-09 on the same tree: `-fuzztime=5s .` reproduces the known
+  `:www.0` crasher in 1.1s, while `./markdown/` passes in 0.4s. Run it as
+  `go test -run xxx -fuzz FuzzRoundTripIdempotent -fuzztime=90s .`, and run
+  `FuzzFormatSemanticsPreserved` too — it catches what the round-trip leg
+  misses.
+- **`testdata/fuzz` is a TRACKED corpus of ~225 files.** Clearing fuzzer
+  output with `rm -rf testdata/fuzz` deletes it. Delete only the files the
+  run just wrote, and check `git status --untracked-files=all` before
+  committing. A commit carrying a corpus deletion is a serious error.
+- A crasher you hit is not automatically yours. Before concluding anything,
+  replay the minimized seed on the base commit and compare the output byte
+  for byte — a `-fuzztime` budget under ~90s also means whole families
+  never surface, so a clean short run is weak evidence.
+- **A round-trip run that dies in seconds has told you nothing about your
+  change.** While a shallow crasher is open, the fuzzer reaches it long
+  before it reaches anything new, and every further second of budget is
+  spent re-failing it. Measured 2026-09-09: `FuzzRoundTripIdempotent` dies
+  on `:www.0` at 0.58s, and with a fresh `GOCACHE` — which discards the
+  2371-entry generated corpus — it explores 253,278 execs in 6.4s and then
+  finds the same input on its own. So clearing the cache is not the fix,
+  and the leg is not a gate until that input is fixed. Read the elapsed
+  time before reading the verdict, and if the run ended on a crasher that
+  was already open, say that the leg was blocked rather than that it
+  passed.
 
 ### Which prettier is the reference
 
