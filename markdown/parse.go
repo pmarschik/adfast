@@ -48,6 +48,27 @@ import (
 // backslash back reproduces the reference byte-for-byte with no provenance
 // to carry.
 //
+// ADDING '`' HERE IS A MEASURED NO-OP, and the reason is worth stating
+// because the byte looks like the lever for the one row where this leg and
+// prettier 3.8.1 disagree. Provenance can only carry a backslash the author
+// WROTE. On "a\`b" the escape already survives byte for byte without it —
+// escapesInlineMarker re-derives the same backslash — and the divergent row
+// is the opposite spelling, a BARE backtick: "a`b" formats to "a\`b" here and
+// prettier 3.8.1 leaves it alone. That source has no backslash run to record,
+// so no widening of this set can reach it; the escape decision is
+// escapesInlineMarker's alone. Measured 2026-09-09 by adding '`' and
+// re-rendering 13,986 documents over {a ` \ * _ space} in nine block and
+// inline contexts on both legs: zero byte differences, whole suite green.
+// (Dropping '\' from the set as a control moved 1,648 of them, so the corpus
+// could see a change.) '*' does not have that divergence at all: prettier
+// 3.8.1 escapes a bare "a*b" to "a\*b" just as this leg does.
+//
+// Making the bare-backtick row match would mean gating escapesInlineMarker on
+// provenance, which is a different and much larger change: the unconditional
+// escape is what keeps an ADF-origin text value containing a backtick from
+// re-parsing as a code span, and prettier only gets away without it by
+// echoing source it never has to re-derive.
+//
 // '#' IS LEFT OUT UNDER PROTEST, and the reason is a rule that runs after
 // the escaper rather than a property of the character. An ATX heading's
 // trailing '#' would re-parse as a closing sequence, so renderHeading
