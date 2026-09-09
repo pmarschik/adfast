@@ -22,6 +22,13 @@ cocogitto = "7.0.0"
 [env]
 HK_FILE = ".config/hk.pkl"
 HK_MISE = "1"
+# dprint's discovery looks only for dprint.json(c) / .dprint.json(c) walking up
+# from the cwd, so it can never find .config/dprint.json. Finding nothing it
+# falls back to the home config of whoever ran it and measures this repo against
+# a plugin set it never chose. Disabling discovery turns that silent fallback
+# into exit 11, so every route has to name the config — the mise tasks and the
+# hk steps already pass `-c .config/dprint.json`.
+DPRINT_CONFIG_DISCOVERY = "false"
 
 # Tasks are file-based in .config/mise/tasks/
 # See assets/go/tasks/ for the task scripts

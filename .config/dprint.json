@@ -1,14 +1,21 @@
 {
   "extends": "https://raw.githubusercontent.com/pmarschik/devkit/v1/dprint/go.json",
 
-  // The repo root carries a `dprint.json` symlink to this file. dprint only
-  // discovers a config named `dprint.json`, `dprint.jsonc`, `.dprint.json` or
-  // `.dprint.jsonc`; it does not look inside `.config/`. Without the symlink a
-  // bare `dprint check` finds nothing here, falls back to the config in the
-  // home directory of whoever runs it, and reports files against a plugin set
-  // this repo never chose. `mise run fmt` and the hooks pass
-  // `-c .config/dprint.json`, so both routes read the same file. Still true on
-  // 0.56.1, measured: drop the symlink and a bare run picks up the home config.
+  // Every route to dprint names this file: `mise run fmt` and `mise run lint`
+  // pass `-c .config/dprint.json`, and so do the three hk steps. Nothing
+  // relies on discovery, because dprint's discovery cannot find this file —
+  // it looks only for `dprint.json`, `dprint.jsonc`, `.dprint.json` or
+  // `.dprint.jsonc` walking up from the cwd, never inside `.config/`.
+  //
+  // Finding none, a bare `dprint check` used to fall back to the config in the
+  // home directory of whoever ran it and report this repo against a plugin set
+  // it never chose. `DPRINT_CONFIG_DISCOVERY = "false"` in
+  // `.config/mise/config.toml` closes that: with no `-c`, dprint now exits 11
+  // with "Config discovery was disabled and no plugins and/or config was
+  // specified" instead of silently measuring something else. The repo root
+  // carried a `dprint.json` symlink for this before; the guard replaces it,
+  // because a symlink makes the wrong invocation succeed while the guard makes
+  // it fail.
   //
   // dprint 0.55.1 also skipped the directory holding the config, so `.config/**`
   // reached no gate at all — nine files here, with `-c` or without it. 0.56.1

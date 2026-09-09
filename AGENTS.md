@@ -31,9 +31,13 @@ already correct:
   the hooks ever rewrite that file, regenerate it with
   `go run ./internal/genemoji -output dialect/emoji_map.go` rather than
   keeping the rewrite.
-- `dprint` reads `.config/dprint.json` through the `dprint.json` symlink at
-  the repo root. Read the comments in that file before you move either one.
-  dprint never formats `.config/**`, so a file there is formatted by hand.
+- `dprint` needs `-c .config/dprint.json` every time:
+  `mise exec dprint -- dprint check -c .config/dprint.json`. Discovery cannot
+  find a config under `.config/`, so a bare run once fell back to the home
+  config of whoever ran it. `DPRINT_CONFIG_DISCOVERY = "false"` in
+  `.config/mise/config.toml` now makes that bare run fail (exit 11) rather
+  than report this repo against a plugin set it never chose. The `mise` and
+  `hk` tasks already pass `-c`; only a hand-typed command can get it wrong.
 
 ## Conventions
 
