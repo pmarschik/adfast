@@ -38,8 +38,13 @@ type inlineContext struct {
 	nodeHasPrev bool
 	escape      bool // markdown character escaping (off inside link labels)
 	colons      bool // directive colon escaping (off in table cells + link labels)
-	pipes       bool // '|' escaping inside table cells (mdast-util-gfm-table)
-	label       bool // inside a link label (atomic: no marker-risk escaping)
+	// pipes turns on '|' escaping inside table cells
+	// (mdast-util-gfm-table). renderCellString sets it and nothing else
+	// does, so it doubles as the "the enclosing construct is a table
+	// cell" fact — which is why writeHardBreak and escapeOrderedMarker
+	// read it for reasons that have nothing to do with pipes.
+	pipes bool
+	label bool // inside a link label (atomic: no marker-risk escaping)
 	// encodeLead asks the next text node to hex-encode its first
 	// alphanumeric rune (set when an adjacent emphasis marker would not be
 	// flankable — remark-stringify does the same with &#xNN; references).
@@ -259,12 +264,35 @@ func (v *inlineWriteVisitor) VisitFootnoteRef(n *ast.FootnoteRef) struct{} {
 	return struct{}{}
 }
 
-// VisitDefinition implements ast.ReferenceVisitor: a definition is a
-// block, so in inline position it degrades to its content — and it has
-// none, so it writes nothing rather than leaking a half construct into
-// the line.
+// VisitDefinition implements ast.ReferenceVisitor. A definition is a
+// block, but degrading it to its children loses everything it has: the
+// label, the destination and the title are all fields and Children is
+// empty, so the inline fallback wrote NOTHING. Measured before this, on a
+// two-row table whose body cell holds ast.Definition{Label: "x",
+// URL: "u"}: the cell rendered "| A    |         |", the text gone. It is
+// the same "falls through to nothing" loss the cell projection already
+// fixes for a code block and for frontmatter.
+//
+// It is written in its block spelling instead, minus the line ending —
+// "[label]: url" plus the optional title, which is the one line a
+// definition occupies anyway, so nothing has to be given up to fit it
+// inline. That is also the reference's answer: mdast-util-to-markdown
+// hands each phrasing child to its own handler, and the definition
+// handler serializes the same form. Reachable only from a hand-built tree
+// or a conversion — a parse lifts a definition to block level — so the
+// change costs no round trip.
 func (v *inlineWriteVisitor) VisitDefinition(n *ast.Definition) struct{} {
-	return v.inlineFallback(n)
+	var def strings.Builder
+	v.r.renderDefinition(&def, n)
+	line := strings.TrimSuffix(def.String(), "\n")
+	v.b.WriteString(line)
+	if line != "" {
+		last := line[len(line)-1]
+		v.st.prev, v.st.hasPrev = last, true
+		v.st.prevRune = rune(last)
+	}
+	v.st.encodeLead = false
+	return struct{}{}
 }
 
 // VisitLinkRef implements ast.ReferenceVisitor.
@@ -426,7 +454,30 @@ func (r *mdRenderer) writeTextInline(b *strings.Builder, nodes []ast.Node, i int
 // only reaches that shape when whatever preceded the break rendered to
 // nothing (":emoji  \n0" — the emoji has no shortName to write), and the
 // backslash form carries the break there instead.
+//
+// Inside a table cell neither form can be written at all: a cell is one
+// line, so the end of line would end the ROW and the table would stop
+// being a table — the remainder of the document re-parses as a paragraph,
+// which loses far more than the break does. Measured before this, on a
+// two-row table whose body cell holds a paragraph of text, break, text:
+// Render produced "| A    | a\\\nb    |", four lines of output instead of
+// three.
+//
+// A space is what the reference writes there (mdast-util-to-markdown
+// returns " " when an end of line is unsafe in the enclosing construct),
+// and it is the same fold the cell projection already applies to every
+// value it recovers; see foldCellLines. The break has to answer this in
+// the writer rather than by folding the finished line, because its
+// rendered form is a backslash AND an end of line: folding only the end
+// of line would strand the backslash in the text ("a\ b" instead of
+// "a b").
 func (r *mdRenderer) writeHardBreak(b *strings.Builder, node *ast.Break, st *inlineContext) {
+	if st.pipes {
+		b.WriteString(" ")
+		st.prev, st.hasPrev = ' ', true
+		st.prevRune, st.encodeLead = ' ', false
+		return
+	}
 	switch {
 	case r.cfg.prettierText && node.Value == "  " && !atLineStart(st):
 		b.WriteString("  \n")
