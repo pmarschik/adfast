@@ -167,21 +167,154 @@ func TestRenderFence_PrettierIsStableOnAWhitespaceOnlyLastLine(t *testing.T) {
 	}
 }
 
-// A PIN, and a divergence worth naming: goldmark leaves the trailing blank
-// lines of an INDENTED code block out of the block entirely, so they never
-// reach the value and the lift cannot restore them. micromark keeps one
-// ("    a\n\n    \n" → value "a\n"; goldmark → "a"). The shared lift helper
-// serves both block kinds, so this pins that the fenced fix did not move
-// the indented case in either direction.
-func TestParseIndentedCode_TrailingBlankLinesNeverReachTheValue(t *testing.T) {
+// codeValues is fenceValues for a document whose code blocks are not all
+// at the top level — an indented block can sit inside a list item.
+func codeValues(t *testing.T, src string) []string {
+	t.Helper()
+	var out []string
+	var walk func(ast.Node)
+	walk = func(n ast.Node) {
+		if code, ok := n.(*ast.Code); ok {
+			out = append(out, code.Value)
+		}
+		for _, child := range ast.Children(n) {
+			walk(child)
+		}
+	}
+	walk(Parse([]byte(src)))
+	return out
+}
+
+// indentedTrailingDoc holds, in order: an indented block whose trailing
+// blank run ENDS in an indented blank line, one whose trailing lines are
+// entirely empty, one with an interior blank line, and a plain one-line
+// block. Only the first moves; the last three are the GOOD cases, and a
+// paragraph separates the blocks so they stay four blocks.
+const indentedTrailingDoc = "    a\n\n    \np\n\n    a\n\n\np\n\n    a\n\n    b\np\n\n    a\n"
+
+// A blank line at the end of an INDENTED block is content when it is
+// indented as far as the code, and it used to be lost. goldmark drops
+// those lines in the parser — codeBlockParser.Close slices them off the
+// segment list before the lift runs — so restoring them means reading them
+// back off the source; see indentedCodeTrailingLines.
+//
+// The values are the reference's, measured with mdast-util-from-markdown
+// 2.1.2 / micromark 4 on this exact document:
+//
+//	["a\n", "a", "a\n\nb", "a"]
+//
+// It is not a rendering detail: this value is also the text of the ADF
+// codeBlock, so the loss reached the wire (measured on "    a\n\n    \n":
+// codeBlock text "a" before, "a\n" after, and the reference's md→ADF leg
+// emits "a\n").
+func TestParseIndentedCode_KeepsTheTrailingBlankLinesInsideTheBlock(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ src, want string }{
-		{"    a\n\n    \n", "a"},
-		{"    a\n     \n", "a"},
-		{"    a\n\n    b\n", "a\n\nb"},
+	want := []string{"a\n", "a", "a\n\nb", "a"}
+	got := codeValues(t, indentedTrailingDoc)
+	if len(got) != len(want) {
+		t.Fatalf("parsed %d code blocks, want %d: %q", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("code[%d] value = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// The AST has no indented form, so both renders write these blocks as
+// fences — and the recovered line has to survive that and re-parse to
+// itself, or a format pass would keep deleting it. Measured with
+// mdast-util-to-markdown 2 on indentedTrailingDoc, which is also stable
+// there:
+//
+//	"```\na\n\n```\n\np\n\n```\na\n```\n\np\n\n```\na\n\nb\n```\n\np\n\n```\na\n```\n"
+func TestRenderIndentedCode_TheRecoveredLineSurvivesBothRenders(t *testing.T) {
+	t.Parallel()
+	const want = "```\na\n\n```\n\np\n\n```\na\n```\n\np\n\n```\na\n\nb\n```\n\np\n\n```\na\n```\n"
+	for _, mode := range []struct {
+		name string
+		opts []RenderOption
+	}{
+		{"remark", nil},
+		{"prettier", []RenderOption{WithPrettierText()}},
 	} {
-		if got := fenceValues(t, tc.src); len(got) != 1 || got[0] != tc.want {
-			t.Errorf("indented code of %q = %q, want [%q]", tc.src, got, tc.want)
+		got := Render(Parse([]byte(indentedTrailingDoc)), mode.opts...)
+		if got != want {
+			t.Errorf("%s render = %q, want %q", mode.name, got, want)
+		}
+		if again := Render(Parse([]byte(got)), mode.opts...); again != got {
+			t.Errorf("%s render not stable: %q then %q", mode.name, got, again)
+		}
+	}
+}
+
+// How far the trailing run reaches is the whole rule, and it is not "all
+// blank lines" in either direction: the block ends at the LAST blank line
+// indented as far as its content, and that line's own terminator is not
+// part of the value. So one indented blank line adds nothing, two add one,
+// and a run of entirely empty lines adds nothing however long it is.
+//
+// Every want is the reference's, measured with mdast-util-from-markdown
+// 2.1.2 / micromark 4. The rows that must NOT move sit next to the ones
+// that must.
+func TestParseIndentedCode_TheRunEndsAtTheLastIndentedBlankLine(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"no trailing blank", "    a\n", "a"},
+		{"one empty", "    a\n\n", "a"},
+		{"one indented blank", "    a\n    \n", "a"},
+		{"empty then indented", "    a\n\n    \n", "a\n"},
+		{"two empty", "    a\n\n\n", "a"},
+		{"two indented blank", "    a\n    \n    \n", "a\n"},
+		{"three indented blank", "    a\n    \n    \n    \n", "a\n\n"},
+		{"alternating", "    a\n\n    \n\n    \n", "a\n\n\n"},
+		{"short then indented", "    a\n  \n    \n", "a\n"},
+		{"indented then short", "    a\n    \n  \n", "a"},
+		{"no final newline", "    a\n    ", "a"},
+		{"then a paragraph", "    a\n\n    \np\n", "a\n"},
+		{"interior blank", "    a\n\n    b\n", "a\n\nb"},
+		// Past the code indent the rest of the blank line is content,
+		// which is why the columns and not the blankness decide.
+		{"over the indent", "    a\n     \n", "a\n "},
+		{"over the indent, then flush", "    a\n     \n    \n", "a\n "},
+		{"flush, then over the indent", "    a\n    \n     \n", "a\n\n "},
+		// The code indent is 4 past the block's own left edge, so an
+		// over-indented block and one inside a list item both keep the
+		// columns the reference keeps.
+		{"over-indented block", "        a\n        \n", "    a\n    "},
+		{"over-indented, flush tail", "        a\n    \n", "    a"},
+		{"inside a list item", "- x\n\n      a\n\n      \n", "a\n"},
+	} {
+		if got := codeValues(t, tc.src); len(got) != 1 || got[0] != tc.want {
+			t.Errorf("%s: indented code of %q = %q, want [%q]", tc.name, tc.src, got, tc.want)
+		}
+	}
+}
+
+// A PIN, and the two shapes the recovery deliberately skips, because the
+// column arithmetic of a tab and the line ending of a CRLF file are each a
+// divergence of their own. Both keep goldmark's answer, so both still
+// differ from the reference — recorded here so the gap is a decision and
+// not a surprise:
+//
+//	"    a\n\t \n"        micromark "a\n "  goldmark "a"
+//	"    a\r\n    \r\n"   micromark "a"     goldmark "a\r"
+//
+// The CR one is the shared value helper's, not the recovery's: a fence in
+// a CRLF file carries the same stray "\r" (measured: "```\na\r\n```\n"
+// parses to "a\r"). The good case is the same body with LF, which the
+// recovery does reach.
+func TestParseIndentedCode_ATabOrACarriageReturnKeepsGoldmarksAnswer(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, src, want string }{
+		{"tab past the indent", "    a\n\t \n", "a"},
+		{"tab at the indent", "    a\n\t\n", "a"},
+		{"tab indents the code", "\ta\n\t\n", "a"},
+		{"crlf", "    a\r\n    \r\n", "a\r"},
+		{"same body with lf", "    a\n\n    \n", "a\n"},
+	} {
+		if got := codeValues(t, tc.src); len(got) != 1 || got[0] != tc.want {
+			t.Errorf("%s: indented code of %q = %q, want [%q]", tc.name, tc.src, got, tc.want)
 		}
 	}
 }

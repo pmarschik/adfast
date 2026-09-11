@@ -481,7 +481,7 @@ func convertVerbatimBlock(node gast.Node, src []byte) (ast.Node, bool) {
 		}, true
 
 	case *gast.CodeBlock:
-		return &ast.Code{Value: codeBlockValue(n, src)}, true
+		return &ast.Code{Value: indentedCodeValue(n, src)}, true
 
 	case *gast.HTMLBlock:
 		var buf bytes.Buffer
@@ -601,6 +601,135 @@ func codeBlockValue(n interface{ Lines() *text.Segments }, src []byte) string {
 	// whitespace-only line rendered a blank last line that the next
 	// pass then dropped.
 	return strings.TrimSuffix(buf.String(), "\n")
+}
+
+// indentedCodeValue is codeBlockValue for an INDENTED block, where two
+// things differ from a fence.
+//
+// First, goldmark deletes the block's trailing blank lines in the PARSER,
+// not in the lift: codeBlockParser.Continue appends every blank line to
+// the block, and then Close (goldmark v1.8.5, parser/code_block.go) walks
+// back from the end over util.IsBlank lines and does
+// lines.SetSliced(0, length+1). The segments are gone from the node before
+// any of this package sees it, so codeBlockValue alone cannot restore
+// them — they have to be read back off the source, which is what
+// indentedCodeTrailingLines does.
+//
+// Second, the value carries one terminator LESS than a fence's. micromark
+// keeps the block's own line endings as content but rolls back the one
+// that follows its last line (there is no closing fence to hold it), and
+// mdast then drops a single trailing newline; for a fence that lands on
+// the line ending before "```", for an indented block on the last content
+// line's own. So the joined lines lose one more terminator here. The
+// difference is only ever visible when the last line is blank, since
+// codeBlockValue's own suffix trim already took the terminator of a
+// non-blank one.
+//
+// Measured with mdast-util-from-markdown 2.1.2 / micromark 4:
+//
+//	"    a\n\n    \n"          -> "a\n"    (was "a")
+//	"    a\n    \n    \n"      -> "a\n"    (was "a")
+//	"    a\n     \n"           -> "a\n "   (was "a")
+//	"        a\n        \n"    -> "    a\n    " (was "    a")
+//	"    a\n\n\n"              -> "a"      (unchanged)
+//	"    a\n    \n"            -> "a"      (unchanged)
+//
+// Like a fence's, this value is also the text of the ADF codeBlock, so the
+// loss was a wire-level one and not a rendering detail.
+func indentedCodeValue(n *gast.CodeBlock, src []byte) string {
+	joined := codeBlockValue(n, src) + indentedCodeTrailingLines(n, src)
+	return strings.TrimSuffix(joined, "\n")
+}
+
+// indentedCodeTrailingLines reads the trailing blank lines goldmark's
+// Close removed back off the source, de-indented and joined the way
+// codeBlockValue joins the lines it was left, with a leading "\n" so it
+// appends straight onto that value. It returns "" when the block gains no
+// line.
+//
+// A blank line holds the block open only when it is indented as far as the
+// block's content — micromark's furtherStart accepts a line whose prefix
+// reaches the code indent and otherwise keeps looking, so a run of blank
+// lines belongs to the block up to the LAST sufficiently indented one and
+// the rest are the blank lines after the block. That is the whole
+// difference between "    a\n\n    \n" (one line back) and "    a\n\n\n"
+// (none): both end in blank lines, only the first ends in an indented one.
+//
+// Two shapes deliberately keep goldmark's answer, because their column
+// arithmetic is a divergence of its own and none of the measured bodies
+// needs them: a tab anywhere in the block's indent or in one of the
+// trailing lines, and a padded first segment (a tab straddling the indent
+// boundary). Both make this return "".
+func indentedCodeTrailingLines(n *gast.CodeBlock, src []byte) string {
+	indent, ok := indentedCodeIndent(n, src)
+	if !ok {
+		return ""
+	}
+	off := n.Lines().At(n.Lines().Len() - 1).Stop
+
+	var blank []string
+	held := 0 // how many of them the block reaches
+	for off < len(src) {
+		end := len(src)
+		if nl := bytes.IndexByte(src[off:], '\n'); nl >= 0 {
+			end = off + nl
+		}
+		line := src[off:end]
+		if !isSpaceRun(line) {
+			break
+		}
+		if len(line) >= indent {
+			held = len(blank) + 1
+			blank = append(blank, string(line[indent:]))
+		} else {
+			// Short of the code indent: the prefix is the line's own
+			// padding, so the line contributes nothing but its ending.
+			blank = append(blank, "")
+		}
+		off = end + 1
+	}
+	if held == 0 {
+		return ""
+	}
+	return "\n" + strings.Join(blank[:held], "\n")
+}
+
+// indentedCodeIndent reports how many leading spaces the parser consumed
+// on the block's first line — 4 at the top level, and 4 past the prefix of
+// an enclosing list item. It reports false when that prefix is not spaces
+// alone, which is what keeps a tab and a blockquote's "> " out.
+func indentedCodeIndent(n *gast.CodeBlock, src []byte) (int, bool) {
+	if n.Lines().Len() == 0 {
+		return 0, false
+	}
+	first := n.Lines().At(0)
+	if first.Padding != 0 || first.Start > len(src) {
+		return 0, false
+	}
+	lineStart := 0
+	if nl := bytes.LastIndexByte(src[:first.Start], '\n'); nl >= 0 {
+		lineStart = nl + 1
+	}
+	if !isSpaceRun(src[lineStart:first.Start]) {
+		return 0, false
+	}
+	indent := first.Start - lineStart
+	if indent < 4 {
+		return 0, false
+	}
+	return indent, true
+}
+
+// isSpaceRun reports whether every byte is a space. A tab, a CR and any
+// content all answer false, so a caller reading a "blank" line back off
+// the source can treat columns as bytes.
+func isSpaceRun(bs []byte) bool {
+	for _, b := range bs {
+		if b != ' ' {
+			return false
+		}
+	}
+	return true
 }
 
 func convertGoldmarkList(n *gast.List, src []byte, lc *liftCtx, depth int) *ast.List {
