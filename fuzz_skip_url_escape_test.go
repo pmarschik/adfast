@@ -151,6 +151,21 @@ func TestEscapedURLSkipClassesLeaveTheStableNeighborsAlone(t *testing.T) {
 		{"mixed-case dotless host keeps its escape", "HTTPs\\://x"},
 		{"mixed-case dotless host inside emphasis", "*HTTp://*x**"},
 		{"a mixed-case scheme that is not stolen by a directive", ":HTTP://0.0"},
+		// THE ESCAPED-PUNCTUATION CLASS DOES NOT REACH A SCHEMED LITERAL, and
+		// these two rows are why the pattern needs no narrowing for it. The
+		// escape-adjacent verdict was fixed for this shape ("keep the escape
+		// and the link", the escape-adjacent-link commit) and the concern was
+		// that escapedPunctURLRe then grew back over it. It cannot: the
+		// renderer writes a bare schemed link in its ANGLE form, so the
+		// rendered bytes are "a\\_<http://0>" and the '<' stands between the
+		// escape and the scheme, where the pattern's opener alternative
+		// demands "www." or "https?://" immediately. The www spelling in the
+		// skipped half above has no angle form — its href and its text
+		// differ, so it renders "[www.0.a](http://www.0.a)" — which is the
+		// whole of the difference between the two families.
+		{"escaped underscore before a schemed literal", `a\_http://0`},
+		{"the same literal with the source underscore unescaped", `a_http://0`},
+		{"the mixed-case scheme spelling of the same shape", `a\_HTTP://0.0`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
