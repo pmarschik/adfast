@@ -66,7 +66,7 @@ func (r *mdRenderer) emphasisMarkerAfter(nodes []ast.Node, i int, prev rune, st 
 	if marker != '_' {
 		return marker
 	}
-	next := siblingLeadRune(nodes, i+1)
+	next := r.siblingLeadRune(nodes, i+1)
 	tail := textSiblingRun(nodes, i+1)
 	// Each candidate is measured against ITS OWN rendering: the marker is
 	// the preceding rune for the children, and since the choice made here is
@@ -275,7 +275,7 @@ func (r *mdRenderer) needsPunctTrail(nodes []ast.Node, i int, st *inlineContext)
 		return 0
 	}
 	text, isText := next.(*ast.Text)
-	lead := nodeLeadRune(next)
+	lead := r.nodeLeadRune(next)
 	// The formatter adds no escapes of its own — it writes the source
 	// form the parse captured (ast.Text.Raw, which normalization has
 	// already moved onto Value here) — so a '[' or '_' the source left
@@ -476,7 +476,12 @@ func firstRuneOf(s string) rune {
 
 // nodeLeadRune returns the first rune of a node's rendered output
 // (markers/syntax included); 0 when the node renders nothing.
-func nodeLeadRune(node ast.Node) rune {
+//
+// It hangs off the renderer because a LINK's first rune is not a property of
+// the node alone: the same tree writes a "www." literal bare on the format
+// leg and bracketed on the remark leg, so the answer needs the config. See
+// linkLeadRune.
+func (r *mdRenderer) nodeLeadRune(node ast.Node) rune {
 	switch n := node.(type) {
 	case *ast.Text:
 		return firstRuneOf(n.Value)
@@ -491,7 +496,7 @@ func nodeLeadRune(node ast.Node) rune {
 	case *ast.Delete:
 		return '~'
 	case *ast.Link:
-		return linkLeadRune(n)
+		return r.linkLeadRune(n)
 	case *ast.Image:
 		// Its own marker, not its alt text: the walk below would have
 		// answered with the first rune INSIDE the brackets, which is
@@ -504,8 +509,8 @@ func nodeLeadRune(node ast.Node) rune {
 		return rune(n.MarkdownLead())
 	}
 	for _, child := range ast.Children(node) {
-		if r := nodeLeadRune(child); r != 0 {
-			return r
+		if lead := r.nodeLeadRune(child); lead != 0 {
+			return lead
 		}
 	}
 	return 0
@@ -562,19 +567,51 @@ func (r *mdRenderer) renderChildScratch(node ast.Node, marker byte, st *inlineCo
 
 // siblingLeadRune is the first rune rendered by nodes[i] (0 = end of the
 // phrasing run, which flanking treats as whitespace).
-func siblingLeadRune(nodes []ast.Node, i int) rune {
+func (r *mdRenderer) siblingLeadRune(nodes []ast.Node, i int) rune {
 	if i >= len(nodes) {
 		return 0
 	}
-	return nodeLeadRune(nodes[i])
+	return r.nodeLeadRune(nodes[i])
 }
 
 // linkLeadRune is the first rune writeLink puts down for this link. It asks
-// autolinkText rather than repeating its test, so the two can never
-// disagree about which links reach the autolink form.
-func linkLeadRune(node *ast.Link) rune {
-	if _, ok := autolinkText(node); ok {
+// autolinkText and bareWWWLiteral rather than repeating their tests, so the
+// two can never disagree about which links reach which form.
+//
+// A BARE autolink writes its ADDRESS, so its first rune is a LETTER, and that
+// is the case this used to get wrong. Both bare forms went out as the '<' or
+// '[' of a syntax the renderer never wrote, and the emphasis delimiter choice
+// believes what it reads here: '_' is legally right-flanking before
+// punctuation and cannot flank before a letter, so a peeked '[' took '_' for
+// an emphasis that ends up sitting intraword against the address. The
+// delimiter then stopped being a delimiter and the EMPHASIS WAS SILENTLY
+// LOST. Measured on the format leg, before: "*a*www.example.com" wrote
+// "_a_www.example.com", whose re-parse is one unmarked text node.
+//
+// THE FORM IS ASKED, NOT SNIFFED, which is the same rule autolinkIsAngle
+// follows for the span view: ast.Link.Bare carries the form the parse
+// decided, and reading a neighbor's source bytes to guess it would make this
+// answer a hostage of the linkify parsers' trigger set. Here the question is
+// narrower than the form alone, because it is "what does writeLink WRITE" —
+// so the branches mirror writeLink's own, prettierText included: a "www."
+// literal keeps its source spelling only on the format leg, and the remark
+// leg really does bracket it, where a peeked '[' is the truth.
+//
+// The choice this feeds is only ever about the marker's own flanking. The
+// ESCAPE lookahead is a separate reader with its own measured parity table
+// and deliberately still answers '[' for every link — see peekLead and
+// TestFormatEscapesAnUnderscoreThatEndsATextNode.
+func (r *mdRenderer) linkLeadRune(node *ast.Link) rune {
+	if text, ok := autolinkText(node); ok {
+		if node.Bare {
+			return firstRuneOf(text)
+		}
 		return '<'
+	}
+	if r.cfg.prettierText {
+		if text, ok := bareWWWLiteral(node); ok {
+			return firstRuneOf(text)
+		}
 	}
 	return '['
 }
