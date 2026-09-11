@@ -512,11 +512,95 @@ var markerOnlyChainRe = regexp.MustCompile(`(?m)^[ \t]*(?:[-*+] +)+[-*+]?[ \t]*$
 // digitPunctLeadRe matches a text beginning with digits then '.'/')'.
 var digitPunctLeadRe = regexp.MustCompile(`^\d*[.)]`)
 
+// urlLiteralOpenerPat spells a URL/www literal's opening bytes THE WAY THE
+// RENDERER WRITES THEM, which is not the way a source author writes them.
+// The two classes below key on a rendered escape sitting in front of a
+// literal, so they have to read the literal out of RENDERED bytes — and a
+// row of the remark unsafe table lands inside the opener itself:
+// dotAfterWwwEscapes writes a backslash on a '.' that follows a 'w', so the
+// same literal reaches the output as "www." or as "www\.".
+//
+// Both spellings link on the next parse, because the decoded-text linkify
+// (relinkifyTexts, mirroring mdast-util-gfm-autolink-literal's transform)
+// reads the text the escape produced and never sees the backslash. Keying on
+// the unescaped spelling alone is therefore not a narrower skip, it is a DEAD
+// one: it stops matching the moment the renderer decides to escape the dot.
+// That is what happened to both classes below — each was written with the
+// probe in its skip comment, and neither probe has matched since the dot rule
+// landed, so the class silently covered nothing.
+//
+// IT IS CASE-INSENSITIVE BECAUSE THE RECOGNIZER IS. Both GFM autolink-literal
+// halves match "www." and the schemes without regard to case, and the unsafe
+// row that escapes the dot is written `before: '[Ww]'`, so ":wwW.0" renders to
+// "\:wwW\.0" and re-links exactly as ":www.0" does. A lowercase-only pattern
+// leaves that shape uncovered; the fuzzer reaches it in about 77 seconds.
+const urlLiteralOpenerPat = `(?i:www\\?\.|https?://)`
+
 // escapedColonURLRe: see the escaped-colon-before-URL skip.
-var escapedColonURLRe = regexp.MustCompile(`\\:(?:www\.|https?://)`)
+var escapedColonURLRe = regexp.MustCompile(`\\:` + urlLiteralOpenerPat)
 
 // escapedPunctURLRe: see the escaped-punctuation-before-URL skip.
-var escapedPunctURLRe = regexp.MustCompile(`\\[^A-Za-z0-9\s](?:www\.|https?://)`)
+var escapedPunctURLRe = regexp.MustCompile(`\\[^A-Za-z0-9\s]` + urlLiteralOpenerPat)
+
+// escapedSchemeColonRe finds the ':'-before-'/' escape the remark unsafe
+// table writes inside a scheme (colonBeforeSlashEscapes). It is only HALF of
+// the escaped-scheme-colon skip: whether that escape costs a round trip
+// depends on the host behind it, and a dotless one is stable with the escape
+// intact — "https\://x" and "_http\://x_" both re-render unchanged, because
+// mdast-util-gfm-autolink-literal's isCorrectDomain demands two dot-separated
+// segments. escapedSchemeColonIgnored is the other half.
+//
+// IT SPELLS THE UNSAFE ROW, `before: '[ps]'`, NOT THE SCHEME. The escape
+// appears iff the byte in front of the colon is a LOWERCASE p or s, so
+// "*HTTp://*0.0**" renders "_HTTp\://0.0_" while "*httP://*0.0**" renders
+// "_httP://0.0_" with no escape at all — a scheme-shaped `https?\\://` misses
+// the first of those. The case-sensitivity is descriptive rather than
+// load-bearing: escapedSchemeColonIgnored decides, so widening this gate
+// costs correctness nothing and only makes it say something untrue about the
+// renderer. The unescaped uppercase spellings are a different defect (the
+// literal goes out bare and links on re-parse) and are not this class.
+var escapedSchemeColonRe = regexp.MustCompile(`[ps]\\://`)
+
+// escapedSchemeColonIgnored reports a rendered "http\://" whose backslash the
+// next parse ignores — the escape is written to keep a scheme out of a link
+// and the document comes back the same with it deleted, which is the whole of
+// the defect.
+//
+// IT ASKS THE PARSER RATHER THAN A PATTERN, because the host rule here is not
+// one. urlliteral.go spells out why — isCorrectDomain and micromark's domain
+// production are scanners over the host's dot-separated segments, they REJECT
+// an address rather than shortening one, and a character class written to
+// imitate either simply matches a shorter host. A pattern keyed on two
+// alphanumeric-anchored segments looks right and still misses "_http\://.0_",
+// whose host ".0" has an EMPTY first segment that isCorrectDomain accepts;
+// the fuzzer finds that shape in about two seconds.
+//
+// The escape is not decoded here either, for the same reason: the question is
+// what the parse does with the bytes, and only the parse knows.
+func escapedSchemeColonIgnored(first string) bool {
+	var base []byte
+	for _, loc := range escapedSchemeColonRe.FindAllStringIndex(first, -1) {
+		// loc ends at the '/' pair, so the backslash is four bytes back.
+		bs := loc[1] - len(`\://`)
+		if base == nil {
+			base = skipCompareJSON(mdToADF(first))
+		}
+		if bytes.Equal(skipCompareJSON(mdToADF(first[:bs]+first[bs+1:])), base) {
+			return true
+		}
+	}
+	return false
+}
+
+// skipCompareJSON is the comparison form for two documents in a skip
+// predicate. adfJSON, the assertion helper next door, wants a *testing.T.
+func skipCompareJSON(doc adf.Doc) []byte {
+	data, err := json.Marshal(doc)
+	if err != nil {
+		return nil
+	}
+	return data
+}
 
 // colonBeforeDirectiveRe: see the colon-before-directive skip — a
 // mid-line colon run (any length ≥2, raw or escaped) fused onto a
@@ -967,7 +1051,28 @@ func skipRenderedStructureClasses(first string) (reason string, skip bool) {
 func skipRenderedURLClasses(first string) (reason string, skip bool) {
 	// An escaped colon directly before a URL/www literal re-linkifies
 	// on re-parse (the escape removed the directive reading); remark
-	// is equally unstable (probe: ":www.0.a").
+	// is equally unstable (probes: ":www.0.a" → "\:www\.0.a",
+	// ":www.0" → "\:www\.0", ":wwW.0" → "\:wwW\.0").
+	//
+	// THE REFERENCE IS UNSTABLE BYTE FOR BYTE, not merely "also wrong".
+	// Measured on remark-parse 11.0.0 + remark-gfm + remark-directive
+	// 3.0.0 + remark-stringify 11.0.0 by stringifying the hand-built
+	// mdast this round trip produces — text ":www" then text ".0", which
+	// is what a text directive with no ADF form degrades to — so no parse
+	// step could reinterpret the string first:
+	//
+	//	stringify([text ":www", text ".0"])  ->  "\:www\.0\n"
+	//	parse("\:www\.0")                    ->  text ":" + link http://www.0
+	//	stringify(that)                      ->  ":[www.0](http://www.0)\n"
+	//
+	// Those are adfast's two renders exactly. The escape cannot hold in
+	// either implementation: micromark's tokenizer does not linkify
+	// "www\.0" from the raw source, and mdast-util-gfm-autolink-literal's
+	// post-parse transform then reads the DECODED text, where the
+	// backslash is already gone. A character reference does not help
+	// either — "\:www&#46;0" and "&#58;www.0" both come back as the same
+	// link from remark and from here — so the plain text ":www.0" has no
+	// spelling in this dialect that survives a round trip.
 	if escapedColonURLRe.MatchString(first) {
 		return "escaped colon before URL literal; remark is equally unstable", true
 	}
@@ -977,9 +1082,30 @@ func skipRenderedURLClasses(first string) (reason string, skip bool) {
 	// "www."), so the second parse linkifies what the first round —
 	// where the token was still fused into a directive name — did not.
 	// remark renders the identical escape bytes and re-linkifies the
-	// same way (probe: ":0_www.0.a" → ":0\_www.0.a").
+	// same way (probe: ":0_www.0.a" → ":0\_www\.0.a").
 	if escapedPunctURLRe.MatchString(first) {
 		return "escaped punctuation before URL literal; remark is equally unstable", true
+	}
+	// The same escape one byte deeper: INSIDE the scheme rather than in
+	// front of the literal. colonBeforeSlashEscapes writes the remark
+	// unsafe table's ':'-before-'/' row, so an emphasized "http://0.0"
+	// goes out as "_http\://0.0_"; the decoded-text transform reads
+	// "http://0.0" and links it, and the second round writes the angle
+	// autolink. urlliteral.go states the reference half of this already —
+	// "https\://ex.com" comes back from the reference as
+	// "<https://ex.com>" — and the reference is unstable on the emphasized
+	// shape in the same two steps, measured on the same install:
+	//
+	//	stringify(emphasis[text "http://0.0"])  ->  "*http\://0.0*\n"
+	//	parse(that)                             ->  emphasis[link http://0.0]
+	//	stringify(that)                         ->  "*<http://0.0>*\n"
+	//
+	// adfast writes the identical pair under its own emphasis delimiter
+	// ("_http\://0.0_" then "_<http://0.0>_"). Probes: "*http://*0.0**",
+	// "*http://.*0**" for the empty leading host segment, and
+	// "*HTTp://*0.0**" for the unsafe row's lowercase-last-letter rule.
+	if escapedSchemeColonIgnored(first) {
+		return "escaped colon inside URL scheme; remark is equally unstable", true
 	}
 	// A colon (raw or escaped) directly before a rendered text directive:
 	// the literal ':' triggers the preceded-by-colon guard (remark
