@@ -25,6 +25,33 @@ import (
 // Trigger fires on ':'. When ':' is immediately followed by a bare URL literal
 // — schemed or scheme-less "www." — the ':' is emitted as text and the literal
 // is returned as an AutoLink.
+//
+// THE TEXT-DIRECTIVE PARSER GETS THE BYTE FIRST, and that decides which of
+// the two shapes this parser actually sees. It is registered at priority 800
+// against this parser's 999 and goldmark dispatches the lower number first,
+// so a ':' that opens a legal directive NAME never reaches here. "www" is a
+// legal name and "http" is not (the "://" ends the name), so the plain
+// "z:www.a.b c" is a directive and "z:http://a.b c" is a literal.
+//
+// THE "www." HALF IS STILL REACHABLE, through the shapes where the directive
+// parser declines: its preceded-by-colon guard hands the byte back whenever
+// another ':' sits in front, so "x::www.a.b c" and "x:::www.a.b c" both
+// linkify here. Those are the inputs to reach for when changing this parser;
+// a single-colon "www." probe measures the directive parser instead.
+//
+// THE REFERENCE AGREES ON ALL FOUR, and the measurement has to be taken with
+// remark-directive in the pipeline or it says the opposite. Measured on
+// remark-parse 11.0.0 + remark-gfm + remark-directive 3.0.0 +
+// remark-stringify 11.0.0, whole bodies:
+//
+//	"z:www.a.b c"      "z:www\.a.b c"                   textDirective
+//	"z:http://a.b c"   "z:<http://a.b> c"               link
+//	"x::www.a.b c"     "x::[www.a.b](http://www.a.b) c" link
+//	"x:::www.a.b c"    "x:::[www.a.b](…) c"             link
+//
+// Drop remark-directive and the first row becomes a link too, which is how
+// this file once came to record "z:www.a.b c" as a reference link the parser
+// below was missing. It is not one.
 type colonURLParser struct{}
 
 func (*colonURLParser) Trigger() []byte { return []byte{':'} }
@@ -47,16 +74,19 @@ func (*colonURLParser) Parse(parent gast.Node, block text.Reader, pc parser.Cont
 	// BOTH SHAPES, not the schemed one alone. urlLiteralCandidate runs the
 	// scheme-less "www." pattern when the schemed one finds nothing, in
 	// goldmark's own order. Reading only the schemed pattern left this byte
-	// half-served — measured against the frozen reference, "z:www.a.b c"
-	// comes back as "z:[www.a.b](http://www.a.b) c" while "z:http://a.b c"
-	// already linked here.
+	// half-served — the reference links "x::www.a.b c" as
+	// "x::[www.a.b](http://www.a.b) c" while "z:http://a.b c" already linked
+	// here. The double colon in that probe is not decoration; see the type's
+	// doc comment for why a single one measures the directive parser.
 	m := urlLiteralCandidate(rest)
 	if m == nil {
 		return nil
 	}
 	// The host gate is the second half of the pattern (see
 	// urlLiteralHostAccepted): a host with an underscore in either of its
-	// last two segments is not a literal at all, here as in the reference.
+	// last two segments is not a literal at all, here as in the reference —
+	// and neither is one whose last two segments hold no alphanumeric
+	// between them, which is what refuses "https://--.--".
 	if !urlLiteralHostAcceptedAt(rest, len(m)) {
 		return nil
 	}
@@ -189,11 +219,14 @@ func newLinkifyRecognizer(opts ...extension.LinkifyOption) parser.InlineParser {
 // different questions.
 const linkifyBoundaryBytes = " *_~("
 
-// linkifyHostGate refuses a bare-URL literal whose host micromark's domain
-// production rejects — an underscore in either of the last two dot-separated
-// segments — and delegates every other decision to the linkify parser it
-// wraps. See urlLiteralHostAccepted for the rule and for why it cannot be a
-// pattern.
+// linkifyHostGate refuses a bare-URL literal whose host NEITHER of the
+// reference's two recognizers accepts — an underscore in either of the last
+// two dot-separated segments, which is micromark's domain production, and a
+// last-two-segment pair with no alphanumeric between them ("https://--.--"),
+// which is mdast-util's isCorrectDomain — and delegates every other decision
+// to the linkify parser it wraps. The two are a disjunction, so a host only
+// one of them refuses ("https://ex.--", "https://.x") still links. See
+// urlLiteralHostAccepted for the rule and for why it cannot be a pattern.
 //
 // IT LOOKS BEFORE THE INNER PARSER RUNS rather than undoing afterwards.
 // goldmark's linkify appends the boundary character as a text segment on its
