@@ -239,10 +239,27 @@ func (v *inlineWriteVisitor) VisitDelete(*ast.Delete) struct{} {
 }
 
 // VisitLink implements ast.Visitor.
+//
+// prevRune is taken from the bytes writeLink JUST WROTE rather than assumed
+// to be the ')' of a "](url)" tail, because a BARE autolink has no such tail:
+// it writes its address, and the last rune of an address is a letter or a
+// digit. prevRune is what the flanking checks read as the emphasis marker's
+// predecessor (see its field doc), so the assumed ')' — punctuation, which
+// '_' may open after — let the next emphasis take '_' where it lands
+// INTRAWORD against the address and stops being a delimiter. That is a
+// silent loss of the mark, and of the link with it: measured on the format
+// leg before this, "www.example.com*a*" wrote "www.example.com_a_", which
+// re-parses as ONE unmarked text node — the two differently-marked nodes
+// collapse into it, so both the emphasis and the link are gone.
+//
+// st.prev is the ESCAPE machinery's byte and keeps the ')': it has its own
+// measured reference table, no shape is known to need it, and widening the
+// escape surface is not this fix. See TestBareLinkLeadIsTheAddressNotBracket.
 func (v *inlineWriteVisitor) VisitLink(n *ast.Link) struct{} {
+	at := v.b.Len()
 	v.r.writeLink(v.b, n, v.st)
 	v.st.prev, v.st.hasPrev = ')', true
-	v.st.prevRune, v.st.encodeLead = ')', false
+	v.st.prevRune, v.st.encodeLead = lastRuneOf(v.b.String()[at:]), false
 	return struct{}{}
 }
 
@@ -607,7 +624,7 @@ func (r *mdRenderer) writeWrapped(b *strings.Builder, nodes []ast.Node, i int, m
 		// has no trouble with.
 		m := marker[len(marker)-1]
 		openProblem = !canOpenMarker(m, st.prevRune, r.renderedChildLead(node, m, st))
-		closeProblem = !canCloseMarker(m, r.renderedChildTrail(node, m, st), siblingLeadRune(nodes, i+1))
+		closeProblem = !canCloseMarker(m, r.renderedChildTrail(node, m, st), r.siblingLeadRune(nodes, i+1))
 	}
 	// The byte that follows the last child is the construct's OWN closing
 	// marker, not whatever stands behind the construct. Measured against the
