@@ -551,15 +551,34 @@ var escapedPunctURLRe = regexp.MustCompile(`\\[^A-Za-z0-9\s]` + urlLiteralOpener
 // segments. escapedSchemeColonIgnored is the other half.
 //
 // IT SPELLS THE UNSAFE ROW, `before: '[ps]'`, NOT THE SCHEME. The escape
-// appears iff the byte in front of the colon is a LOWERCASE p or s, so
-// "*HTTp://*0.0**" renders "_HTTp\://0.0_" while "*httP://*0.0**" renders
-// "_httP://0.0_" with no escape at all — a scheme-shaped `https?\\://` misses
-// the first of those. The case-sensitivity is descriptive rather than
-// load-bearing: escapedSchemeColonIgnored decides, so widening this gate
-// costs correctness nothing and only makes it say something untrue about the
-// renderer. The unescaped uppercase spellings are a different defect (the
-// literal goes out bare and links on re-parse) and are not this class.
-var escapedSchemeColonRe = regexp.MustCompile(`[ps]\\://`)
+// appears iff the byte in front of the colon is a p or an s, so
+// "*HTTp://*0.0**" renders "_HTTp\://0.0_" while "*fttp://*0.0**" renders
+// "_fttp://0.0_" with no escape at all — a scheme-shaped `https?\\://` misses
+// the first of those.
+//
+// IT IS CASE-INSENSITIVE BECAUSE THE RENDERER'S ROW IS, and unlike
+// urlLiteralOpenerPat's `(?i:)` next door that is not a widening for
+// tidiness's sake: it is load-bearing, and it was measured as load-bearing
+// only after colonBeforeSlashEscapes started folding the byte it reads. The
+// pair below is the same tree one letter's case apart, rendered and
+// re-rendered, with what this gate and the skip it drives say about each:
+//
+//	"*HTTp://*0.0**" -> "_HTTp\://0.0_" -> "_<HTTp://0.0>_"  covered
+//	"*httP://*0.0**" -> "_httP\://0.0_" -> "_<httP://0.0>_"  UNCOVERED
+//
+// Both are unstable, both are unstable for the identical reason (the decoded
+// -text linkify never sees the backslash), and a lowercase-only gate skips
+// the first and hands the second to the fuzzer as a fresh crasher. Widening
+// is what makes the gate describe the renderer it is named after. Narrow it
+// back and TestUppercaseSchemeColonIsALiveFuzzFailureNotASkipClass's
+// dotted-host row fails with exactly that pair as its evidence.
+//
+// Note what does NOT belong in this class and never did: the UNESCAPED
+// uppercase spelling. That was a renderer defect — the literal went out bare
+// and linkified on re-parse — and it was fixed in the renderer rather than
+// gated here, which is the only reason the escape exists for this pattern to
+// find.
+var escapedSchemeColonRe = regexp.MustCompile(`(?i)[ps]\\://`)
 
 // escapedSchemeColonIgnored reports a rendered "http\://" whose backslash the
 // next parse ignores — the escape is written to keep a scheme out of a link

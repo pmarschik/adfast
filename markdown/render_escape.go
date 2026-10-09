@@ -621,9 +621,44 @@ func escapesDirectiveColon(s string, i int, nextLead byte, st *inlineContext) bo
 //	"a xyz:/c d"          ->  "a xyz:/c d"
 //	"see https:x bare"    ->  "see https:x bare"        no slash, no escape
 //
-// So the condition is exactly: the previous byte is a lowercase 'p' or 's',
-// and the next byte is a '/'. Anything narrower ("a scheme, then //")
-// disagrees with the reference on half of the rows above.
+// So the reference's condition is exactly: the previous byte is a LOWERCASE
+// 'p' or 's', and the next byte is a '/'. Anything narrower ("a scheme, then
+// //") disagrees with the reference on half of the rows above.
+//
+// THE CASE-SENSITIVITY IS THE ONE PART THIS RULE DELIBERATELY DOES NOT PORT:
+// the check below folds 'before' to lowercase, so an uppercase final scheme
+// letter is escaped too. That diverges from the reference's literal table on
+// two rows ("a S:/ d" and "a P:/ d", which this package now writes as
+// "a S\:/ d" and "a P\:/ d") and it is still strictly closer to the
+// reference's INTENT, because the reference's own escape works — it simply
+// fails to write it. Measured against the frozen reference on a hand-built
+// POST-LOSS mdast, stringified rather than parsed from source, so no parse
+// step could restore the link mark the ADF hop destroys:
+//
+//	em[text "http://", text "0"]  ->  *http\://0*                  stable
+//	em[text "httP://", text "0"]  ->  *httP://0*  ->  *<httP://0>*  unstable
+//
+// The same tree one letter's case apart. Keeping the reference's literal
+// spelling therefore buys two bytes of table parity and costs a SEMANTIC
+// loss: the unescaped literal goes out bare and the next parse linkifies
+// plain text that was never a link. It was a live round-trip failure —
+//
+//	round-trip not idempotent for "*httP://*0**":
+//	    first:  "_httP://0_"
+//	    second: "_<httP://0>_"
+//
+// — and no skip class could excuse it, since the reference is demonstrably
+// stable on the lowercase spelling of the identical tree. The two uppercase
+// colons the divergence adds an escape to could never have linkified
+// anything, so nothing is lost on that side. The whole cost, repo-wide, is
+// the two rows named above; see
+// TestRender_ColonBeforeSlashFollowsTheReferenceUnsafeRule and, for the
+// round trips this buys, TestLowercaseSchemeColonIsEscapedAndStable in the
+// root package.
+//
+// It is the LAST scheme letter that decides, not the scheme's overall case:
+// "HTTPs://" is escaped and so now is "httP://", because the rule reads the
+// one byte in front of the colon and nothing else.
 //
 // REMARK MODE ONLY, and that half is measured too. This mirrors
 // mdast-util-to-markdown's table, which is what remark mode IS; prettier
@@ -641,7 +676,13 @@ func (r *mdRenderer) colonBeforeSlashEscapes(next byte, st *inlineContext) bool 
 	if r.cfg.prettierText || !st.hasPrev {
 		return false
 	}
-	return (st.prev == 'p' || st.prev == 's') && next == '/'
+	// '|' 0x20 folds an ASCII letter to lowercase. The fold is not injective
+	// in general, but it widens nothing here: only two bytes fold to 'p'
+	// (0x70) and only two fold to 's' (0x73), and they are exactly 'P'/'p'
+	// and 'S'/'s' — setting one bit cannot reach 0x70 from anything but 0x50
+	// or 0x70. So this admits the uppercase pair and no third byte.
+	lower := st.prev | 0x20
+	return (lower == 'p' || lower == 's') && next == '/'
 }
 
 // dotAfterWwwEscapes reports whether a '.' needs a backslash because the
@@ -659,7 +700,9 @@ func (r *mdRenderer) colonBeforeSlashEscapes(next byte, st *inlineContext) bool 
 //
 //	"see www.x b"  ->  "see www\.x b"
 //	"see w.x b"    ->  "see w\.x b"     ONE 'w' is enough
-//	"see W.x b"    ->  "see W\.x b"     either case, unlike the ':' row
+//	"see W.x b"    ->  "see W\.x b"     either case, unlike the ':' TABLE ROW
+//	                                    (which this package folds anyway, so
+//	                                    the two rules now agree on case)
 //	"see xw.x b"   ->  "see xw\.x b"    the run need not start the word
 //	"see v.x b"    ->  "see v.x b"      'v' is not 'w'
 //	"a b.c d"      ->  "a b.c d"
