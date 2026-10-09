@@ -15,8 +15,10 @@ type colonSlashCase struct {
 	name string
 	// in is the paragraph's whole text.
 	in string
-	// remark is what remark mode writes: the reference's own answer, which
-	// is where every row's want comes from.
+	// remark is what remark mode writes. It is the reference's own measured
+	// answer on every row but the two uppercase ones, which are this
+	// package's one deliberate divergence from the unsafe table and say so
+	// in place.
 	remark string
 	// prettier is what prettier mode writes: prettier 3.9.6's own answer,
 	// measured with the flags TestFormatMarkdown_PrettierParity pins.
@@ -30,10 +32,15 @@ type colonSlashCase struct {
 //	{character: ':', before: '[ps]', after: '\/', inConstruct: 'phrasing',
 //	 notInConstruct: ['autolink', 'link', 'image', 'label']}
 //
-// — so a single lowercase letter is enough, a single slash is enough, and an
-// uppercase letter is not enough. Every remark column below is that rule's
-// measured output; every prettier column is prettier's, which writes none of
-// these escapes and merely preserves an authored one.
+// — so a single letter is enough and a single slash is enough. Every remark
+// column below is that rule's measured output, WITH ONE DELIBERATE
+// DIVERGENCE: the reference applies `[ps]` case-sensitively and this package
+// folds the byte, so the two uppercase rows below carry an escape the
+// reference does not write. They are the only two rows in the repo that
+// differ, and colonBeforeSlashEscapes records why the fold is closer to the
+// table's intent than the table's own spelling. Every prettier column is
+// prettier's, which writes none of these escapes and merely preserves an
+// authored one.
 var colonSlashCases = []colonSlashCase{{
 	// THE ROW THE RULE IS NAMED FOR: a scheme with no host.
 	name:     "a schemed colon before two slashes",
@@ -82,19 +89,33 @@ var colonSlashCases = []colonSlashCase{{
 	remark:   "a p\\:/ d\n",
 	prettier: "a p:/ d\n",
 }, {
-	// THE NEGATIVES. `[ps]` is applied case-sensitively, so the uppercase
-	// pair writes nothing — a rule folded to case-insensitive would pass
-	// every positive row above and break these two.
-	name:     "an uppercase S writes nothing",
+	// THE TWO ROWS THIS PACKAGE DELIBERATELY DIVERGES ON, and the only two
+	// in the repo the divergence costs. The reference applies `[ps]` case
+	// -sensitively and writes nothing for the uppercase pair; adfast folds
+	// the byte and writes the escape, because keeping the reference's
+	// literal spelling lost a link mark on the ADF round trip — an
+	// uppercase final scheme letter went out bare and the next parse
+	// linkified plain text ("_httP://0_" came back as "_<httP://0>_").
+	// The reference is stable on the LOWERCASE spelling of the identical
+	// tree, so its own escape works and it merely fails to write it; see
+	// colonBeforeSlashEscapes for that measurement.
+	//
+	// These two colons could never have linkified anything, so the two
+	// bytes below are the whole price. What they pin is that the price is
+	// paid HERE and nowhere wider: the fold must still reject every
+	// negative row that follows.
+	name:     "an uppercase S is escaped too, diverging from the reference",
 	in:       "a S:/ d",
-	remark:   "a S:/ d\n",
+	remark:   "a S\\:/ d\n",
 	prettier: "a S:/ d\n",
 }, {
-	name:     "an uppercase P writes nothing",
+	name:     "an uppercase P is escaped too, diverging from the reference",
 	in:       "a P:/ d",
-	remark:   "a P:/ d\n",
+	remark:   "a P\\:/ d\n",
 	prettier: "a P:/ d\n",
 }, {
+	// THE NEGATIVES, which the fold must leave alone: it widens `[ps]` by
+	// exactly the uppercase pair and by nothing else.
 	name:     "a scheme not ending in p or s writes nothing",
 	in:       "a file:// b",
 	remark:   "a file:// b\n",
@@ -104,6 +125,18 @@ var colonSlashCases = []colonSlashCase{{
 	in:       "a xyz:/c d",
 	remark:   "a xyz:/c d\n",
 	prettier: "a xyz:/c d\n",
+}, {
+	// THE FOLD'S OWN NEGATIVE: an uppercase letter outside the pair is
+	// still nothing. Both rules agree here without a measurement of their
+	// own — case-sensitively 'E' is not in `[ps]`, and folded 'e' is not
+	// either — which is what makes this the row that catches a fold gone
+	// wide (a fold to uppercase, or a comparison against the wrong pair,
+	// changes some row above but a fold that widens the class changes
+	// this one).
+	name:     "an uppercase letter outside the pair writes nothing",
+	in:       "a FILE:// b",
+	remark:   "a FILE:// b\n",
+	prettier: "a FILE:// b\n",
 }, {
 	// NO SLASH, NO RULE — and the row that proves the two colon rules stay
 	// separate. remark and prettier both write a backslash here, but for
