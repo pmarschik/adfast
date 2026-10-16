@@ -1349,6 +1349,15 @@ func (v *adfInlineVisitor) VisitText(n *adf.Text) []flatInline {
 	item := convertTextInline(n)
 	if item.isLink && v.rc.linkResolver.Decode != nil {
 		if resolved, ok := v.rc.linkResolver.Decode(item.href); ok {
+			// A bare autolink's label IS its href (that is the shape Jira's own
+			// editor makes of a pasted link): the label has to follow the href
+			// through the same translation, or the two desync and the decode
+			// hands back a link whose visible text still names the old URL.
+			// An AUTHORED label (text != href) is prose the user wrote and is
+			// never touched here.
+			if item.text == item.href {
+				item.text = resolved
+			}
 			item.href = resolved
 		}
 	}
