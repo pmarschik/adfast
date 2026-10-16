@@ -42,6 +42,17 @@ type Link struct {
 	// destination (`[text]()`) reports an empty Dest at the offset where a
 	// destination would go, so an Edit there inserts one.
 	Dest Span
+	// Title covers the title's CONTENT as written, with the `"…"`, `'…'`, or
+	// `(…)` delimiters OUTSIDE it — the same convention Definition.Title
+	// documents in full, so the two read alike. Which of the three delimiters
+	// was used is therefore not reported: the byte before Title.Start is it.
+	//
+	// Title is the ZERO Span for a reference link, the same as Dest, and for
+	// an inline link with NO title written. The zero value is unambiguous: a
+	// title cannot begin at offset 0. An inline link with a title written
+	// EMPTY (`[text](x.md "")`) reports an empty Title between its
+	// delimiters, so an Edit there inserts one.
+	Title Span
 }
 
 // Links returns every link in src, in document order. See Source.Links for
@@ -187,7 +198,8 @@ func collectLinks(doc gast.Node, src []byte) (out []Link, unlocated int) {
 // shiftLink moves a link resolved against a detached label copy into the
 // coordinates of the source that copy was taken from.
 func shiftLink(l Link, by int) Link {
-	l.Span, l.Text, l.Dest = shiftSpan(l.Span, by), shiftSpan(l.Text, by), shiftSpan(l.Dest, by)
+	l.Span, l.Text = shiftSpan(l.Span, by), shiftSpan(l.Text, by)
+	l.Dest, l.Title = shiftSpan(l.Dest, by), shiftSpan(l.Title, by)
 	return l
 }
 
@@ -195,11 +207,11 @@ func shiftLink(l Link, by int) Link {
 // with nothing in front of it, so the resolver is the shared one — see
 // bracketedSpan.
 func linkSpan(link *gast.Link, src []byte, nested labelExtents) (Link, bool) {
-	whole, text, dest, ok := bracketedSpan(bracketed{
+	whole, text, dest, title, ok := bracketedSpan(bracketed{
 		node: link, dest: link.Destination, ref: link.Reference, lead: 0,
 	}, src, nested)
 	if !ok {
 		return Link{}, false
 	}
-	return Link{Span: whole, Text: text, Dest: dest}, true
+	return Link{Span: whole, Text: text, Dest: dest, Title: title}, true
 }
