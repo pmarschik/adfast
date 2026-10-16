@@ -28,6 +28,28 @@ func TestLinkResolverRewritesLabelledLinksInTablesBothWays(t *testing.T) {
 	}
 }
 
+func TestLinkResolverDecodesABareAutolinkLabelToo(t *testing.T) {
+	remote := "https://acme.atlassian.net/browse/PROJ-2"
+	const local = "PROJ-2-target.md"
+	resolver := convert.LinkResolver{
+		Decode: func(href string) (string, bool) { return local, href == remote },
+	}
+	// A bare autolink in ADF is a text node whose visible text IS its href —
+	// the shape Jira's editor makes of a pasted link, with no authored label.
+	doc := adf.Doc{Type: "doc", Version: 1, Content: []adf.Node{
+		&adf.Paragraph{Content: []adf.Node{
+			&adf.Text{Text: remote, Marks: []adf.Mark{&adf.Link{Href: &remote}}},
+		}},
+	}}
+	got := ToMarkdown(FromADF(doc, WithLinkResolver(resolver)))
+	if strings.Contains(got, remote) {
+		t.Errorf("the pre-decode URL survived as the label:\n%s", got)
+	}
+	if !strings.Contains(got, "["+local+"]("+local+")") {
+		t.Errorf("the bare autolink did not come back with a consistent label and path:\n%s", got)
+	}
+}
+
 func TestLinkResolverLeavesMissesAndInlineCardsAlone(t *testing.T) {
 	resolver := convert.LinkResolver{
 		Encode: func(string) (string, bool) { return "", false },
