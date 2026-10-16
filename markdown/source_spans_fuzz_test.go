@@ -90,7 +90,7 @@ func FuzzSourceSpans(f *testing.F) {
 		var forms []writtenForm
 		for i, l := range s.Links() {
 			what := fmt.Sprintf("link %d", i)
-			checkWrittenForm(t, src, what, '[', l.Span, l.Text, l.Dest)
+			checkWrittenForm(t, src, what, '[', l.Span, l.Text, l.Dest, l.Title)
 			forms = append(forms, writtenForm{what: what, span: l.Span, label: l.Text})
 			if l.Dest != (markdown.Span{}) {
 				dests = append(dests, l.Dest)
@@ -98,7 +98,7 @@ func FuzzSourceSpans(f *testing.F) {
 		}
 		for i, im := range s.Images() {
 			what := fmt.Sprintf("image %d", i)
-			checkWrittenForm(t, src, what, '!', im.Span, im.Alt, im.Dest)
+			checkWrittenForm(t, src, what, '!', im.Span, im.Alt, im.Dest, im.Title)
 			forms = append(forms, writtenForm{what: what, span: im.Span, label: im.Alt})
 			if im.Dest != (markdown.Span{}) {
 				dests = append(dests, im.Dest)
@@ -178,7 +178,7 @@ func covers(outer, inner markdown.Span) bool {
 // claims to cover. lead is the byte the span must begin at: `[` for a link,
 // `!` for an image.
 func checkWrittenForm(
-	t *testing.T, src, what string, lead byte, span, label, dest markdown.Span,
+	t *testing.T, src, what string, lead byte, span, label, dest, title markdown.Span,
 ) {
 	t.Helper()
 	// The shortest written form is a shortcut reference with an empty label:
@@ -206,11 +206,27 @@ func checkWrittenForm(
 		t.Errorf("%q: %s label %v stops at %q, want the closing ']'",
 			src, what, label, src[label.Stop])
 	}
+	checkTitle(t, src, what, span, dest, title)
 	if dest == (markdown.Span{}) {
 		return
 	}
 	if dest.Start <= label.Stop || dest.Stop > span.Stop {
 		t.Errorf("%q: %s dest %v is not in the tail of its span %v after label %v",
 			src, what, dest, span, label)
+	}
+}
+
+// checkTitle asserts that a non-zero title sits inside its form's span and
+// after its dest, the same way checkWrittenForm does for dest itself.
+func checkTitle(t *testing.T, src, what string, span, dest, title markdown.Span) {
+	t.Helper()
+	if title == (markdown.Span{}) {
+		return
+	}
+	if title.Stop >= span.Stop {
+		t.Errorf("%q: %s title %v is not inside its span %v", src, what, title, span)
+	}
+	if dest != (markdown.Span{}) && title.Start <= dest.Stop {
+		t.Errorf("%q: %s title %v does not come after its dest %v", src, what, title, dest)
 	}
 }

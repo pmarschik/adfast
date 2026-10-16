@@ -53,6 +53,17 @@ type Image struct {
 	// the offset where a destination would go, so an Edit there inserts
 	// one.
 	Dest Span
+	// Title covers the title's CONTENT as written, with the `"…"`, `'…'`, or
+	// `(…)` delimiters OUTSIDE it — the same convention Definition.Title
+	// documents in full, so the two read alike. Which of the three delimiters
+	// was used is therefore not reported: the byte before Title.Start is it.
+	//
+	// Title is the ZERO Span for a reference image, the same as Dest, and for
+	// an inline image with NO title written. The zero value is unambiguous: a
+	// title cannot begin at offset 0. An inline image with a title written
+	// EMPTY (`![alt](x.png "")`) reports an empty Title between its
+	// delimiters, so an Edit there inserts one.
+	Title Span
 }
 
 // Images returns every image in src, in document order. See Source.Images
@@ -191,7 +202,8 @@ func collectImages(doc gast.Node, src []byte) (out []Image, unlocated int) {
 // shiftImage moves an image resolved against a detached label copy into the
 // coordinates of the source that copy was taken from.
 func shiftImage(img Image, by int) Image {
-	img.Span, img.Alt, img.Dest = shiftSpan(img.Span, by), shiftSpan(img.Alt, by), shiftSpan(img.Dest, by)
+	img.Span, img.Alt = shiftSpan(img.Span, by), shiftSpan(img.Alt, by)
+	img.Dest, img.Title = shiftSpan(img.Dest, by), shiftSpan(img.Title, by)
 	return img
 }
 
@@ -217,13 +229,13 @@ func shiftSpan(s Span, by int) Span {
 // imageSpan resolves one image to its written extent. An image is a `[label]`
 // behind a `!`, so the resolver is the shared one — see bracketedSpan.
 func imageSpan(img *gast.Image, src []byte, nested labelExtents) (Image, bool) {
-	whole, alt, dest, ok := bracketedSpan(bracketed{
+	whole, alt, dest, title, ok := bracketedSpan(bracketed{
 		node: img, dest: img.Destination, ref: img.Reference, lead: 1,
 	}, src, nested)
 	if !ok {
 		return Image{}, false
 	}
-	return Image{Span: whole, Alt: alt, Dest: dest}, true
+	return Image{Span: whole, Alt: alt, Dest: dest, Title: title}, true
 }
 
 // bracketed is what an image and a link have in common, which is everything
@@ -258,7 +270,8 @@ type bracketed struct {
 }
 
 // bracketedSpan resolves one image or link to its written extent, and reports
-// the whole span, the label's span, and the destination's span.
+// the whole span, the label's span, the destination's span, and the title's
+// span.
 //
 // goldmark records Pos — the `!` of an image, the `[` of a link — and the
 // parsed destination, and nothing else about where the written form ends: the
@@ -286,27 +299,27 @@ type bracketed struct {
 // leaves the label's own closer as the first candidate.
 func bracketedSpan(
 	b bracketed, src []byte, nested labelExtents,
-) (whole, label, dest Span, ok bool) {
+) (whole, label, dest, title Span, ok bool) {
 	pos := b.node.Pos()
 	open := pos + b.lead
 	if pos < 0 || open >= len(src) || src[open] != '[' {
-		return Span{}, Span{}, Span{}, false
+		return Span{}, Span{}, Span{}, Span{}, false
 	}
 	if b.lead == 1 && src[pos] != '!' {
-		return Span{}, Span{}, Span{}, false
+		return Span{}, Span{}, Span{}, Span{}, false
 	}
 	labelStart, lines := open+1, enclosingLines(b.node)
 	for k := labelFloor(b.node, src, labelStart, nested); k < len(src); k++ {
 		if src[k] != ']' {
 			continue
 		}
-		dest, end, ok := bracketedTail(b, src, labelStart, k, lines)
+		dest, title, end, ok := bracketedTail(b, src, labelStart, k, lines)
 		if !ok {
 			continue
 		}
-		return Span{Start: pos, Stop: end}, Span{Start: labelStart, Stop: k}, dest, true
+		return Span{Start: pos, Stop: end}, Span{Start: labelStart, Stop: k}, dest, title, true
 	}
-	return Span{}, Span{}, Span{}, false
+	return Span{}, Span{}, Span{}, Span{}, false
 }
 
 // labelFloor returns the lowest offset the label's closing `]` can have:
@@ -387,8 +400,11 @@ func (e labelExtents) stop(n gast.Node, src []byte) (int, bool) {
 }
 
 // bracketedTail reads what follows a candidate closing `]` at k and reports
-// the destination's span and the offset one past the written form, or false
-// when the candidate is not the closer.
+// the destination's span, the title's span, and the offset one past the
+// written form, or false when the candidate is not the closer.
+//
+// Both spans are the zero Span for a reference form, the same as Dest: a
+// reference's destination and title are written at its definition, not here.
 //
 // Which of the four written forms to expect is not guessed: goldmark
 // records it on the node. An inline image or link has no Reference; a
@@ -412,7 +428,7 @@ func (e labelExtents) stop(n gast.Node, src []byte) (int, bool) {
 // reported as covering the second link as well.
 func bracketedTail(
 	b bracketed, src []byte, labelStart, k int, lines *text.Segments,
-) (Span, int, bool) {
+) (dest, title Span, next int, ok bool) {
 	if b.ref == nil {
 		return inlineTail(b, src, k, lines)
 	}
@@ -420,57 +436,60 @@ func bracketedTail(
 	// off the label itself, so the label is what proves the candidate.
 	if b.ref.Type != gast.ReferenceLinkFull &&
 		!bytes.Equal(bytesAsRead(src, lines, Span{Start: labelStart, Stop: k}), b.ref.Value) {
-		return Span{}, 0, false
+		return Span{}, Span{}, 0, false
 	}
 	if b.ref.Type == gast.ReferenceLinkShortcut {
-		return Span{}, k + 1, true
+		return Span{}, Span{}, k + 1, true
 	}
 	if k+1 >= len(src) || src[k+1] != '[' {
-		return Span{}, 0, false
+		return Span{}, Span{}, 0, false
 	}
 	end, ok := scanClosure(src, k+2, '[', ']')
 	if !ok {
-		return Span{}, 0, false
+		return Span{}, Span{}, 0, false
 	}
 	// A full reference (`![alt][id]`) keys off the second bracket pair.
 	if b.ref.Type == gast.ReferenceLinkFull &&
 		!bytes.Equal(bytesAsRead(src, lines, Span{Start: k + 2, Stop: end - 1}), b.ref.Value) {
-		return Span{}, 0, false
+		return Span{}, Span{}, 0, false
 	}
-	return Span{}, end, true
+	return Span{}, Span{}, end, true
 }
 
 // inlineTail reads a `(destination "title")` tail after a candidate closing
 // `]` at k. It mirrors goldmark's parseLink step for step, so that what it
 // accepts is what the parser accepted.
-func inlineTail(b bracketed, src []byte, k int, lines *text.Segments) (Span, int, bool) {
+func inlineTail(b bracketed, src []byte, k int, lines *text.Segments) (dest, title Span, next int, ok bool) {
 	if k+1 >= len(src) || src[k+1] != '(' {
-		return Span{}, 0, false
+		return Span{}, Span{}, 0, false
 	}
 	i := skipMarkdownSpaces(src, k+2, lines)
 	if i < len(src) && src[i] == ')' {
 		// `![alt]()`, which the parser reads as an empty destination.
 		if len(b.dest) != 0 {
-			return Span{}, 0, false
+			return Span{}, Span{}, 0, false
 		}
-		return Span{Start: i, Stop: i}, i + 1, true
+		return Span{Start: i, Stop: i}, Span{}, i + 1, true
 	}
-	dest, next, ok := scanLinkDestination(src, i)
+	dest, next, ok = scanLinkDestination(src, i)
 	if !ok || !bytes.Equal(src[dest.Start:dest.Stop], b.dest) {
-		return Span{}, 0, false
+		return Span{}, Span{}, 0, false
 	}
 	i = skipMarkdownSpaces(src, next, lines)
 	if i < len(src) && src[i] == ')' {
-		return dest, i + 1, true
+		return dest, Span{}, i + 1, true
 	}
-	if i, ok = scanLinkTitle(src, i); !ok {
-		return Span{}, 0, false
+	titleOpen := i
+	end, ok := scanLinkTitle(src, i)
+	if !ok {
+		return Span{}, Span{}, 0, false
 	}
-	i = skipMarkdownSpaces(src, i, lines)
+	title = Span{Start: titleOpen + 1, Stop: end - 1}
+	i = skipMarkdownSpaces(src, end, lines)
 	if i >= len(src) || src[i] != ')' {
-		return Span{}, 0, false
+		return Span{}, Span{}, 0, false
 	}
-	return dest, i + 1, true
+	return dest, title, i + 1, true
 }
 
 // scanLinkDestination reads a link destination at i and reports its span
