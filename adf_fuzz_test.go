@@ -633,6 +633,76 @@ func skipCompareJSON(doc adf.Doc) []byte {
 	return data
 }
 
+// wwwDotPunctRe matches a rendered "www." host literal where
+// dotAfterWwwEscapes did not escape the dot — the byte after it is outside
+// the after-class ('-', '.', or a word char) — yet the byte is one of a
+// narrower set the GFM www-autolink host grammar still accepts as the start
+// of a second label, so a later dot completes a linkable host on re-parse.
+// dotAfterWwwEscapes reads exactly one byte of lookahead (see its doc
+// comment); it cannot see that a second, later dot still forms a host, so no
+// escape is written and the next parse links what the first left bare.
+//
+// remark's unsafe table has the identical one-byte-wide row (`before: '[Ww]'`,
+// `after: '[\-.\w]'`) and degrades on the identical bytes. Probed as a
+// POST-LOSS tree (the mdast built by hand, stringified, at the same
+// unified/remark-parse/remark-gfm/remark-stringify versions
+// TestSchemeColonIsEscapedAndStableInEitherCase cites):
+//
+//	stringify(em[text "www.#."])  ->  "*www.#.*\n"
+//	parse("www.#.")               ->  link http://www.#
+//	stringify(that)               ->  "*[www.#](http://www.#).*\n"
+//
+// That is adfast's own pair exactly (probe: "*www.#.*"). THE CHARACTER SET IS
+// DELIBERATELY NARROW: each byte below was checked against the reference
+// individually, and only kept where the reference relinks on the identical
+// bytes too. Other punctuation between the dots (probe: "*www.!.*" ->
+// "_www.!._\n", stable in both passes) already round-trips here and in the
+// reference — adding it to this class would skip a shape neither side gets
+// wrong.
+var wwwDotPunctRe = regexp.MustCompile(`(?i:www)\.[#%+=]\.`)
+
+// wwwEscapedDotRe finds a rendered "www\." — the escaped half of the dot rule
+// above, where dotAfterWwwEscapes DID write the backslash (the next byte was
+// '-', '.', or a word char). wwwEscapedDotIgnored is the oracle that decides
+// whether that escape costs a round trip.
+var wwwEscapedDotRe = regexp.MustCompile(`(?i:www)\\\.`)
+
+// wwwEscapedDotIgnored reports a rendered "www\." whose backslash the next
+// parse ignores: the decoded-text linkify (relinkifyTexts, mirroring
+// mdast-util-gfm-autolink-literal's transform) reads the text the escape
+// produced, never sees the backslash, and still finds a valid host behind it.
+//
+// IT ASKS THE PARSER RATHER THAN A PATTERN, for the same reason
+// escapedSchemeColonIgnored does: whether the escaped dot "costs" anything
+// depends on what completes the host after it, which only the real domain
+// scanner can answer. "www\.-." is stable — "-" alone is not a valid second
+// label, so the escape never had anything to lose — while "www\..0" is not:
+// a second dot and the alnum segment "0" complete a host the escape cannot
+// hide (probe: "*www..*0**" -> "_www\\..0_\n" -> "_[www..0](http://www..0)_\n").
+// "www\...0" degrades the same way with one more dot (probe: "*www...*0**").
+//
+// Measured against the reference on the same post-loss construction:
+//
+//	stringify(em[text "www..0"])  ->  "*www\.·.0*\n" (literally "*www\..0*\n")
+//	parse("www\..0")              ->  link http://www..0
+//	stringify(that)                -> "*[www..0](http://www..0)*\n"
+//
+// which is the identical pair one delimiter apart.
+func wwwEscapedDotIgnored(first string) bool {
+	var base []byte
+	for _, loc := range wwwEscapedDotRe.FindAllStringIndex(first, -1) {
+		// loc ends at the dot, so the backslash is one byte back.
+		bs := loc[1] - len(`\.`)
+		if base == nil {
+			base = skipCompareJSON(mdToADF(first))
+		}
+		if bytes.Equal(skipCompareJSON(mdToADF(first[:bs]+first[bs+1:])), base) {
+			return true
+		}
+	}
+	return false
+}
+
 // colonBeforeDirectiveRe: see the colon-before-directive skip — a
 // mid-line colon run (any length ≥2, raw or escaped) fused onto a
 // directive name; the leading [^\n:] keeps line-start leaf/container
@@ -1157,6 +1227,20 @@ func skipRenderedURLClasses(first string) (reason string, skip bool) {
 	// "*0 http://*0.a**" → "_0 http://0.a_").
 	if urlFusedWithUnderscore(first) {
 		return "underscore emphasis fused to URL literal; goldmark linkify consumes the marker", true
+	}
+	// An unescaped "www." host followed later by a second dot: the
+	// after-class dotAfterWwwEscapes checks is one byte wide and cannot see
+	// the second dot, so no escape is written and the host links on
+	// re-parse; remark's identical one-byte-wide unsafe row is equally
+	// unstable (probe: "*www.#.*").
+	if wwwDotPunctRe.MatchString(first) {
+		return "www host with a second dot past an unescaped byte; remark is equally unstable", true
+	}
+	// The escaped half of the same rule: the dot was escaped, but the
+	// decoded-text linkify reads past the backslash anyway and a later dot
+	// still completes a host; remark is equally unstable (probe: "*www..*0**").
+	if wwwEscapedDotIgnored(first) {
+		return "escaped www host dot is ignored; remark is equally unstable", true
 	}
 	return "", false
 }
