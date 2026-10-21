@@ -720,7 +720,7 @@ func convertAdfTaskList(node *adf.TaskList, rc renderCtx) *ast.List {
 						inlines = append(inlines, convertAdfInlines(p.Content, rc)...)
 					}
 				}
-				blocks = []ast.Node{&ast.Paragraph{Children: inlines}}
+				blocks = []ast.Node{&ast.Paragraph{Children: mergeAdjacentText(inlines)}}
 			}
 			items = append(items, &ast.ListItem{
 				Checked:  &checked,
@@ -740,6 +740,35 @@ func blockTaskItemRenderable(blocks []ast.Node) bool {
 	}
 	p, ok := blocks[0].(*ast.Paragraph)
 	return ok && len(p.Children) > 0
+}
+
+// mergeAdjacentText merges consecutive bare *ast.Text siblings (no mark
+// wrapper between them) into one node. The paragraph-flattening degrade
+// above concatenates each source paragraph's inlines with no separator, so a
+// digit run can end one paragraph's text node and a '.'/')' begin the next
+// one's — e.g. blocks "0" and ")" flatten to adjacent text nodes spelling
+// "0)". render_escape.go's escapeOrderedMarker (and every other per-node
+// escape rule) only looks for context within its own node's string, so a
+// split across two nodes hides the digit run from the node holding ')' and
+// the escape never fires. The next parse reads the unescaped "0)" back as a
+// single text node, where the rule DOES see the digit run and escapes it —
+// a round trip that is not a fixpoint. Merging here, before the nodes ever
+// reach render, is narrower than a general encode-side merge of every
+// adjacent same-mark text pair: it only closes the gap this one lossy
+// flattening opens.
+func mergeAdjacentText(nodes []ast.Node) []ast.Node {
+	merged := nodes[:0]
+	for _, n := range nodes {
+		if t, ok := n.(*ast.Text); ok && len(merged) > 0 {
+			if prev, ok := merged[len(merged)-1].(*ast.Text); ok {
+				prev.Value += t.Value
+				prev.Raw += t.Raw
+				continue
+			}
+		}
+		merged = append(merged, n)
+	}
+	return merged
 }
 
 // convertAdfDecisionList converts an ADF decisionList to a plain AST
