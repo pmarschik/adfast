@@ -30,13 +30,15 @@ import (
 // paragraphs is refused with HTTP 400, "Unsupported node type found
 // inside Task node: paragraph". A separator this code invents therefore
 // has to be a kind the Task node is KNOWN to accept, or the fix turns
-// silent corruption into a save that fails outright. Exactly one kind is
-// known by measurement rather than by inference: the downgrade's own
-// output was text nodes inside a taskItem, so text is accepted. hardBreak
-// is plausible — adfast already emits one inside a plain taskItem for a
-// markdown line break, and no rejection has ever been reported — but
-// plausible is not measured, and there is no live access here to settle
-// it. The space is the join that the available evidence proves safe.
+// silent corruption into a save that fails outright. Exactly one kind was
+// known by measurement rather than by inference at the time: the
+// downgrade's own output was text nodes inside a taskItem, so text is
+// accepted. hardBreak is now measured too (live Cloud site, 2026-10-22):
+// a plain taskItem > [text, hardBreak, text] round
+// trips verbatim, no 400, no drop. It is CONFIRMED safe, not merely
+// plausible — but adopting it as the join is a separate decision (it
+// touches the idempotent rewrite in separatedTaskBody and every existing
+// pin on the current space-based output) left for Patrick, not made here.
 //
 // WHERE THE SPACE GOES. The measurement also shows the flattening does
 // not merge or normalize anything: it left the two source paragraphs as
@@ -54,11 +56,25 @@ import (
 //     paragraph holding a single space instead, which the same flattening
 //     contributes as a lone " " text node.
 //
-// What Confluence's downgrade makes of a non-paragraph block is NOT
-// measured — whether a code block's text inlines, whether a nested list
-// survives as anything. The separator is inserted there on the same
-// reasoning regardless: if the block contributes text, the text is
-// separated; if it contributes nothing, a stray space is the whole cost.
+// WHAT A NON-PARAGRAPH BLOCK DOES, now measured (live Cloud site,
+// 2026-10-22), and NARROWER than the opening
+// paragraph's premise suggests: sending blockTaskItem > [paragraph,
+// codeBlock, paragraph] does NOT trigger the same downgrade as the
+// all-paragraph case. Confluence keeps the blockTaskItem kind and keeps
+// both paragraphs intact — it does not flatten them to adjacent text
+// nodes the way a plain two-paragraph blockTaskItem is confirmed (same
+// session, same page) to still do today. Only the codeBlock itself is
+// rewritten, to a com.atlassian.confluence.migration/legacy-content
+// extension whose parameters.nestedContent carries the original codeBlock
+// verbatim — the same downgrade UnsupportedKinds already treats
+// elsewhere, not a new flattening path. The separator paragraph this code
+// inserts after the codeBlock survives untouched, as a literal paragraph
+// with a single space, exactly as sent. So the separator is confirmed
+// harmless here, but the concatenation risk it defends against — text
+// nodes running together with no join — is evidenced only for the
+// all-paragraph shape; a body mixing paragraphs with any other block kind
+// does not reach that risk, because the whole item stays block-shaped
+// instead of collapsing to inline content.
 
 // SeparateBlockTaskItems inserts, between the blocks of every
 // blockTaskItem, the separator Confluence's downgrade to a plain taskItem
