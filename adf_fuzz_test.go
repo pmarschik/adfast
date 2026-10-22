@@ -512,7 +512,7 @@ var markerOnlyChainRe = regexp.MustCompile(`(?m)^[ \t]*(?:[-*+] +)+[-*+]?[ \t]*$
 // digitPunctLeadRe matches a text beginning with digits then '.'/')'.
 var digitPunctLeadRe = regexp.MustCompile(`^\d*[.)]`)
 
-// urlLiteralOpenerPat spells a URL/www literal's opening bytes THE WAY THE
+// urlLiteralOpenerPat spells a www literal's opening bytes THE WAY THE
 // RENDERER WRITES THEM, which is not the way a source author writes them.
 // The two classes below key on a rendered escape sitting in front of a
 // literal, so they have to read the literal out of RENDERED bytes — and a
@@ -530,11 +530,23 @@ var digitPunctLeadRe = regexp.MustCompile(`^\d*[.)]`)
 // landed, so the class silently covered nothing.
 //
 // IT IS CASE-INSENSITIVE BECAUSE THE RECOGNIZER IS. Both GFM autolink-literal
-// halves match "www." and the schemes without regard to case, and the unsafe
-// row that escapes the dot is written `before: '[Ww]'`, so ":wwW.0" renders to
+// halves match "www." without regard to case, and the unsafe row that
+// escapes the dot is written `before: '[Ww]'`, so ":wwW.0" renders to
 // "\:wwW\.0" and re-links exactly as ":www.0" does. A lowercase-only pattern
 // leaves that shape uncovered; the fuzzer reaches it in about 77 seconds.
-const urlLiteralOpenerPat = `(?i:www\\?\.|https?://)`
+//
+// IT NO LONGER SPELLS A SCHEMED "http://"/"https://" OPENER (storysmith-md-
+// h97u). A www literal's href always differs from its text, so it never
+// takes the ADF leg's Bare branch and keeps writing [label](url) regardless;
+// an http(s) literal whose text equals its href does take that branch, and
+// since the ADF leg now writes it bare like the format leg does, escaping
+// punctuation in front of one no longer changes whether it links on the next
+// parse — probed directly: "a\_http://0", "a_http://0" and "a\_HTTP://0.0"
+// are all now stable round trips, where they used to dodge this class only
+// because the old angle rendering put a '<' between the escape and the
+// scheme. Keeping "https?://" in this pattern would skip those as if they
+// still diverged.
+const urlLiteralOpenerPat = `(?i:www\\?\.)`
 
 // escapedColonURLRe: see the escaped-colon-before-URL skip.
 var escapedColonURLRe = regexp.MustCompile(`\\:` + urlLiteralOpenerPat)
@@ -1095,13 +1107,15 @@ func skipRenderedURLClasses(first string) (reason string, skip bool) {
 	if escapedColonURLRe.MatchString(first) {
 		return "escaped colon before URL literal; remark is equally unstable", true
 	}
-	// Any other rendered backslash escape directly before a www/URL
-	// literal is the same class: GFM autolink literals may follow the
-	// escaped punctuation (cmark-gfm allows '_', '*', '~', '(' before
-	// "www."), so the second parse linkifies what the first round —
-	// where the token was still fused into a directive name — did not.
-	// remark renders the identical escape bytes and re-linkifies the
-	// same way (probe: ":0_www.0.a" → ":0\_www\.0.a").
+	// Any other rendered backslash escape directly before a www literal
+	// is the same class: GFM autolink literals may follow the escaped
+	// punctuation (cmark-gfm allows '_', '*', '~', '(' before "www."), so
+	// the second parse linkifies what the first round — where the token
+	// was still fused into a directive name — did not. remark renders the
+	// identical escape bytes and re-linkifies the same way (probe:
+	// ":0_www.0.a" → ":0\_www\.0.a"). An http(s) scheme literal does not
+	// reach this pattern (urlLiteralOpenerPat is www-only); see its doc
+	// comment for why the scheme form stopped needing this skip.
 	if escapedPunctURLRe.MatchString(first) {
 		return "escaped punctuation before URL literal; remark is equally unstable", true
 	}

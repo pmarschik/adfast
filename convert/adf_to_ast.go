@@ -1764,6 +1764,49 @@ func convertInlineCard(node *adf.InlineCard, rc renderCtx) []flatInline {
 // decode hooks could own (see the dialect package). Marks outside that
 // vocabulary wrap outermost in mark-array order (first innermost) when
 // a hook claims them, and drop otherwise.
+// isBareAutolinkScheme reports whether href is one of the schemes GFM's
+// extended autolink literal recognizes in bare (unbracketed) text: http://,
+// https:// (either case, matching convertGoldmarkAutoLink's own parse), or a
+// mailto: address whose visible text is the bare address (no "mailto:" in
+// the text). CommonMark's angle-bracket autolink grammar is far wider (any
+// 2-32 char scheme — "tel:", "Ad:", a custom URI scheme all parse as
+// <scheme:…>), but none of those re-linkify from plain text, so a link on
+// one of them keeps the angle form here rather than losing its markup.
+//
+// mailto is split from http(s) because the two schemes round-trip through
+// different text shapes. goldmark's own linkify (extension/linkify.go)
+// scans an email's local part from the exact position the parse started —
+// util.FindEmailIndex breaks at the first byte outside the local-part
+// table, and ':' is not in that table — so a literal "mailto:addr" in text
+// never matches the email branch at all; only convertGoldmarkAutoLink's
+// own auto-prepend of "mailto:" onto a BARE "addr" round-trips. Writing the
+// full "mailto:addr" as bare text (text equal to href, the same rule
+// http(s) uses) would hand back plain text no reparse turns back into a
+// link, same failure class the scheme restriction above exists to catch.
+//
+// The mailto prefix check is deliberately case-sensitive where the http(s)
+// one is not: convertGoldmarkAutoLink only ever auto-prepends a lowercase
+// "mailto:", so an href spelled "MAILTO:addr" or "Mailto:addr" could not
+// have come from that parse and is never bare-safe here, matching the
+// http(s) branch's own "either case, matching convertGoldmarkAutoLink's own
+// parse" rule rather than contradicting it.
+//
+// This function does not itself check that addr looks like an email — that
+// is autolinkableEmail's job, called downstream from autolinkText before
+// node.Bare is ever consulted (see markdown/render_flanking.go). A mailto
+// href this function marks bare-safe still only renders bare if that gate
+// also passes.
+func isBareAutolinkScheme(href, text string) bool {
+	lower := strings.ToLower(href)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return true
+	}
+	if addr, ok := strings.CutPrefix(href, "mailto:"); ok {
+		return text == addr
+	}
+	return false
+}
+
 func inlineLeafNode(item flatInline, rc renderCtx) ast.Node {
 	if item.isBreak {
 		return &ast.Break{}
@@ -1780,7 +1823,21 @@ func inlineLeafNode(item flatInline, rc renderCtx) ast.Node {
 	}
 	if item.isLink {
 		node = &ast.Link{
-			URL:        item.href,
+			URL: item.href,
+			// ADF carries no "was it written in angle brackets" bit, so a
+			// link mark whose text equals its href has exactly one leg
+			// available to pick a spelling by. Bare: true picks the same
+			// spelling the format leg already uses for an unauthored bare
+			// URL (writeLink's existing bare-vs-angle branch reads this
+			// field), so a document that goes through ADF and one that
+			// goes through WithPrettierFormat agree on this byte instead
+			// of disagreeing by render leg. Restricted to the schemes GFM's
+			// bare autolink literal actually recognizes (see
+			// isBareAutolinkScheme): any other scheme is angle-autolink
+			// valid but not bare-literal valid, so writing it without
+			// brackets would hand back text a reparse cannot turn into the
+			// same link.
+			Bare:       isBareAutolinkScheme(item.href, item.text),
 			Title:      item.linkTitle,
 			InlineCard: item.isInlineCard,
 			Children:   []ast.Node{node},

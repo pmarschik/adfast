@@ -776,6 +776,42 @@ would only be a second one. A named regression test pins each of these:
   `![unknown asset](assets/diagram.png)`, which recorded an empty
   paragraph and a `"\n"` round trip) record this against the reference
   corpus.
+- **A link whose text equals its href writes bare, not angled, on the ADF
+  leg.** remark-stringify always keeps the angle
+  form (`<http://ex.com>`) for a link mdast builds from a bare or angle
+  autolink; the ADF leg used to match that, because it had nothing of
+  its own to decide against. ADF carries no "was it written in angle
+  brackets" bit on a link mark — only a URL and some text — so this was
+  never really parity with a source property, only with remark's own
+  fixed choice of spelling for the one case ADF cannot distinguish. The
+  format leg (no ADF hop, `ast.Link.Bare` still holds what the parse
+  saw) already wrote bare for an unauthored literal, so the same input
+  produced different bytes depending on whether a user pushed directly
+  or formatted first. With no frozen reference left to arbitrate, the
+  two legs are made to agree instead: the ADF leg now writes bare too.
+  The accepted cost is that an angle autolink a user actually typed, taken
+  through ADF and back, now comes out bare as well — ADF was always going
+  to pick one spelling for both over that hop, and bare is the pick.
+  `convert.isBareAutolinkScheme` restricts which schemes may take the
+  bare spelling at all: CommonMark's angle-autolink grammar accepts any
+  2-32 character scheme, but GFM's bare-literal extension recognizes only
+  http(s) and a stripped `mailto:` address, so a link on a narrower scheme
+  (`<tel:123>`, a custom URI scheme) keeps the angle form, or a reparse
+  turns it back into plain text that links nowhere (the fuzz corpus
+  `"!<Ad:><Ad:>0"` caught this before the restriction existed). mailto
+  needs its own branch rather than reusing http(s)'s "text equals href"
+  rule: goldmark's own linkify (`extension/linkify.go`) scans an email's
+  local part from the exact position the parse started, and
+  `util.FindEmailIndex` breaks at the first byte outside its local-part
+  table — `:` is not in that table — so a literal, unbracketed
+  `mailto:addr` in text never matches the email branch at all on
+  reparse; only an auto-prepend of `mailto:` onto a bare `addr` (done by
+  `convertGoldmarkAutoLink`) round-trips. A link mark whose text is the
+  full `mailto:addr` literal must therefore keep the angle form, the same
+  failure class the scheme restriction exists to catch, even though its
+  text equals its href exactly as an http(s) link's does. See
+  `convert.isBareAutolinkScheme`, `barelinkscheme_test.go`,
+  `barelinkform_test.go` and `TestMailtoLinkMarkTextDecidesTheBareForm`.
 
 The prettier md → md formatter is the composition
 `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`
