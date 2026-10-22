@@ -127,11 +127,17 @@ func TestSchemeColonIsEscapedAndStableInEitherCase(t *testing.T) {
 // With a host the autolink literal accepts, writing the escape does not buy a
 // round trip: the decoded-text linkify (relinkifyTexts, mirroring
 // mdast-util-gfm-autolink-literal's transform) reads the text the escape
-// produced and never sees the backslash, so the second pass links it anyway
-// and writes the angle autolink. The reference degrades in the same two steps
-// on the same shape, which is what makes this a legitimate skip —
-// skipRenderedClasses takes it via escapedSchemeColonIgnored, and the rows
-// above are the control proving that skip does not reach a host-less literal.
+// produced and never sees the backslash, so the second pass links it anyway.
+// The reference degrades in the same two steps on the same shape, which is
+// what makes this a legitimate skip — skipRenderedClasses takes it via
+// escapedSchemeColonIgnored, and the rows above are the control proving that
+// skip does not reach a host-less literal.
+//
+// THE SECOND RENDER IS NOW BARE, NOT ANGLED (an internal-consistency
+// decision: the ADF leg writes the bare form for an http(s) link whose text
+// equals its href, matching the format leg). The instability
+// itself is unchanged — the escape is still dropped by the second parse —
+// only the spelling of its second step moved.
 //
 // THIS TEST IS WHAT MAKES escapedSchemeColonRe's `(?i)` LOAD-BEARING RATHER
 // THAN DECORATIVE, and it could not be written before the fold landed: with a
@@ -144,8 +150,8 @@ func TestSchemeColonIsEscapedAndStableInEitherCase(t *testing.T) {
 func TestDottedHostSchemeColonIsSkippedInEitherCase(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ name, md, first, second string }{
-		{"an uppercase last scheme letter", `*httP://*0.0**`, "_httP\\://0.0_\n", "_<httP://0.0>_\n"},
-		{"a lowercase last scheme letter", `*HTTp://*0.0**`, "_HTTp\\://0.0_\n", "_<HTTp://0.0>_\n"},
+		{"an uppercase last scheme letter", `*httP://*0.0**`, "_httP\\://0.0_\n", "_httP://0.0_\n"},
+		{"a lowercase last scheme letter", `*HTTp://*0.0**`, "_HTTp\\://0.0_\n", "_HTTp://0.0_\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
