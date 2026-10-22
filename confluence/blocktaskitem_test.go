@@ -56,8 +56,10 @@ func TestBlockTaskItemSeparatesEveryBoundary(t *testing.T) {
 // TestBlockTaskItemSeparatesNonParagraphBlock covers the block kinds that
 // have no trailing text to extend. A space appended inside a code block
 // would be an edit to the code, so the separator is a paragraph of its
-// own after the block. Confluence's downgrade of a code block inside a
-// task item is not measured; if it contributes text, that text is
+// own after the block. This asserts only what SeparateBlockTaskItems
+// writes before upload; see the package comment for what Confluence's
+// own downgrade does to a code block inside a task item once it's
+// stored. Either way, if the block contributes text, that text is
 // separated from what follows, which is the point.
 func TestBlockTaskItemSeparatesNonParagraphBlock(t *testing.T) {
 	js := docJSON(t, mdToADF(t, "- [ ] LEAD\n\n  ```go\n  x := 1\n  ```\n\n  TAIL\n"))
