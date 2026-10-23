@@ -301,8 +301,14 @@ type Text struct {
 	// md→md formatter: it keeps the authored escapes (see the markdown
 	// package's PreservedEscapes) undecoded so formatting re-emits them
 	// byte-for-byte, while Value stays fully decoded. A Markdown parse sets
-	// Raw only when it differs from Value; nodes built from ADF or by hand
-	// leave it empty, and Rendered derives the same form from Value.
+	// Raw whenever it differs from Value, and also — even when it is equal —
+	// whenever Value contains a backtick: a backtick the parse saw bare has
+	// no backslash to leave a difference behind, so equality is the only
+	// signal left that this Value is known to have come from the source
+	// byte-for-byte rather than from ADF or a hand-built node. Nodes built
+	// from ADF or by hand leave Raw empty, and Rendered derives the same
+	// form from Value, escaping a backtick there defensively because it
+	// cannot tell a bare one from one ADF only ever stores decoded.
 	Raw string
 }
 
@@ -325,11 +331,20 @@ func (*Text) Kind() string { return "text" }
 //
 // The plain (non-prettier) render and the ADF encode read Value directly;
 // only the prettier formatter's canonicalization consults this.
+//
+// The Raw-empty fallback also escapes a literal backtick in Value. A Markdown
+// parse that saw a bare backtick forces Raw non-empty (see the Raw field
+// comment) specifically so it skips this fallback; reaching the fallback
+// with a backtick in Value means the node is ADF-origin or hand-built, where
+// a backtick has no source spelling to echo and is written bare only by
+// accident, a code-span delimiter with no matching pair. The next parse
+// would read it as one, so it is escaped here the same way the parser
+// escapes an authored one.
 func (t *Text) Rendered() string {
 	if t.Raw != "" {
 		return t.Raw
 	}
-	return escapeLiteralBackslashes(t.Value)
+	return escapeLiteralBacktick(escapeLiteralBackslashes(t.Value))
 }
 
 // escapeLiteralBackslashes writes s in the source-escape form: a backslash
@@ -345,6 +360,27 @@ func escapeLiteralBackslashes(s string) string {
 	sb.Grow(len(s) + 4)
 	for i := range len(s) {
 		if s[i] == '\\' && i+1 < len(s) && isASCIIPunct(s[i+1]) {
+			sb.WriteByte('\\')
+		}
+		sb.WriteByte(s[i])
+	}
+	return sb.String()
+}
+
+// escapeLiteralBacktick writes a backslash before every backtick in s. It is
+// composed after escapeLiteralBackslashes, so the two passes never read each
+// other's output: the backslash pass only ever looks at '\\' bytes and the
+// byte that follows one, and this pass only ever looks at '`' bytes, so
+// running one after the other cannot double-escape a byte the other pass
+// already touched.
+func escapeLiteralBacktick(s string) string {
+	if !strings.ContainsRune(s, '`') {
+		return s
+	}
+	var sb strings.Builder
+	sb.Grow(len(s) + 4)
+	for i := range len(s) {
+		if s[i] == '`' {
 			sb.WriteByte('\\')
 		}
 		sb.WriteByte(s[i])

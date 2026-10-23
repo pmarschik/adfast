@@ -225,7 +225,11 @@ func foldableNode(n ast.Node) bool {
 func textSlice(node *ast.Text, value string, a, b int) *ast.Text {
 	t := &ast.Text{Value: value[a:b]}
 	if node.Raw != "" {
-		if raw := rawSliceFor(node.Raw, value, a, b); raw != t.Value {
+		raw := rawSliceFor(node.Raw, value, a, b)
+		// A backtick slice forces Raw even when this particular sub-range
+		// has no escape to leave a difference behind (see convertGoldmarkText
+		// for why a bare backtick needs Raw set regardless of equality).
+		if raw != t.Value || strings.ContainsRune(t.Value, '`') {
 			t.Raw = raw
 		}
 	}
@@ -1645,7 +1649,11 @@ func convertGoldmarkText(n *gast.Text, src []byte) []ast.Node {
 	var nodes []ast.Node
 	if value != "" {
 		t := &ast.Text{Value: value}
-		if rawVal != value {
+		// A bare backtick decodes to the same bytes it started as, so
+		// rawVal == value carries no difference to gate on — forcing Raw
+		// here is the only way to record "the parse saw this one bare"
+		// (see PreservedEscapes and ast.Text.Raw's doc comments).
+		if rawVal != value || strings.ContainsRune(value, '`') {
 			t.Raw = rawVal
 		}
 		nodes = append(nodes, t)
