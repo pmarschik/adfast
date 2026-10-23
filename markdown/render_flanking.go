@@ -703,12 +703,38 @@ func bareWWWLiteral(node *ast.Link) (string, bool) {
 	return t.Value, true
 }
 
+// bareAutolinkBackslashHazard reports whether writing a bare schemed autolink
+// here would not survive a render/re-parse round trip, because the byte just
+// written is a literal backslash that escapeBackslash is about to double (or
+// has just doubled: st.prev is the already-escaped output byte).
+//
+// escapedLinkifyParser's parseInertBackslash links the text right after a
+// backslash CommonMark does not treat as an escape (one before a letter, not
+// ASCII punctuation) — the parser leaves the backslash as its own one-byte
+// literal text node immediately followed by the link. In remark mode,
+// escapeBackslash ALWAYS doubles a literal backslash, with no lookahead at
+// all: "\http://a.b" renders "\\http://a.b", and two backslashes immediately
+// before a URL is the escaped-boundary case's own byte shape — it does not
+// re-link on parse, since '\\' is ASCII punctuation and is not one of
+// escapedLinkifyBoundaries. Bare text here would lose the link on the very
+// next format pass. Falling back to the <url> form sidesteps it entirely: the
+// angle brackets are ordinary punctuation and are not themselves escapable,
+// so a preceding backslash can never touch them.
+//
+// In prettier mode escapeBackslash only escapes before ASCII punctuation, so
+// a backslash before the link's first (letter) byte is never doubled: the
+// source byte survives unchanged, parseInertBackslash reads the same single
+// backslash again, and the round trip holds — the hazard does not apply.
+func (r *mdRenderer) bareAutolinkBackslashHazard(st *inlineContext) bool {
+	return !r.cfg.prettierText && st.prev == '\\'
+}
+
 func (r *mdRenderer) writeLink(b *strings.Builder, node *ast.Link, st *inlineContext) {
 	// Auto-link: emit <url> angle-bracket form when the label is plain text
 	// matching the URL (including mailto: links where the label is the bare
 	// email address).
 	if text, ok := autolinkText(node); ok {
-		if node.Bare {
+		if node.Bare && !r.bareAutolinkBackslashHazard(st) {
 			// Linkified bare URL: prettier keeps the source form.
 			b.WriteString(text)
 			return

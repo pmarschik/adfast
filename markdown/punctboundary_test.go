@@ -108,10 +108,14 @@ var punctBoundaryCases = []struct {
 	// link parser returns the bracket as text, so nothing behind it is asked.
 	{name: "open bracket", boundary: "[", links: false, why: "owned by the link parser"},
 
-	// OWNED: escapedLinkifyParser triggers on the backslash and reads the
-	// byte after it as the boundary, so a literal backslash in front of an
-	// address is not a boundary here.
-	{name: "backslash", boundary: "\\", links: false, why: "owned by escapedLinkifyParser"},
+	// OWNED: escapedLinkifyParser triggers on the backslash rather than
+	// punctLinkifyParser claiming it as a generic boundary byte. A backslash
+	// before a letter is not a CommonMark escape at all — only ASCII
+	// punctuation is escapable — so parseInertBackslash leaves the backslash
+	// as its own one-byte literal and hands the address right after it to the
+	// same recognizer chain every other boundary uses. The byte in front of
+	// the address still links here; it is just a different parser's trigger.
+	{name: "backslash", boundary: "\\", links: true},
 }
 
 // TestPunctBoundaryOpensASchemedLiteral is the schemed half. Every row is
