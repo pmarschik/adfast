@@ -6,4 +6,7 @@ require (
 	github.com/pmarschik/goldmark-directive v0.3.2
 	github.com/yuin/goldmark v1.8.5
 	golang.org/x/image v0.45.0
+	golang.org/x/net v0.61.0
 )
+
+require golang.org/x/text v0.43.0 // indirect

@@ -254,26 +254,29 @@ var urlLiteralHostCases = []urlLiteralHostCase{{
 	text:             "",
 	textHostRejected: true,
 }, {
-	// PRESERVED BEHAVIOR PIN, and the one shape the Unicode-led host is
-	// deliberately NOT extended to reach: a non-ASCII segment that is not the
-	// first. This is micromark's own example, and BOTH halves of the
-	// reference link it whole — the tokenizer through its Unicode domain, the
-	// transform through an ASCII host of "www." plus its
-	// whitespace-terminated path — while here the TLD class takes "點看" and
-	// the path cannot open on the following '.', so the href is truncated.
-	// That last step is the PATH gap, so this row moves when the path does.
-	// Widening the raw host to reach it alone would break the same-extent
-	// invariant TestURLLiteralRawPatternIsTheWiderOne states, because the
-	// decoded-text pattern cannot follow without an ASCII path widening.
-	name: "a non-ASCII middle segment still truncates",
+	// NO LONGER TRUNCATES. This is micromark's own example, and BOTH halves
+	// of the reference link it whole — the tokenizer through its Unicode
+	// domain, the transform through an ASCII host of "www." plus its
+	// whitespace-terminated path. urlLiteralHostDotted's leading group now
+	// reaches it too: it opens on an ASCII byte ('w'), which is all the
+	// restriction in its doc requires, and the repetition after that byte
+	// already crosses a literal '.' (urlLiteralHostByte holds the dot), so it
+	// carries "點看" through to the final dot the same way it carries a
+	// mixed-script label like "exämple" through to one. Widening
+	// urlLiteralHostDotted does not outrun the decoded-text pattern —
+	// urlLiteralRe is built from the very same constant, not a copy — so
+	// both columns move together and TestURLLiteralRawPatternIsTheWiderOne
+	// still holds. See urlLiteralHostUnicodeLed's own doc, "A NON-ASCII
+	// SEGMENT THAT IS NOT THE FIRST NO LONGER TRUNCATES".
+	name: "a non-ASCII middle segment no longer truncates",
 	src:  "https://www.點看.com",
-	raw:  "https://www.點看",
-	text: "https://www.點看",
+	raw:  "https://www.點看.com",
+	text: "https://www.點看.com",
 }, {
-	name: "a non-ASCII TLD before another segment still truncates",
+	name: "a non-ASCII TLD before another segment no longer truncates",
 	src:  "https://a.coſ.com/x",
-	raw:  "https://a.coſ",
-	text: "https://a.coſ",
+	raw:  "https://a.coſ.com/x",
+	text: "https://a.coſ.com/x",
 }, {
 	// THE HOST GATE, whose rows all keep their pattern match and lose the
 	// document: an UNDERSCORE in either of the host's LAST TWO dot-separated
@@ -1036,4 +1039,90 @@ func isASCII(s string) bool {
 		}
 	}
 	return true
+}
+
+// TestPunycodeLiteralHrefKeepsTheLabelAndEncodesTheHost covers
+// punycodeLiteralHref end to end, through Parse: a literal whose host holds a
+// non-ASCII byte keeps the author's text verbatim in the link's label and
+// gets an IDNA/punycode href instead, in the deliberate-divergence direction
+// punycodeLiteralHref's own doc comment describes — the frozen reference
+// (remark-parse 11.0.0 + remark-gfm 4.0.1 + mdast-util-gfm-autolink-literal
+// 2.0.1) links the Unicode host unencoded in both halves, and adfast instead
+// follows the browser convention for an IDN address. Every want string here
+// is golang.org/x/net/idna's own measured output, not a hand-spelled one.
+func TestPunycodeLiteralHrefKeepsTheLabelAndEncodesTheHost(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{{
+		// The motivating example: a bare "www." literal with one non-ASCII
+		// byte in an otherwise-ASCII host.
+		name: "the motivating bare www host",
+		src:  "see www.exämple.com here",
+		want: "www.exämple.com|http://www.xn--exmple-cua.com",
+	}, {
+		// All-ASCII stays completely unaffected: punycodeLiteralHref's own
+		// urlLiteralHasNonASCII guard means idna.ToASCII is never even
+		// called, so this is a regression guard on the guard itself.
+		name: "an all-ASCII host is not touched",
+		src:  "see www.example.com here",
+		want: "www.example.com|http://www.example.com",
+	}, {
+		// The schemed "https://www." form of the same non-ASCII host.
+		name: "a schemed https://www. non-ASCII host",
+		src:  "see https://www.exämple.com here",
+		want: "https://www.exämple.com|https://www.xn--exmple-cua.com",
+	}, {
+		// A non-ASCII run right after a bare "www." prefix with no dot at
+		// all afterward — the dotless alternative in urlLiteralWWW.
+		name: "non-ASCII immediately after bare www. with no dot",
+		src:  "see www.例子公司 here",
+		want: "www.例子公司|http://www.xn--fsqr9b55c21l",
+	}, {
+		// Two or more consecutive non-ASCII runes before a final dot, bare
+		// "www." form: urlLiteralHostUnicodeLed in urlLiteralWWW's
+		// alternatives is what keeps this one from truncating at the dot
+		// and losing the TLD the way it did before that alternative was
+		// added (see urlLiteralWWW's own doc comment).
+		name: "2+ consecutive non-ASCII runes before the final dot, bare www.",
+		src:  "see www.例子公司.com here",
+		want: "www.例子公司.com|http://www.xn--fsqr9b55c21l.com",
+	}, {
+		// The sibling-fix-flagged edge, schemed form: "www.點看.com" is
+		// micromark's own example, and the earlier sibling fix in this file
+		// deferred it because widening a shared class with a single
+		// non-repeated rune alternative truncates at the SECOND rune of any
+		// multi-rune run. urlLiteralHostDotted's repeated-rune widening (see
+		// its own doc, THE SEGMENT BEFORE THE FINAL DOT ALSO TAKES A REPEATED
+		// RUN OF NON-ASCII RUNES NOW) closes it without that failure mode.
+		name: "the sibling-fix-flagged edge, schemed www.點看.com",
+		src:  "see https://www.點看.com here",
+		want: "https://www.點看.com|https://www.xn--c1yn36f.com",
+	}, {
+		// The same shape, bare "www." form rather than schemed — the exact
+		// pairing this test's own table above
+		// ("a non-ASCII middle segment no longer truncates") only measures
+		// for the schemed spelling.
+		name: "the sibling-fix-flagged edge, bare www.點看.com",
+		src:  "see www.點看.com here",
+		want: "www.點看.com|http://www.xn--c1yn36f.com",
+	}, {
+		// A port after the punycoded host: punycodeLiteralHref's own port
+		// split must leave ":8080" untouched and outside the IDNA call.
+		name: "a non-ASCII host with a port and a path",
+		src:  "see www.exämple.com:8080/path here",
+		want: "www.exämple.com:8080/path|http://www.xn--exmple-cua.com:8080/path",
+	}}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got := linkVerdictsOf(Parse([]byte(c.src)))
+			want := []string{c.want}
+			if !equalStrings(got, want) {
+				t.Errorf("link verdicts of %q = %v, want %v", c.src, got, want)
+			}
+		})
+	}
 }

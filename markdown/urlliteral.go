@@ -3,6 +3,8 @@ package markdown
 import (
 	"regexp"
 	"strings"
+
+	"golang.org/x/net/idna"
 )
 
 // WHICH BYTES ARE A BARE URL. Three code paths in this package have to agree
@@ -61,8 +63,11 @@ import (
 //	"https://ex.com€x"       ref "https://ex.com€x"       here "https://ex.com"
 //	"https://ex.com/a|b"     ref "https://ex.com/a|b"     here "https://ex.com/a"
 //	"https://ex.com/a—b"     ref "https://ex.com/a—b"     here "https://ex.com/a"
-//	"https://www.點看.com"    ref "https://www.點看.com"    here "https://www.點看"
 //
+// "https://www.點看.com" used to be in this list too, but it moved: it was a
+// HOST rule gap, not a path one, and urlLiteralHostDotted's own non-ASCII
+// widening (see its doc) now reaches it; see urlliteral_test.go's "a
+// non-ASCII middle segment no longer truncates".
 // THIS ONE IS NOT A CLASS WIDENING, which is why it is still open. The
 // reference's stop rule is an algorithm, not a character set: the tokenizer
 // consumes to whitespace and then LOOKS AHEAD over a trailing run of
@@ -186,6 +191,84 @@ const (
 	// the letter-led "https://ex.com-x" stopped at "https://ex.com". Both now
 	// reach the reference's answer through this class, and they answer alike.
 	//
+	// THE SEGMENT BEFORE THE FINAL DOT ALSO TAKES A REPEATED RUN OF NON-ASCII
+	// RUNES NOW, and that one is a WRONG-HREF fix of the same shape as the
+	// TLD's own non-ASCII byte above — this time on the label the literal dot
+	// comes AFTER rather than the one it comes before. Before this, the part
+	// of urlLiteralHostDotted ahead of its required '\.' was urlLiteralHostByte
+	// alone, ASCII-only, so a host whose NON-FINAL label mixed ASCII and
+	// non-ASCII — "www.exämple.com" — had no ASCII-reachable dot for that
+	// class to stop at: the real '.' sits on the far side of "ä", so the
+	// dotted alternative failed outright and the shorter dotless form (an
+	// alphanumeric lead plus urlLiteralHostByte, ASCII-only) matched "www.ex"
+	// alone and quit, leaving "ämple.com" as orphaned prose glued to a link
+	// that pointed at the wrong, truncated host — worse than no link, the
+	// same failure mode the TLD-class widenings above each closed in their
+	// own position. Measured against the frozen reference (remark-parse
+	// 11.0.0 + remark-gfm 4.0.1, both recognizers), which links the address
+	// whole with the Unicode host unencoded in the href:
+	//
+	//	"see www.exämple.com b"      ref http://www.exämple.com   was http://www.ex
+	//	"see https://exämple.com b"  ref https://exämple.com      was https://ex
+	//
+	// THE WIDENING IS A REPEATED GROUP,
+	// `(?:urlLiteralHostByte|urlLiteralHostRune){0,256}`, and not a single
+	// rune alternative — the distinction a sibling fix in this same file
+	// (urlLiteralWWW's dotless lead byte, below) had to learn the hard way: a
+	// lead or segment class that accepts ONE non-ASCII rune and then falls
+	// back to an ASCII-only tail still truncates at the SECOND rune of any
+	// multi-rune run, producing the identical wrong-href shape one rune
+	// later. Repeating the whole alternation, the way the TLD class's own
+	// trailing `+` already does, is what lets the segment consume a run of
+	// any length — "www.例子公司.com" reaches its final dot exactly as
+	// "www.exämple.com" does, measured ref http://www.例子公司.com.
+	//
+	// THE GROUP'S FIRST CHARACTER STAYS urlLiteralHostByte, ASCII, AND NOT
+	// THE ALTERNATION — only the repetition after it may open on a rune. A
+	// leading rune is already spoken for: urlLiteralHostUnicodeLed is the
+	// RAW-ONLY alternative for a host whose FIRST character is non-ASCII, and
+	// urlLiteralHostDotted is not raw-only — it is also urlLiteralRe's own
+	// pattern, the decoded-text side, applied directly with no Unicode-led
+	// alternative beside it. Letting its lead byte open on a rune would have
+	// reached that pattern too, and the reference's decoded-text transform
+	// does not: its domain is the ASCII `[-.\w]+`, which captures nothing at
+	// a non-ASCII first byte, so its own `([-.\w]+)` fails to match at all
+	// and the candidate is not a link. Measured against the frozen reference,
+	// "a [ https://例.com/x b" comes back "a \\[ https\\://例.com/x b" — the
+	// escape stays, because the decoded-text recognizer never opens a domain
+	// here. An ASCII-led requirement keeps urlLiteralHostDotted's answer the
+	// same: this file's own urlLiteralHostUnicodeLed doc and the "raw only"
+	// rows in urlliteral_test.go's urlLiteralHostCases are the measurement.
+	//
+	// THE RESTRICTION APPLIES ONLY ONCE, to the group's FIRST character, not
+	// the character right after every internal dot — '.' is itself a byte
+	// urlLiteralHostByte already holds, so the repetition after the first
+	// character freely crosses a later literal dot into a WHOLE non-ASCII
+	// segment, not only a non-ASCII rune mixed into an otherwise-ASCII one.
+	// "www.點看.com" (micromark's own example) and "a.coſ.com/x" both open on
+	// an ASCII byte ('w', 'a') and so both now reach their final dot whole —
+	// which is correct, not an over-reach: both link whole in BOTH halves of
+	// the reference (see "A NON-ASCII SEGMENT THAT IS NOT THE FIRST NO LONGER
+	// TRUNCATES" on urlLiteralHostUnicodeLed's own doc, and urlliteral_test.go's
+	// "a non-ASCII middle segment no longer truncates"). The restriction exists
+	// solely to keep a host whose HOST ITSELF opens on a rune — nothing ASCII
+	// before it at all — out of this alternative, which is the "raw only" row
+	// above and the one case this file's measurements say the decoded-text
+	// recognizer never links.
+	//
+	// THE BOUND STAYS {0,256}, matching the byte-only class it replaces,
+	// though it now counts alternation repetitions (each a single rune or a
+	// single ASCII byte) rather than raw bytes — a cosmetic difference, since
+	// Go's RE2 engine runs in linear time regardless of the bound and nothing
+	// here measures against it.
+	//
+	// THE SCHEMED INTRANET-NAME ALTERNATIVE IN urlLiteralHost (the bare
+	// `[a-zA-Z0-9]`+urlLiteralHostByte form below, for names like "jira" and
+	// "localhost:8080") IS NOT WIDENED here, deliberately: it is a dotless,
+	// single-segment name with no TLD-like tail of its own, nothing measured
+	// motivates a non-ASCII intranet hostname, and widening it was not asked
+	// for. It stays exactly as it was.
+	//
 	// THE TLD CLASS ALSO TAKES '_', and that byte is there for the GATE and
 	// not for the pattern: urlLiteralHostAccepted refuses every host with an
 	// underscore in its last two segments, so a TLD that uses this byte is
@@ -202,7 +285,7 @@ const (
 	// which has no underscore left to refuse. Found by the format fuzzer:
 	// "*www..*" formats to "_www.._" and linked "http://www". The gate reads
 	// the domain the reference reads, so an empty one is refused there.
-	urlLiteralHostDotted = urlLiteralHostByte + `{0,256}\.` +
+	urlLiteralHostDotted = `(?:` + urlLiteralHostByte + `(?:` + urlLiteralHostByte + `|` + urlLiteralHostRune + `){0,255})?\.` +
 		`(?:[-a-zA-Z0-9_]|` + urlLiteralHostRune + `)+(?::\d+)?`
 	// urlLiteralHostByte is goldmark's own host character class, spelled once
 	// so the three host alternatives below cannot drift apart. The bytes are
@@ -262,15 +345,27 @@ const (
 	// repositories' Markdown, it changes the extent of ZERO literals that
 	// link today; it only turns prose into a link.
 	//
-	// A NON-ASCII SEGMENT THAT IS NOT THE FIRST STILL TRUNCATES, deliberately.
+	// A NON-ASCII SEGMENT THAT IS NOT THE FIRST NO LONGER TRUNCATES.
 	// "https://www.點看.com" (micromark's own example) links whole in BOTH
-	// halves of the reference and comes out here as "https://www.點看", and
-	// "https://a.coſ.com/x" likewise stops at "https://a.coſ". Both are the
-	// PATH gap above rather than a host rule: the reference's transform reads
-	// them as an ASCII host ("www.", "a.co") plus its whitespace-terminated
-	// path. Widening the raw host to reach them alone would make the raw
-	// pattern outrun the decoded-text one and break the same-extent invariant
-	// TestURLLiteralRawPatternIsTheWiderOne states.
+	// halves of the reference, and now comes out here whole too — as does
+	// "https://a.coſ.com/x" — because urlLiteralHostDotted's own leading
+	// group (see its doc, THE SEGMENT BEFORE THE FINAL DOT ALSO TAKES A
+	// REPEATED RUN OF NON-ASCII RUNES NOW) widened to cross a non-ASCII
+	// segment in the middle of a host, not only a non-ASCII rune mixed into
+	// an otherwise-ASCII one. THIS DOES NOT BREAK THE SAME-EXTENT INVARIANT
+	// TestURLLiteralRawPatternIsTheWiderOne states, which is what used to
+	// hold this row back: that invariant is about the RAW pattern outrunning
+	// the DECODED-TEXT one, and urlLiteralHostDotted is not raw-only — it is
+	// urlLiteralRe's own pattern, applied with no Unicode-led alternative
+	// beside it — so a wider HostDotted widens both patterns in lockstep, and
+	// the extent the two agree on only grows. This alternative
+	// (urlLiteralHostUnicodeLed) stays exactly as wide as before; its own
+	// "raw only" row (urlLiteralRe refusing "https://例.com/x") is unaffected,
+	// because HostDotted's lead byte is still required to be ASCII — only a
+	// LATER segment, not the host's first character, may now be whole
+	// non-ASCII. See urlliteral_test.go's "a non-ASCII middle segment no
+	// longer truncates" and "a non-ASCII TLD before another segment no
+	// longer truncates" for the measurement.
 	//
 	// AN UNDERSCORE IN THE LAST TWO SEGMENTS is refused for this alternative
 	// as for the two ASCII ones, and not here: the pattern still matches
@@ -362,12 +457,38 @@ const (
 	// whole, where the dotted alternative stops at "www.ex.com" and leaves
 	// the tilde to the path gap this file's header describes.
 	//
-	// urlLiteralHostUnicodeLed is deliberately NOT among the alternatives.
-	// The prefix is ASCII, so the character right after it can never be the
-	// FIRST of the host — that position is 'w' — and the segment after the
-	// prefix is a middle segment, which the header records as truncating in
-	// the schemed form too ("https://www.點看.com"). Adding it here would
-	// move that row for the scheme-less spelling alone.
+	// urlLiteralHostUnicodeLed JOINS THE ALTERNATIVES NOW, first among them,
+	// for the opposite reason an earlier version of this comment gave for
+	// leaving it out. The prefix is ASCII, so the position right after it
+	// ("www." + the next byte) is always a MIDDLE segment of the whole host,
+	// never the host's own first character — urlLiteralHostUnicodeLed is the
+	// RAW-ONLY rule for a host whose FIRST character is non-ASCII, and that is
+	// not this position. What this position needed was the SAME non-ASCII
+	// widening urlLiteralHostDotted's own leading group carries (see its doc,
+	// THE SEGMENT BEFORE THE FINAL DOT ALSO TAKES A REPEATED RUN OF NON-ASCII
+	// RUNES NOW) — but that widening requires the group's first byte to be
+	// ASCII, which a "www."-stripped remainder opening straight on a rune
+	// ("點看.com", "例子公司.com") is not, so urlLiteralHostDotted alone leaves
+	// this remainder unable to open at all and the match falls through to the
+	// dotless alternative below, which has no literal-dot support and
+	// truncates at the embedded dot — the same wrong-href shape this file's
+	// header calls worse than no link, reappearing here once HostDotted
+	// gained an ASCII-first-byte rule it did not used to have.
+	// urlLiteralHostUnicodeLed has no such requirement — it opens on a rune by
+	// definition and its own repetition already crosses a literal dot, same as
+	// urlLiteralHostByte does for the ASCII case — so putting it first closes
+	// this gap without touching urlLiteralHostDotted's own requirement, which
+	// still protects urlLiteralRe's standalone schemed usage (see
+	// urlLiteralHostDotted's doc and urlLiteralHostUnicodeLed's "raw only"
+	// row). Measured against the frozen reference, which links both forms
+	// whole in BOTH recognizers:
+	//
+	//	"see www.點看.com b"      ref http://www.點看.com      was http://www.點看
+	//	"see www.例子公司.com b"  ref http://www.例子公司.com  was http://www.例子公司
+	//
+	// and this is the SAME row "https://www.點看.com" above already closed for
+	// the schemed spelling — adding the alternative here is what keeps the
+	// scheme-less spelling from being the one left behind instead.
 	//
 	// THE PREFIX IS SPELLED PER LETTER, `[wW][wW][wW]\.`, the way
 	// urlLiteralScheme spells its own case-insensitivity, because BOTH of the
@@ -434,23 +555,39 @@ const (
 	// wwwliteral_test.go's "an underscore does not open the host" row, which
 	// moved from a pattern refusal to a gate one.
 	//
-	// THE LEAD BYTE STAYS ASCII, DELIBERATELY, unlike urlLiteralHostDotted's
-	// own TLD-tail class, which also takes urlLiteralHostRune. Joining that
-	// class whole here — lead byte AND tail — would need the tail to repeat
-	// the rune alternative too, the way the dotted TLD class's trailing `+`
-	// does; this alternative's tail is urlLiteralHostByte{0,255}, ASCII only,
-	// so a rune lead followed by a second rune would match the first and
-	// then stop, splitting one host into a short, WRONG link and silent
-	// trailing prose — exactly the failure mode this file's header calls
-	// worse than no link. Measured, "see www.例子公司 end" would come back
-	// "see [www.例](http://www.例)子公司 end": a host the reference links
-	// whole (its domain has no dot to stop at) truncated after one rune, with
-	// no space to show the reader where the link ends. Before this change no
-	// byte here reached past the alphanumeric lead at all, so no non-ASCII
-	// rune could occupy this position; '-' and '_' close the gap the hyphen
-	// fix is for without opening that one.
-	urlLiteralWWW = `[wW][wW][wW]\.(?:` + urlLiteralHostDotted +
-		`|[-a-zA-Z0-9_]` + urlLiteralHostByte + `{0,255})` + urlLiteralPath
+	// THE LEAD BYTE TAKES A REPEATED RUN OF NON-ASCII RUNES NOW, joining the
+	// class whole the way the paragraph above declined to. Both the lead AND
+	// the tail are now the SAME `+`-repeated alternation the TLD class uses,
+	// `(?:[-a-zA-Z0-9_]|urlLiteralHostRune)+`, so a rune followed by another
+	// rune keeps matching instead of stopping after the first — the exact
+	// failure this file's header calls worse than no link, and the one the
+	// paragraph above was written to avoid by holding the rune back
+	// altogether. That paragraph's hyphen fix widened only the LEAD byte, to
+	// '-' and '_', and stopped there deliberately, because the TAIL behind it
+	// (urlLiteralHostByte{0,255}) had no rune alternative to repeat into.
+	// Giving the tail that alternative too, and repeating the whole group
+	// rather than bounding it, is what makes a rune in the lead safe to add
+	// alongside it.
+	//
+	// THIS CLOSES THE GAP THE SIBLING FIX'S OWN REVIEW FLAGGED AND DEFERRED:
+	// "www.例子公司" — two or more consecutive non-ASCII runes right after the
+	// prefix, with no dot anywhere after it. Measured against the frozen
+	// reference (remark-parse 11.0.0 + remark-gfm 4.0.1, both recognizers),
+	// which needs no dot in a scheme-less domain at all (see THE "www."
+	// PREFIX IS ITSELF THE DOT above) and links the whole run with the
+	// Unicode host unencoded in the href:
+	//
+	//	"see www.例子公司 end"   ref http://www.例子公司   was (no link)
+	//
+	// THE ALTERNATIVE STAYS UNBOUNDED, `+` with no `{0,255}` ceiling, in place
+	// of the byte-counted urlLiteralHostByte{0,255} it replaces — consistent
+	// with THE "www." PREFIX IS ITSELF THE DOT above, which already reads
+	// this alternative as a TLD-like tail rather than a free-standing name,
+	// so sharing the TLD class's own unbounded shape here is the natural
+	// choice rather than a new one.
+	urlLiteralWWW = `[wW][wW][wW]\.(?:` + urlLiteralHostUnicodeLed +
+		`|` + urlLiteralHostDotted +
+		`|(?:[-a-zA-Z0-9_]|` + urlLiteralHostRune + `)+)` + urlLiteralPath
 )
 
 // urlLiteralRe matches a GFM literal-autolink URL anywhere in a string,
@@ -908,4 +1045,116 @@ func findURLLiterals(s string) [][]int {
 		}
 	}
 	return out
+}
+
+// punycodeLiteralHref IDNA-encodes the HOST portion of a recognized bare URL
+// literal's href when the host holds a non-ASCII byte, and returns href
+// unchanged otherwise. The scheme, any userinfo, the port, and the path,
+// query and fragment are left exactly as given; so is the visible label —
+// this function only ever touches the href string a caller is about to put
+// on an *ast.Link, never the Children text next to it.
+//
+// IT IS CALLED FROM EXACTLY THE TWO SITES THAT BUILD A HREF FOR A BARE URL
+// LITERAL THIS FILE'S PATTERNS RECOGNIZE: convertGoldmarkAutoLink in
+// goldmark_to_ast.go, which is where every parser that produces a
+// gast.AutoLink converges (goldmark's own linkify extension through
+// urlLiteralAnchoredRe/urlLiteralWWWAnchoredRe, wwwCaseLinkifyParser,
+// punctLinkifyParser, escapedLinkifyParser, and colonURLParser in parser.go
+// all build one), and splitURLLiterals in the same file, which builds an
+// ast.Link directly for the decoded-text rescan findURLLiterals drives. It is
+// NOT called for an angle-bracket `<...>` autolink (angle is the author's own
+// verbatim URL, parsed by goldmark's core autolink grammar and not by
+// anything in this file) or for a mailto: address (out of this file's scope,
+// and the motivating gap is a www./schemed host, not an email domain).
+//
+// THIS IS A DELIBERATE DIVERGENCE FROM THE FROZEN REFERENCE, in the same
+// spirit as "ftp" IS NOT IN IT above, though in the opposite direction — that
+// one REMOVED a link the reference does not make, this one CHANGES an href
+// the reference also links, to a different string. The reference does not
+// punycode at all: measured against remark-parse 11.0.0 + remark-gfm 4.0.1 +
+// mdast-util-gfm-autolink-literal 2.0.1, both recognizers link the literal
+// Unicode host unencoded in BOTH the label and the href —
+//
+//	"see www.exämple.com b"   ref [www.exämple.com](http://www.exämple.com)
+//
+// — and that reference reading is not in question; it was measured and
+// confirmed before this function was written. adfast instead follows the
+// browser convention for an IDN address: the LABEL stays the literal text the
+// author wrote, byte for byte, and the HREF — the string a client actually
+// dereferences — carries the IDNA/punycode form instead, e.g.
+// "http://www.xn--exmple-cua.com" for the row above (the exact spelling comes
+// from golang.org/x/net/idna itself; this file does not hand-spell one). A
+// reader still sees the address as written; a consumer that is not
+// IDNA-aware, or that renders the href as a plain link, still resolves it.
+// Nothing here is a parity GAP in the sense the rest of this file tracks
+// one — a diff against the Markdown source shows no change, because the
+// label equals the source either way, and only a reader of the href's own
+// bytes (not the rendered document) can tell this answer from the
+// reference's.
+//
+// idna.ToASCII IS THE PUNYCODE PROFILE, "raw punycode processing with a
+// minimum of validation" in the package's own words, chosen over
+// idna.Lookup.ToASCII deliberately: Lookup validates a label and refuses one
+// this file already accepts and links on its own measured terms — "ex.--",
+// "a.-b", "www.._" and the rest of the no-alphanumeric-TLD family the gate
+// functions above measure against the reference. Encoding is the LAST step
+// after the pattern and the gate have already agreed a string is a host, and
+// it must not re-litigate that question; an error or an unchanged result
+// here just leaves href as it was.
+func punycodeLiteralHref(href string) string {
+	i := strings.Index(href, "://")
+	if i < 0 {
+		return href
+	}
+	schemeEnd := i + len("://")
+	rest := href[schemeEnd:]
+	hostEnd := len(rest)
+	if j := strings.IndexAny(rest, "/#?"); j >= 0 {
+		hostEnd = j
+	}
+	authority := rest[:hostEnd]
+	// A userinfo prefix ("user@") is not host; IDNA never sees it.
+	userinfo := ""
+	if j := strings.LastIndexByte(authority, '@'); j >= 0 {
+		userinfo, authority = authority[:j+1], authority[j+1:]
+	}
+	// A trailing ":<digits>" is a port, not host; IDNA never sees that either.
+	host, port := authority, ""
+	if j := strings.LastIndexByte(authority, ':'); j >= 0 && urlLiteralAllASCIIDigits(authority[j+1:]) {
+		host, port = authority[:j], authority[j:]
+	}
+	if !urlLiteralHasNonASCII(host) {
+		return href
+	}
+	encoded, err := idna.ToASCII(host)
+	if err != nil || encoded == host {
+		return href
+	}
+	return href[:schemeEnd] + userinfo + encoded + port + rest[hostEnd:]
+}
+
+// urlLiteralHasNonASCII reports whether s holds a byte outside ASCII.
+func urlLiteralHasNonASCII(s string) bool {
+	for i := range len(s) {
+		if s[i] >= 0x80 {
+			return true
+		}
+	}
+	return false
+}
+
+// urlLiteralAllASCIIDigits reports whether s is non-empty and holds nothing
+// but ASCII digits, which is what makes a ":"-prefixed suffix a port rather
+// than a host byte (urlLiteralHostByte includes both ':' and '%' etc., so the
+// authority this file matches can hold one without it meaning a port).
+func urlLiteralAllASCIIDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := range len(s) {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }

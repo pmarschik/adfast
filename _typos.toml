@@ -10,3 +10,7 @@ PrecendingCharacter = "PrecendingCharacter"
 [default.extend-words]
 # Legitimate plural the checker flags against its singular suggestion.
 canonicalizations = "canonicalizations"
+# The ACE/punycode fragment of "example" inside golang.org/x/net/idna's own
+# "xn--exmple-cua" output (urlliteral.go, urlliteral_test.go) — it is the
+# library's measured answer, not a misspelling to fix.
+exmple = "exmple"

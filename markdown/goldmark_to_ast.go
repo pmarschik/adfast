@@ -312,6 +312,9 @@ func splitURLLiterals(node *ast.Text) []ast.Node {
 		if hasWWWPrefix([]byte(url)) {
 			href = "http://" + url
 		}
+		// See punycodeLiteralHref's own doc for why only the href's host is
+		// IDNA-encoded here, never the label text (url) below.
+		href = punycodeLiteralHref(href)
 		out = append(out, &ast.Link{
 			URL:  href,
 			Bare: true,
@@ -1577,6 +1580,15 @@ func convertGoldmarkAutoLink(n *gast.AutoLink, src []byte) []ast.Node {
 	// the rejection path still measures the string goldmark produced.
 	if n.AutoLinkType == gast.AutoLinkEmail && !strings.HasPrefix(href, "mailto:") {
 		href = "mailto:" + href
+	}
+	// A bare (non-angle) URL literal's href gets its host IDNA-encoded when
+	// it holds a non-ASCII byte; the label above keeps the literal Unicode
+	// text either way. See punycodeLiteralHref for why this is a deliberate
+	// divergence from the frozen reference, and why it excludes angle
+	// autolinks (the author's own verbatim URL) and email addresses (out of
+	// this file's host-extent scope).
+	if !angle && n.AutoLinkType != gast.AutoLinkEmail {
+		href = punycodeLiteralHref(href)
 	}
 	return []ast.Node{&ast.Link{
 		URL:      href,
