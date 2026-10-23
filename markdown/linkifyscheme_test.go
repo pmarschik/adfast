@@ -26,11 +26,21 @@ import (
 //	"a [ ftp://ex.com b"      ref (no link)   was ftp://ex.com
 //
 // WHY ALL FIVE SCHEMES IN ONE DOCUMENT. Read one at a time, the ftp row looks
-// like an arbitrary subtraction; read beside "mailto:", "file://" and "ssh://"
-// — none of which linkify here or in the reference, and none of which ever
-// did — it is plainly the removal of the single exception. A later change that
+// like an arbitrary subtraction; read beside "file://" and "ssh://" — neither
+// of which linkifies here or in the reference, and neither of which ever did
+// — it is plainly the removal of the single exception. A later change that
 // re-adds a scheme to urlLiteralScheme has to explain itself against this list
 // rather than against one line.
+//
+// "mailto:" belongs in the same sentence for the opposite reason: it is not
+// a URL scheme this package or the reference ever recognizes (no
+// "mailto://" link forms, bare or angled), but the address right after it is
+// not gated by the scheme set at all — GFM's EMAIL recognizer matches
+// "x@y.z" on its own grammar, indifferent to what prose precedes it, so
+// "mailto:x@y.z" links through the email form the same as "see x@y.z here"
+// does. Keeping it in this document pins that the two recognizers stay
+// independent: tightening the scheme set must not touch the email one, and
+// widening the email one must not mistake "mailto:" for a scheme to allow.
 func TestBareSchemeSetIsGFM(t *testing.T) {
 	const src = "See ftp://ex.com, mailto:x@y.z, file:///tmp/x and ssh://h/x here.\n" +
 		"See https://ex.com, http://ex.com, www.ex.com and <ftp://ex.com> here.\n"
@@ -39,8 +49,11 @@ func TestBareSchemeSetIsGFM(t *testing.T) {
 	// "stop linkifying anything" implementation from passing: the two GFM
 	// schemes and the scheme-less form still link, and so does an ftp address
 	// the author wrote in angle brackets — the scheme set gates the BARE form
-	// only, which is where an author who wants an ftp link still goes.
+	// only, which is where an author who wants an ftp link still goes. The
+	// "mailto:x@y.z" entry from line one shares the same point from the email
+	// side: the email form still links with no scheme gate to pass at all.
 	want := []string{
+		"x@y.z|mailto:x@y.z",
 		"https://ex.com|https://ex.com",
 		"http://ex.com|http://ex.com",
 		"www.ex.com|http://www.ex.com",

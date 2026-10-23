@@ -26,6 +26,27 @@ import (
 // autolinks. Goldmark's linkify skips URLs while inside a potential link
 // label (a dangling "[ http://…"), where remark still linkifies — and the
 // re-parse would too, so leaving them as text is round-trip unstable.
+//
+// A bare email literal gets the same rescue, but only in the one shape
+// foldDirectivesIntoURLs resolves internally: a directive parser (priority
+// 800) claims the ':' trigger byte ahead of colonURLParser (999) whenever a
+// legal directive name follows, so "mailto:x@y.z" parses as text, ':',
+// directive "x", text "@y.z" — a split goldmark's own linkify (which never
+// triggers on ':') cannot see across. foldDirectivesIntoURLs turns exactly
+// that rescued span into a link, by its own known byte range, before
+// relinkifyTexts ever sees the text again — it does not hand back a
+// "something was rescued somewhere" flag for a blanket rescan here. A
+// rescan of decoded text for every other address-shaped substring is NOT
+// safe to do unconditionally: goldmark's native email-literal recognizer
+// already finds every OTHER bare address in raw source (see "x@y.z",
+// "(x@y.z)" above), so re-discovering one in text that merely sits beside an
+// unrelated rescue in the same paragraph would also catch an address a
+// render deliberately escaped to keep unlinked — fused from a dropped empty
+// link, not a directive — and break its round trip (format_contract_test.go,
+// TestEmailLiteralStaysUnlinkedAcrossFormat; see also
+// TestEscapedEmailStaysUnlinkedBesideARescuedMailto, which pins the same
+// hazard for an explicit backslash escape sharing a paragraph with a
+// rescued "mailto:").
 func relinkifyTexts(nodes []ast.Node) []ast.Node {
 	nodes = foldDirectivesIntoURLs(nodes)
 	var out []ast.Node
@@ -45,16 +66,31 @@ func relinkifyTexts(nodes []ast.Node) []ast.Node {
 }
 
 // foldDirectivesIntoURLs dissolves bare text directives (":name" — no
-// label, no attributes) back into plain text when a URL literal in the
-// concatenated run of text+directive nodes spans them. Inside a dangling
-// link label goldmark skips linkify, so ":0" in "[ http://:0.a" parses as
-// a directive; remark (and any re-parse of the escaped output) treats the
-// whole run as one autolink, so the directive must dissolve for a stable
-// round trip.
+// label, no attributes) back into plain text when a URL or email literal in
+// the concatenated run of text+directive nodes spans them. Inside a
+// dangling link label goldmark skips linkify, so ":0" in "[ http://:0.a"
+// parses as a directive; remark (and any re-parse of the escaped output)
+// treats the whole run as one autolink, so the directive must dissolve for
+// a stable round trip. The email case is not a dangling label at all: the
+// directive parser claims the ':' trigger byte outside one just the same,
+// so "mailto:x@y.z" needs the same rescue wherever it sits.
+//
+// Each maximal run of foldable nodes (plain text and bare directives) is
+// resolved on its own, in isolation, before moving to the next one: once
+// dissolveSpannedDirectives reports the exact byte ranges an email literal
+// rescue covers (ranges that, by construction, only ever reach bytes this
+// one run's own directive dissolve already turned to plain text),
+// spliceRescuedEmailLiterals turns exactly those ranges into links and
+// nothing else in the run. This keeps the rescue scoped to the one shape it
+// exists for — a directive stealing the ':' before a mailto address — no
+// matter how much unrelated address-shaped text happens to share the same
+// run (see relinkifyTexts's doc comment, and
+// TestEscapedEmailStaysUnlinkedBesideARescuedMailto).
 func foldDirectivesIntoURLs(nodes []ast.Node) []ast.Node {
-	changed := false
+	var out []ast.Node
 	for start := 0; start < len(nodes); {
 		if !foldableNode(nodes[start]) {
+			out = append(out, nodes[start])
 			start++
 			continue
 		}
@@ -63,15 +99,15 @@ func foldDirectivesIntoURLs(nodes []ast.Node) []ast.Node {
 			end++
 		}
 		merged, spans := mergeFoldRun(nodes, start, end)
-		if dissolveSpannedDirectives(nodes, merged, spans) {
-			changed = true
+		_, emailRanges := dissolveSpannedDirectives(nodes, merged, spans)
+		run := remergeTexts(nodes[start:end])
+		if len(emailRanges) > 0 {
+			run = spliceRescuedEmailLiterals(run, emailRanges)
 		}
+		out = append(out, run...)
 		start = end
 	}
-	if !changed {
-		return nodes
-	}
-	return remergeTexts(nodes)
+	return out
 }
 
 // dirSpan locates one bare directive within a fold run's concatenated text:
@@ -99,23 +135,52 @@ func mergeFoldRun(nodes []ast.Node, start, end int) (merged string, spans []dirS
 	return sb.String(), spans
 }
 
-// dissolveSpannedDirectives turns every directive a URL literal reaches into
-// plain text — one whose span sits inside the literal and does not cover it
-// whole — and reports whether it changed anything.
-func dissolveSpannedDirectives(nodes []ast.Node, merged string, spans []dirSpan) bool {
-	changed := false
+// dissolveSpannedDirectives turns every directive a URL or email literal
+// reaches into plain text. It reports whether it changed anything for the
+// URL family (urlChanged), and, for the email family, the exact merged-string
+// byte ranges ([start,end), ascending, non-overlapping — one per rescued
+// literal) that a dissolve exposed: foldDirectivesIntoURLs turns exactly
+// those ranges into links afterward, so the email family's rescue stays
+// scoped to the literal that actually reached a directive, not every
+// address-shaped substring the run's text happens to also contain (see
+// foldDirectivesIntoURLs's doc comment).
+//
+// The two families overlap a directive differently, so each gets its own
+// containment test. A URL literal's own grammar can swallow a directive's
+// ":name" whole as part of its domain or path (e.g. "http://:0.a"), so a
+// directive dissolves only when the literal fully contains it — matching
+// where the parser would end the literal (trimURLLiteralEnd), not where the
+// regexp does. An email literal's grammar never includes a colon, so a
+// directive right before an email local part owns the colon AND the first
+// letter of that local part — "mailto:x@y.z" folds the directive ":x",
+// where only the "x" side overlaps the "x@y.z" match — and dissolving on
+// strict containment would never fire. An exact span match (the directive's
+// own raw text, with nothing of a literal on either side) is excluded for
+// both: no literal is just a bare ":name" on its own.
+func dissolveSpannedDirectives(nodes []ast.Node, merged string, spans []dirSpan) (urlChanged bool, emailRanges [][2]int) {
 	for _, loc := range findURLLiterals(merged) {
-		// The literal ends where the parser would end it, not where the
-		// regexp does (see trimURLLiteralEnd).
 		stop := loc[0] + len(trimURLLiteralEnd(merged[loc[0]:loc[1]]))
 		for _, sp := range spans {
 			if sp.from >= loc[0] && sp.to <= stop && (sp.from > loc[0] || sp.to < stop) {
 				nodes[sp.idx] = &ast.Text{Value: ":" + sp.name}
-				changed = true
+				urlChanged = true
 			}
 		}
 	}
-	return changed
+	for _, loc := range findEmailLiterals(merged) {
+		start, stop := loc[0], loc[1]
+		rescued := false
+		for _, sp := range spans {
+			if sp.from < stop && sp.to > start && !(sp.from == start && sp.to == stop) {
+				nodes[sp.idx] = &ast.Text{Value: ":" + sp.name}
+				rescued = true
+			}
+		}
+		if rescued {
+			emailRanges = append(emailRanges, [2]int{start, stop})
+		}
+	}
+	return urlChanged, emailRanges
 }
 
 // remergeTexts merges adjacent plain text nodes so URL splitting sees one run.
@@ -257,6 +322,94 @@ func splitURLLiterals(node *ast.Text) []ast.Node {
 	}
 	if len(out) == 0 {
 		return []ast.Node{node}
+	}
+	return out
+}
+
+// spliceRescuedEmailLiterals turns exactly the given byte ranges of nodes'
+// concatenated text into mailto links — nothing else. Each range already
+// names a validated GFM email literal that dissolveSpannedDirectives found
+// reaching into a directive (ranges sorted ascending, non-overlapping, in
+// the same left-to-right coordinate space mergeFoldRun built the run's
+// merged string in); this does not scan nodes for new candidates the way
+// splitURLLiterals scans every text node unconditionally, so an
+// address-shaped span elsewhere in the same run that no directive ever
+// stole is left as plain text, however this run's own dissolve happened to
+// fuse it (see foldDirectivesIntoURLs and relinkifyTexts's doc comments).
+//
+// Every directive a range could have interrupted was already dissolved to
+// plain text before nodes was locally remerged (see foldDirectivesIntoURLs),
+// so each range is guaranteed to land entirely inside one *ast.Text node —
+// the loop still bails out (leaving a range as plain text) if that
+// invariant is ever violated, rather than panic or misattribute bytes.
+func spliceRescuedEmailLiterals(nodes []ast.Node, ranges [][2]int) []ast.Node {
+	if len(ranges) == 0 {
+		return nodes
+	}
+	var out []ast.Node
+	offset := 0
+	ri := 0
+	for _, n := range nodes {
+		t, ok := n.(*ast.Text)
+		if !ok {
+			out = append(out, n)
+			// A surviving bare TextDirective (no literal reached it) still
+			// occupies ":"+Name bytes in the coordinate space
+			// mergeFoldRun built ranges in — matching its contribution
+			// there keeps offset in sync for any range after it in this
+			// same run.
+			if d, ok := n.(*ast.TextDirective); ok {
+				offset += len(":" + d.Name)
+			}
+			continue
+		}
+		value := t.Value
+		pos := 0
+		for ri < len(ranges) {
+			from, to := ranges[ri][0], ranges[ri][1]
+			if from >= offset+len(value) {
+				break // belongs to a later node
+			}
+			if to <= offset || from < offset || to > offset+len(value) {
+				// Fully before this node, or straddles a node boundary the
+				// construction above says can't happen — either way, not
+				// resolvable here: drop the range rather than misattribute.
+				ri++
+				continue
+			}
+			lf, lt := from-offset, to-offset
+			ri++
+			if lf < pos {
+				continue // already covered by a previous range's splice
+			}
+			if lf > 0 {
+				switch value[lf-1] {
+				case ' ', '\t', '\n', '*', '_', '~', '(', ':':
+					// opens, same boundary splitURLLiterals/splitEmailLiterals use
+				default:
+					continue // doesn't open here; leave the span as plain text
+				}
+			}
+			if lf > pos {
+				out = append(out, textSlice(t, value, pos, lf))
+			}
+			addr := value[lf:lt]
+			out = append(out, &ast.Link{
+				URL:  "mailto:" + addr,
+				Bare: true,
+				// An email literal carries no preserved-escape backslashes, so
+				// the label's Raw equals its Value; leave Raw empty (see the
+				// matching note on the URL literal above).
+				Children: []ast.Node{&ast.Text{Value: addr}},
+			})
+			pos = lt
+		}
+		if pos < len(value) {
+			out = append(out, textSlice(t, value, pos, len(value)))
+		} else if pos == 0 {
+			out = append(out, t)
+		}
+		offset += len(value)
 	}
 	return out
 }
