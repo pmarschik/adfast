@@ -2,6 +2,7 @@ package convert
 
 import (
 	"path"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -1677,7 +1678,82 @@ func (c *astConverter) flattenChildren(children []ast.Node, ctx markCtx) []adf.N
 	for i := range children {
 		out = append(out, ast.Visit(children[i], v)...)
 	}
+	return mergeAdjacentADFText(out)
+}
+
+// mergeAdjacentADFText merges consecutive *adf.Text siblings that carry
+// the same mark set into one node. The AST keeps a logical run of plain prose
+// split across several sibling nodes whenever something in the middle of
+// it parses as its own node and then dissolves back to plain text — a
+// bare token that merely looks like a directive is the common case:
+// "pre :name post" parses as three inline nodes, all of which flatten
+// under the same, empty, mark context — but directives must stay
+// separately addressable during AST manipulation, so the split is not
+// undone until here, at ADF encode time.
+//
+// Undoing it here matters because ADF has no node for "this text used to
+// be more than one AST node": the split is otherwise invisible in
+// rendered Markdown or HTML, but very visible in the raw ADF payload, and
+// Jira's own ProseMirror editor always merges adjacent same-mark text
+// nodes on save. A push-preflight diff that compares ADF payloads would
+// see adfast's unmerged encode as spurious churn against a document a
+// human never touched — this pass is what keeps that comparison honest.
+//
+// Only genuinely adjacent *adf.Text siblings with an equal mark set
+// merge; anything else — a different mark set, a mark the other side
+// lacks, or any non-text node in between — resets the run.
+func mergeAdjacentADFText(nodes []adf.Node) []adf.Node {
+	if len(nodes) < 2 {
+		return nodes
+	}
+	out := make([]adf.Node, 0, len(nodes))
+	for _, n := range nodes {
+		if t, ok := n.(*adf.Text); ok {
+			if last := len(out) - 1; last >= 0 {
+				if prev, ok := out[last].(*adf.Text); ok && marksSetEqual(prev.Marks, t.Marks) {
+					merged := *prev
+					merged.Text = prev.Text + t.Text
+					out[last] = &merged
+					continue
+				}
+			}
+		}
+		out = append(out, n)
+	}
 	return out
+}
+
+// marksSetEqual reports whether two ADF mark lists carry the same marks,
+// compared as sets rather than sequences: a run marked [bold, italic] and
+// one marked [italic, bold] are the same mark set regardless of which
+// order the encoder happened to build them in. (The same normalization
+// trap bit issue-link field comparison elsewhere: order is an
+// implementation artifact of how a list was assembled, not part of its
+// meaning.) Marks compare with reflect.DeepEqual, so two marks of the
+// same kind only match when every attribute (including Extra and
+// pointer-valued attributes like Link.Href) agrees too.
+func marksSetEqual(a, b []adf.Mark) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	used := make([]bool, len(b))
+	for _, ma := range a {
+		matched := false
+		for i, mb := range b {
+			if used[i] {
+				continue
+			}
+			if reflect.DeepEqual(ma, mb) {
+				used[i] = true
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
 }
 
 // smartLinkURL resolves a ::linkCard/::linkEmbed label to a URL: bare key

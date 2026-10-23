@@ -712,17 +712,27 @@ func TestNormalizeTextNewlines(t *testing.T) {
 // in the ADF and re-parsing the render would shorten it. The junctions
 // come from inline nodes that convert to nothing — an empty link, or a
 // registered text directive with no content.
+//
+// The ADF encode's adjacent-same-mark-text merge (mergeAdjacentADFText in
+// convert/ast_to_adf.go) now closes most of these junctions itself,
+// before NormalizeTextNewlines ever runs: the two sides merge into one
+// node, and the ordinary per-node space-run collapse shortens the
+// doubled space inside it. The want strings below are a single joined
+// node (no "|") wherever that happens — collapseTextJunctions remains
+// the one still doing the work for a junction that spans a merge the
+// encode deliberately leaves alone, i.e. one that crosses a dropped
+// block boundary rather than a dropped inline node.
 func TestNormalizeTextNewlines_AcrossTextNodes(t *testing.T) {
 	tests := []struct {
 		name, md, want string
 	}{
-		{"dropped empty link", "x []() y", "x |y"},
+		{"dropped empty link", "x []() y", "x y"},
 		// The directive needs a payload to be a directive at all — a
 		// bare ":u" is prose now (dialect's bare-name rule) and would
 		// leave no junction. An attribute block the kind has no use for
 		// still converts to nothing, which is the junction wanted here.
-		{"dropped empty directive", "*0aaa[0 :u{a=b} ]*", "0aaa[0 |]"},
-		{"run of dropped constructs", "x []() []() y", "x |y"},
+		{"dropped empty directive", "*0aaa[0 :u{a=b} ]*", "0aaa[0 ]"},
+		{"run of dropped constructs", "x []() []() y", "x y"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
