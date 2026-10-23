@@ -709,26 +709,203 @@ func wwwEscapedDotIgnored(first string) bool {
 // fences out.
 var colonBeforeDirectiveRe = regexp.MustCompile(`[^\n:]:{2,}[A-Za-z0-9]`)
 
-// urlFusedWithUnderscore reports a URL/www literal in rendered output
-// directly preceded by '_' or sharing its whitespace-delimited token
-// with one (goldmark's linkify pattern extends further than
-// urlLiteralRe approximates, so the whole token is the hazard zone —
-// see the fused-underscore skip).
-func urlFusedWithUnderscore(first string) bool {
-	for _, m := range urlLiteralRe.FindAllStringIndex(first, -1) {
-		if m[0] > 0 && first[m[0]-1] == '_' {
-			return true
-		}
-		token := first[m[0]:]
-		if end := strings.IndexAny(token, " \t\n"); end >= 0 {
-			token = token[:end]
-		}
-		if strings.Contains(token, "_") {
+// urlFusedSchemeHostRe matches a scheme-prefixed literal with a DOTLESS
+// host ("http://0"), which goldmark's linkify extension really does link
+// in production — see markdown/barelinkform_test.go's "a dotless host"
+// row, and markdown/urlliteral.go's urlLiteralHost, whose dotless
+// alternative is what that production behavior is built from. The host
+// and path character classes below are copied from urlLiteralRe so the
+// two patterns agree on everything except the dot requirement.
+//
+// THIS REGEXP IS LOCAL TO urlFusedWithUnderscore, deliberately not folded
+// into urlLiteralRe: several OTHER skip classes in this file (the
+// escaped-scheme-colon class, the www-dot-punctuation class, …) scan with
+// urlLiteralRe too, and widening it to accept a dotless host would widen
+// their match sets along with this one — urlLiteralRe's own doc comment
+// states why it stays dotted-only (it mirrors the DECODED-TEXT
+// recognizer, which demands a dot). Scoping the widening to a second,
+// narrower regexp used only here keeps those other classes unchanged.
+// There is no "www." counterpart: the "www." prefix supplies the dot the
+// decoded-text recognizer demands, so a dotless www literal is not a
+// production shape (see urlLiteralWWWAnchoredRe's doc comment).
+var urlFusedSchemeHostRe = regexp.MustCompile(
+	`https?://[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{0,255}(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`,
+)
+
+// fusedUnderscoreHazard reports the fused-underscore hazard for one match
+// starting at first[start:]: a '_' directly before it, or a '_' sharing its
+// whitespace-delimited token (goldmark's linkify pattern extends further
+// than the test-side regexes approximate, so the whole token is the hazard
+// zone). When checkEscapes is true, a '_' the source escaped — inert text,
+// not an emphasis delimiter — does not count; see urlFusedSchemeHostRe's
+// call below for why only that path needs the distinction.
+func fusedUnderscoreHazard(first string, start int, checkEscapes bool) bool {
+	if start > 0 && first[start-1] == '_' && (!checkEscapes || !escapedByteAt(first, start-1)) {
+		return true
+	}
+	token := first[start:]
+	if end := strings.IndexAny(token, " \t\n"); end >= 0 {
+		token = token[:end]
+	}
+	for i := range token {
+		if token[i] == '_' && (!checkEscapes || !escapedByteAt(token, i)) {
 			return true
 		}
 	}
 	return false
 }
+
+// escapedByteAt reports whether the byte at index i in s is a literal
+// character produced by a backslash escape immediately in front of it.
+// It walks back over the full run of consecutive '\' bytes ending at
+// i-1: an odd-length run means the last backslash in the run escapes the
+// byte at i (escaped — e.g. a run of 1 or 3 backslashes before '_'), an
+// even-length run means every backslash in the run pairs off escaping
+// the backslash before it, leaving the byte at i bare (not escaped —
+// e.g. a run of 2 or 4). A fixed two-byte lookback only distinguishes 0
+// from 1 backslash and gets a 3-backslash run wrong; this has no depth
+// limit.
+func escapedByteAt(s string, i int) bool {
+	n := 0
+	for i-1-n >= 0 && s[i-1-n] == '\\' {
+		n++
+	}
+	return n%2 == 1
+}
+
+// urlFusedWithUnderscore reports a URL/www literal in rendered output
+// fused to a '_' (see fusedUnderscoreHazard). It scans with urlLiteralRe
+// (the dotted host, scheme or "www." prefixed) and, separately,
+// urlFusedSchemeHostRe (the dotless, scheme-prefixed host) so a dotless
+// literal like "http://0" is recognized as the same hazard class a dotted
+// one already is.
+//
+// THE DOTLESS PASS NEEDS TWO GUARDS urlLiteralRe's PASS NEVER DID:
+//
+//   - a match sitting inside an ALREADY-FORMED link's destination
+//     ("[www..0](http://www..0)") is not a bare literal at all; the
+//     token-from-match-start scan would otherwise walk past the
+//     destination's closing ')' into the surrounding markdown (an
+//     emphasis marker closing the link's own label) and misread that
+//     marker as fused to the URL. urlLiteralRe's matches rarely reach
+//     this, because its TLD requirement (a trailing "\.[a-z]+") excludes
+//     most hrefs this harness constructs by hand; the dotless pattern has
+//     no such requirement, so it reaches every href in sight and needs
+//     the guard urlLiteralRe could go without.
+//   - an underscore the SOURCE escaped ("a\_http://0") is inert text, not
+//     an emphasis delimiter, and the renderer reproduces the escape on
+//     every subsequent round (probe: "a\_http://0" and its unescaped
+//     sibling "a_http://0" both render "a\\_http://0\n" and stay there) —
+//     a stable shape, not the hazard this class describes. Because
+//     urlLiteralRe demands a dot, a dotted host glued to an escaped
+//     underscore never reaches this function today, so the guard was
+//     never needed on that path.
+func urlFusedWithUnderscore(first string) bool {
+	for _, m := range urlLiteralRe.FindAllStringIndex(first, -1) {
+		if fusedUnderscoreHazard(first, m[0], false) {
+			return true
+		}
+	}
+	// The dotless pass has no TLD requirement, so it also matches inside
+	// a code span, a fenced code block, and a link title — three
+	// contexts where goldmark's linkify extension never runs at all, so
+	// a match there is not the hazard this class describes: the text is
+	// inert literal content (a code span's and a fenced block's content
+	// render verbatim, see formatCodeSpan and renderCodeBlock), or, for
+	// a title, advisory text re-emitted as its own escaped unit, never
+	// offered to linkify as prose either way. inertSpanRanges finds
+	// those three WITHOUT reparsing — a byte-range scan over first
+	// itself — so the match positions below stay first's own offsets
+	// and escapedByteAt keeps seeing the actual escaped bytes the
+	// renderer wrote, not a decoded stand-in that would make its
+	// backslash-run parity meaningless. See fusedUnderscoreHazard's doc
+	// comment for why this guard is scoped to the dotless pass only: a
+	// dotted host glued to an escaped underscore never reaches this
+	// pass's sibling above.
+	inert := inertSpanRanges(first)
+	for _, m := range urlFusedSchemeHostRe.FindAllStringIndex(first, -1) {
+		if m[0] >= 2 && first[m[0]-2:m[0]] == "](" {
+			continue
+		}
+		if inInertRange(inert, m[0]) {
+			continue
+		}
+		if fusedUnderscoreHazard(first, m[0], true) {
+			return true
+		}
+	}
+	return false
+}
+
+// byteSpan is a half-open [start, end) byte range into a rendered string.
+type byteSpan struct{ start, end int }
+
+// inInertRange reports whether pos falls inside any of ranges.
+func inInertRange(ranges []byteSpan, pos int) bool {
+	for _, r := range ranges {
+		if pos >= r.start && pos < r.end {
+			return true
+		}
+	}
+	return false
+}
+
+// inertSpanRanges finds the byte ranges of a rendered markdown string that
+// hold verbatim or re-escaped-as-a-unit content: a code span's body, a
+// fenced code block's body, and a link title. All three are written by
+// this renderer as symmetric delimiter pairs (formatCodeSpan,
+// renderCodeBlock, titleSegment), so they are findable by scanning first
+// itself instead of correlating it back to a freshly re-parsed tree
+// (first has no source positions to correlate against).
+func inertSpanRanges(first string) []byteSpan {
+	ranges := backtickFenceRanges(first)
+	for _, m := range linkTitleRe.FindAllStringIndex(first, -1) {
+		ranges = append(ranges, byteSpan{start: m[0], end: m[1]})
+	}
+	return ranges
+}
+
+// backtickFenceRanges pairs up runs of backtick characters by length,
+// left to right, nearest-open-of-that-length first — the same rule that
+// tells a code span's or a fenced code block's closing run apart from an
+// unrelated backtick run elsewhere: formatCodeSpan picks the shortest
+// fence length that does not already occur inside the content, and
+// renderCodeBlock's fence is always the SAME length on both sides it
+// writes, so this renderer's own output never closes a run with one of a
+// different length. The returned ranges span from the start of the
+// opening run to the end of the matching closing run (fences and
+// content together), which is wide enough to exclude any match that
+// starts inside, the only thing callers need.
+func backtickFenceRanges(first string) []byteSpan {
+	var ranges []byteSpan
+	open := map[int]int{}
+	for i := 0; i < len(first); {
+		if first[i] != '`' {
+			i++
+			continue
+		}
+		j := i
+		for j < len(first) && first[j] == '`' {
+			j++
+		}
+		n := j - i
+		if start, ok := open[n]; ok {
+			ranges = append(ranges, byteSpan{start: start, end: j})
+			delete(open, n)
+		} else {
+			open[n] = i
+		}
+		i = j
+	}
+	return ranges
+}
+
+// linkTitleRe matches a link or image title in this renderer's only
+// non-prettier form (titleSegment: ` "escaped"` directly before the
+// destination's closing ')') — a leading space or tab, a double-quoted
+// span (escaped '"' and '\' allowed inside via the alternation, per
+// remarkTitle), then the closing paren.
+var linkTitleRe = regexp.MustCompile(`[ \t]"(?:[^"\\]|\\.)*"\)`)
 
 // tabLeadLabelRe matches a '[' whose leading whitespace contains a tab
 // (indented-code column math inside the label).
