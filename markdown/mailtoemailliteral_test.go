@@ -42,6 +42,7 @@ func TestMailtoPrefixRescuesTheEmailLiteral(t *testing.T) {
 //     digit-ending final label), the same gate gfmEmailValid already applies
 //     to every other bare-email recognizer in this package, so the rescued
 //     text does not gain a link either.
+//
 // TestEscapedEmailStaysUnlinkedBesideARescuedMailto pins the scoping fix in
 // foldDirectivesIntoURLs/dissolveSpannedDirectives: a directive-steal rescue
 // elsewhere in the same paragraph must not blanket-rescan the whole sibling

@@ -395,8 +395,62 @@ const (
 	// THE LOWERCASE SPELLING STILL GOES THROUGH GOLDMARK, untouched. The
 	// widened letters only make the pattern reachable for a candidate the
 	// stock parser would never have handed it.
+	//
+	// THE DOTLESS ALTERNATIVE'S LEAD BYTE TAKES '-' AND '_' NOW, alongside the
+	// alphanumeric lead urlLiteralHost's own dotless form uses for an
+	// intranet name ("jira", "localhost:8080"). That alphanumeric-only rule
+	// never fit here: THE "www." PREFIX IS ITSELF THE DOT above says the
+	// dotless remainder is always the domain's SECOND segment — a TLD-like
+	// tail, not a free-standing name — and restricting its first byte to
+	// alnum left "www.-x" unmatched while "www.ex.-x" (a TLD after an
+	// explicit second dot) already linked through the dotted alternative.
+	//
+	// THIS IS THE SAME CALL THE TLD CLASS MADE for '-' and for a TLD of
+	// nothing but punctuation (see urlLiteralHostDotted above) — a NO-LINK
+	// fix measured against the frozen reference, never a DNS-validity
+	// judgment: this file already accepts and links "ex.--", "a.-b". The
+	// hyphen-led case is the one the alphanumeric lead was still blocking,
+	// and only for the dotless form. Measured against the frozen reference
+	// (remark-parse 11 + remark-gfm 4), both recognizers:
+	//
+	//	"see www.-x here"   ref http://www.-x   was (no link)
+	//
+	// THE GATE ALREADY AGREED, independently, before this byte could reach
+	// it. urlLiteralHostAccepted is a union of micromark's domain rule and
+	// mdast-util's isCorrectDomain, and neither test turns on the hyphen for
+	// "www.-x": urlLiteralDomainTokenized skips its after-protocol check for
+	// the www form (see its own doc — "the character after the prefix is
+	// never in the afterProtocol position") and then finds no underscore in
+	// the lone segment "-x"; urlLiteralDomainCorrect splits "www.-x" into
+	// "www" and "-x" and finds an alphanumeric in each. So the gate was never
+	// the obstacle here — the pattern just never reached it.
+	//
+	// THE SAME WIDENING REOPENS "www._x", exactly as the TLD class's own
+	// underscore byte reopened "ex.a_1" above: the lead byte now takes '_'
+	// too, so the dotless alternative matches "www._x" whole where it used to
+	// refuse the match outright — but the gate still refuses the ADDRESS,
+	// because the lone segment "_x" holds the underscore both
+	// isCorrectDomain and the tokenized half are watching. See
+	// wwwliteral_test.go's "an underscore does not open the host" row, which
+	// moved from a pattern refusal to a gate one.
+	//
+	// THE LEAD BYTE STAYS ASCII, DELIBERATELY, unlike urlLiteralHostDotted's
+	// own TLD-tail class, which also takes urlLiteralHostRune. Joining that
+	// class whole here — lead byte AND tail — would need the tail to repeat
+	// the rune alternative too, the way the dotted TLD class's trailing `+`
+	// does; this alternative's tail is urlLiteralHostByte{0,255}, ASCII only,
+	// so a rune lead followed by a second rune would match the first and
+	// then stop, splitting one host into a short, WRONG link and silent
+	// trailing prose — exactly the failure mode this file's header calls
+	// worse than no link. Measured, "see www.例子公司 end" would come back
+	// "see [www.例](http://www.例)子公司 end": a host the reference links
+	// whole (its domain has no dot to stop at) truncated after one rune, with
+	// no space to show the reader where the link ends. Before this change no
+	// byte here reached past the alphanumeric lead at all, so no non-ASCII
+	// rune could occupy this position; '-' and '_' close the gap the hyphen
+	// fix is for without opening that one.
 	urlLiteralWWW = `[wW][wW][wW]\.(?:` + urlLiteralHostDotted +
-		`|[a-zA-Z0-9]` + urlLiteralHostByte + `{0,255})` + urlLiteralPath
+		`|[-a-zA-Z0-9_]` + urlLiteralHostByte + `{0,255})` + urlLiteralPath
 )
 
 // urlLiteralRe matches a GFM literal-autolink URL anywhere in a string,

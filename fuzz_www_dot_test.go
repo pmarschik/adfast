@@ -77,16 +77,31 @@ func TestWwwHostSecondDotIsSkippedInEitherShape(t *testing.T) {
 // between two dots" — the rows below use other punctuation in the identical
 // position and stay stable in both this renderer and the reference, so they
 // must stay measured. wwwEscapedDotIgnored is a parser oracle rather than a
-// second pattern for the same reason escapedSchemeColonIgnored is one: "-"
-// alone is not a valid second label (isCorrectDomain/micromark's domain
-// production reject it), so the escape in "www\.-." never had anything to
-// lose, and the oracle must say so rather than skip on the shape of the
-// bytes alone.
+// second pattern for the same reason escapedSchemeColonIgnored is one: a
+// byte the autolink grammar refuses to open a host on at all ("!") never
+// gives the escape anything to lose, so the oracle must say so rather than
+// skip on the shape of the bytes alone.
+//
+// "-" MOVED OUT OF THIS SET. It used to sit here on the same reasoning —
+// "not a valid label" — but that was the DECODED-TEXT half of the rule
+// speaking (isCorrectDomain demands an alphanumeric in the label), not the
+// RAW one: the dotless alternative's lead byte now reaches a hyphen the same
+// way the TLD class already does right after an explicit dot (see
+// urlLiteralWWW's own doc comment, and the "ex.--"/"www..-" precedent in
+// urlLiteralHostDotted's), and the untouched tokenized half never demanded
+// an alphanumeric — "www.-" is a punctuation-only domain with no
+// underscore, which is exactly the shape that half accepts. So "www.-."
+// now links at PARSE time, same as the last row's "www..0", and the oracle
+// correctly leaves it unskipped for the same reason: a shape that links
+// before the renderer ever runs has no escape to protect.
 func TestWwwHostWithoutASecondValidLabelIsNotSkipped(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct{ name, md, want string }{
 		{"a byte the autolink grammar rejects as a label", `*www.!.*`, "_www.!._\n"},
-		{"an escaped dot with no valid label after it", `*www.-.*0**`, "_www\\.-.0_\n"},
+		{
+			"a punctuation-only host that now links at parse time, not render time",
+			`*www.-.*0**`, "_[www.-](http://www.-).0_\n",
+		},
 		{"no second dot at all", `www.#`, "www.#\n"},
 		{"a word character directly after the first unescapable byte", `www.#x`, "www.#x\n"},
 		{"a space before any second dot", `www.# x`, "www.# x\n"},

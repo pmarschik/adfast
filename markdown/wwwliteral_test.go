@@ -66,9 +66,11 @@ var wwwLiteralCases = []struct {
 	src:  "www.ex.com~foo",
 	want: "www.ex.com",
 }, {
-	// THE NEGATIVES. The prefix alone is not a host, and the dotless
-	// alternative opens on an alphanumeric exactly as the schemed one does
-	// ("https://-x" is prose too).
+	// THE ONE REMAINING NEGATIVE AT THE PATTERN. The prefix alone is not a
+	// host, and emptying it is the only way left to refuse the dotless
+	// alternative at the pattern: the hyphen and underscore rows right below
+	// used to be refused here too, before the lead byte took the dotted
+	// alternative's own TLD-tail class.
 	// THE PATTERN IS THE REFUSAL HERE, and the gate column says so by being
 	// false. The prefix alone leaves an EMPTY DOMAIN once it is stripped, so
 	// micromark's domain production — which must consume one character —
@@ -84,16 +86,27 @@ var wwwLiteralCases = []struct {
 	src:  "www.",
 	want: "",
 }, {
-	name: "a hyphen does not open the host",
+	// THE WIDENING'S OWN ROW. The dotless alternative's lead byte now takes
+	// the same TLD-tail class the dotted alternative uses after its own
+	// literal '.', so a hyphen right after the prefix is a host rather than
+	// prose. Measured against the frozen reference (remark-parse 11 +
+	// remark-gfm 4), both recognizers link "see www.-x b" as "http://www.-x";
+	// urlLiteralWWW's own doc comment in urlliteral.go has the gate trace
+	// that confirms the host is accepted once the pattern reaches it.
+	name: "a hyphen opens the host",
 	src:  "www.-x",
-	want: "",
+	want: "www.-x",
 }, {
-	// Refused twice over, and the columns say which came first: the dotless
-	// alternative does not open a host on an underscore, and the gate would
-	// refuse "www._x" anyway because the last segment holds one.
-	name:         "an underscore does not open the host",
+	// THE SAME WIDENING REOPENS THIS ROW AT THE PATTERN, where it used to be
+	// refused outright: the lead byte takes '_' along with '-', so the
+	// dotless alternative now matches "www._x" whole. The GATE still refuses
+	// the address — urlLiteralHostAccepted finds the underscore in the lone
+	// segment "_x" through both of its halves — so the verdict is unchanged
+	// and only the column that produces it moved, from a pattern refusal to
+	// a gate one.
+	name:         "an underscore opens the host but the gate refuses it",
 	src:          "www._x",
-	want:         "",
+	want:         "www._x",
 	hostRejected: true,
 }, {
 	// THE HOST GATE ON THE SCHEME-LESS SIDE. The dotted alternative reaches
