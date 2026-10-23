@@ -437,9 +437,12 @@ func TestExtended_UnknownDirectivesStillDegrade(t *testing.T) {
 	// name used to eat the word here — the ADF dropped the payload-less
 	// node, and the space run left behind collapsed — which is what
 	// dialect's bare-name rule fixed. The renderer escapes colons on the
-	// way out, so ADF-sourced text never re-parses as a directive.
+	// way out, so ADF-sourced text never re-parses as a directive. The
+	// AST still splits the run into three siblings for ":date" to stay
+	// addressable there, but they share one (empty) mark context, so the
+	// ADF encode's adjacent-same-mark-text merge folds them into one node.
 	got = mdToADF("a :date in prose")
-	assertSameADF(t, doc(p(txt("a "), txt(":date"), txt(" in prose"))), got)
+	assertSameADF(t, doc(p(txt("a :date in prose"))), got)
 	if md := adfToMD(doc(p(txt("a :date in prose")))); !strings.Contains(md, "\\:date") {
 		t.Fatalf("prose colon not escaped: %q", md)
 	}

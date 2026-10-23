@@ -58,34 +58,39 @@ var bareNameCases = []struct {
 }{
 	// ----- FIX: a bare name is the word the author wrote -----
 	{
+		// wantADF is one merged node here, not the three the AST still
+		// splits the run into: the ADF encode merges adjacent text
+		// siblings that carry the same (here, empty) mark set, since
+		// that split exists for AST manipulation and has no ADF-visible
+		// meaning — see mergeAdjacentADFText in convert/ast_to_adf.go.
 		name:    "fix: media in prose",
 		md:      "see :media in the log",
 		wantFmt: "see :media in the log\n",
-		wantADF: "text(see )|text(:media)|text( in the log)",
+		wantADF: "text(see :media in the log)",
 	},
 	{
 		name:    "fix: status in prose",
 		md:      "see :status in the log",
 		wantFmt: "see :status in the log\n",
-		wantADF: "text(see )|text(:status)|text( in the log)",
+		wantADF: "text(see :status in the log)",
 	},
 	{
 		name:    "fix: date in prose",
 		md:      "see :date in the log",
 		wantFmt: "see :date in the log\n",
-		wantADF: "text(see )|text(:date)|text( in the log)",
+		wantADF: "text(see :date in the log)",
 	},
 	{
 		name:    "fix: mention in prose",
 		md:      "see :mention in the log",
 		wantFmt: "see :mention in the log\n",
-		wantADF: "text(see )|text(:mention)|text( in the log)",
+		wantADF: "text(see :mention in the log)",
 	},
 	{
 		name:    "fix: emoji in prose",
 		md:      "see :emoji in the log",
 		wantFmt: "see :emoji in the log\n",
-		wantADF: "text(see )|text(:emoji)|text( in the log)",
+		wantADF: "text(see :emoji in the log)",
 	},
 	{
 		// The intraword colon PlainTextOf's doc comment names as the
@@ -93,7 +98,7 @@ var bareNameCases = []struct {
 		name:    "fix: intraword colon",
 		md:      "deploy:status is set",
 		wantFmt: "deploy:status is set\n",
-		wantADF: "text(deploy)|text(:status)|text( is set)",
+		wantADF: "text(deploy:status is set)",
 	},
 	{
 		// An image alt is read with ast.PlainText, which had no text
@@ -107,7 +112,7 @@ var bareNameCases = []struct {
 		name:    "fix: name in a heading",
 		md:      "# :status heading",
 		wantFmt: "# :status heading\n",
-		wantADF: "text(:status)|text( heading)",
+		wantADF: "text(:status heading)",
 	},
 	{
 		name:    "fix: name in a table cell",
@@ -124,7 +129,7 @@ var bareNameCases = []struct {
 		name:    "good: unknown name",
 		md:      "see :foo in the log",
 		wantFmt: "see :foo in the log\n",
-		wantADF: "text(see )|text(:foo)|text( in the log)",
+		wantADF: "text(see :foo in the log)",
 	},
 	{
 		name:    "good: escaped colon",

@@ -96,7 +96,12 @@ func TestADFEncodeStillDropsGenericDirectives(t *testing.T) {
 		{"leaf directive drops", "::include{path=\"section.md\"}\n", `"content":[{"type":"paragraph"}]`},
 		{"container with two children drops", ":::sidebar\none\n\ntwo\n:::\n", `"content":[{"type":"paragraph"}]`},
 		{"container with one child dissolves", ":::sidebar\nonly\n:::\n", `"text":"only"`},
-		{"text directive flattens to literal", "text :textdir[label] more\n", `{"type":"text","text":":textdir"},{"type":"text","text":"label"}`},
+		// The whole paragraph shares one (empty) mark context, so the
+		// ADF encode's adjacent-same-mark-text merge folds the leading
+		// text, the colon-prefixed name, its label, and the trailing
+		// text into a single node rather than the several the AST still
+		// carries at this point.
+		{"text directive flattens to literal", "text :textdir[label] more\n", `{"type":"text","text":"text :textdirlabel more"}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

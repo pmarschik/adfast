@@ -91,8 +91,11 @@ func TestRawHTML_ADFLegFoldsInlineHTMLToText(t *testing.T) {
 		t.Errorf("ADF text bytes: got %q, want %q", joined, htmlInlineSrc)
 	}
 	// The precondition the escape depends on: the tag lives in a text
-	// node, verbatim and unescaped.
-	if !slices.Contains(texts, "<br>") {
+	// node, verbatim and unescaped. It need not be alone in its node —
+	// the ADF encode merges adjacent same-mark text nodes, so the fold
+	// and its neighbors can land in one merged node — only that the tag's
+	// bytes appear somewhere, unescaped, in plain text.
+	if !slices.ContainsFunc(texts, func(s string) bool { return strings.Contains(s, "<br>") }) {
 		t.Errorf("ADF text nodes %q: none holds the verbatim tag %q", texts, "<br>")
 	}
 	// And it lives there rather than in some html-carrying kind smuggled
