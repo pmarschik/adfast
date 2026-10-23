@@ -523,13 +523,36 @@ func (*punctLinkifyParser) parseAfterPunct(parent gast.Node, block text.Reader, 
 
 func (*escapedLinkifyParser) Trigger() []byte { return []byte{'\\'} }
 
+// Parse dispatches on what follows the backslash. CommonMark only recognizes
+// a backslash escape in front of ASCII punctuation (util.IsPunct's table);
+// anything else — a letter, a digit, a non-ASCII byte — is not an escape at
+// all, so a line[1] outside that table can never reach parseEscapedBoundary's
+// case (escapedLinkifyBoundaries is itself a subset of ASCII punctuation) and
+// is routed to parseInertBackslash instead. A line[1] that IS ASCII
+// punctuation but outside escapedLinkifyBoundaries (the character-reference
+// bytes, ':', and '\\' itself — see punctLinkifyBoundaries) is a recognized
+// escape this package still declines to linkify after, unchanged from
+// before: that byte set is held back for reasons orthogonal to this split.
 func (p *escapedLinkifyParser) Parse(parent gast.Node, block text.Reader, pc parser.Context) gast.Node {
-	line, segment := block.PeekLine()
-	// "\X" plus at least one byte of URL. line[0] is the backslash by
-	// construction of Trigger.
-	if len(line) < 3 || strings.IndexByte(escapedLinkifyBoundaries, line[1]) < 0 {
+	line, _ := block.PeekLine()
+	// line[0] is the backslash by construction of Trigger.
+	if len(line) < 2 {
 		return nil
 	}
+	if len(line) >= 3 && strings.IndexByte(escapedLinkifyBoundaries, line[1]) >= 0 {
+		return p.parseEscapedBoundary(parent, block, pc)
+	}
+	if !util.IsPunct(line[1]) {
+		return p.parseInertBackslash(parent, block, pc)
+	}
+	return nil
+}
+
+// parseEscapedBoundary is the original case this parser existed for: a
+// backslash escaping a recognized boundary punctuation character
+// (escapedLinkifyBoundaries) in front of a bare URL literal.
+func (p *escapedLinkifyParser) parseEscapedBoundary(parent gast.Node, block text.Reader, pc parser.Context) gast.Node {
+	_, segment := block.PeekLine()
 	escStart := segment.Start
 	savedLine, savedPos := block.Position()
 	// Put the reader on the escaped boundary character, which is where the
@@ -558,6 +581,49 @@ func (p *escapedLinkifyParser) Parse(parent gast.Node, block text.Reader, pc par
 	// Source.Autolinks silent about a link the tree carries.
 	if p, ok := n.(interface{ SetPos(int) }); ok {
 		p.SetPos(escStart + 2)
+	}
+	return n
+}
+
+// parseInertBackslash is the sibling case: a backslash in front of a byte
+// CommonMark never treats as an escape target at all (anything outside
+// util.IsPunct — most commonly a letter, as in "\https://x.y" or
+// "\www.x"). Per the spec, "a backslash before any other character is
+// treated as a literal backslash," so the backslash is ordinary text and
+// the literal that follows it is exactly as unescaped as if the backslash
+// were not there — the reference's tokenizer reads the raw source and does
+// not stop at an inert backslash either.
+//
+// UNLIKE parseEscapedBoundary, nothing here merges the backslash into the
+// following byte: there is no escape unit to preserve, only a literal
+// backslash character immediately followed by an ordinary literal. The
+// inner parser is therefore called positioned one byte past the backslash
+// — at the literal's own first byte, with no boundary byte in front of it
+// to skip — which is exactly the shape goldmark's own linkify chain already
+// handles for a literal at the very start of a line (see linkifyParser.Parse
+// in the vendored goldmark source: a line[0] outside its consume-set is
+// left alone and matched directly). Every layer in newLinkifyRecognizer
+// checks for a boundary byte to skip before it matches, so each one quietly
+// matches "at zero" here instead, and none of them appends the backslash's
+// own text segment (that branch is gated on having consumed a boundary
+// byte, which this call never does) — so this function appends it itself,
+// exactly as punctLinkifyParser appends its own boundary byte.
+func (p *escapedLinkifyParser) parseInertBackslash(parent gast.Node, block text.Reader, pc parser.Context) gast.Node {
+	_, segment := block.PeekLine()
+	escStart := segment.Start
+	savedLine, savedPos := block.Position()
+	block.Advance(1)
+	n := p.inner.Parse(parent, block, pc)
+	if n == nil {
+		block.SetPosition(savedLine, savedPos)
+		return nil
+	}
+	gast.MergeOrAppendTextSegment(parent, segment.WithStop(escStart+1))
+	// Point Pos at the address itself, which begins right at escStart+1 —
+	// there is no boundary character between the backslash and the address,
+	// unlike parseEscapedBoundary's "\X" shape.
+	if p, ok := n.(interface{ SetPos(int) }); ok {
+		p.SetPos(escStart + 1)
 	}
 	return n
 }

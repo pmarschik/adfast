@@ -42,6 +42,11 @@ type escapePairCase struct {
 	// existed and still does, so a blanket "no links at all" or "link
 	// everything" implementation cannot pass.
 	want []string
+	// wantEscaped overrides want for the escaped spelling only, for the one
+	// row where the two spellings are no longer the same byte shape and no
+	// longer carry the same verdict (see "backslash before a letter" below).
+	// Nil means "same as want".
+	wantEscaped []string
 }
 
 // AN ESCAPE MUST NOT DECIDE WHETHER A URL IS A LINK. Before the
@@ -213,19 +218,30 @@ func TestEscapedLinkify_MatchesTheLiteralSpelling(t *testing.T) {
 		literal: "ok http://a.b and x!http://c.d\n",
 		want:    []string{"http://a.b|http://a.b", "http://c.d|http://c.d"},
 	}, {
-		// A backslash before a NON-boundary byte must not turn into a
-		// boundary either: the escape is inert and the address stays
-		// fused to the "x".
+		// A backslash before a letter is not a CommonMark escape at all —
+		// only ASCII punctuation is escapable — so the backslash is inert
+		// and the address right after it still has to link.
+		// parseInertBackslash is the half of the fix that lives in this
+		// package rather than in punctLinkifyBoundaries: it leaves the
+		// backslash as its own one-byte literal and hands the rest of the
+		// line to the same recognizer chain every other boundary uses.
 		//
-		// The LITERAL spelling here is also a standing divergence, named
-		// in punctLinkifyBoundaries: "x\\http://c.d" holds a real
-		// backslash character, the reference reads it as punctuation and
-		// links, and this package cannot claim that byte because
-		// escapedLinkifyParser owns it.
-		name:    "escaped backslash boundary links in neither spelling",
-		escaped: "ok http://a.b and x\\\\http://c.d\n",
-		literal: "ok http://a.b and x\\http://c.d\n",
-		want:    []string{"http://a.b|http://a.b"},
+		// The escaped spelling here is not this row's escaped spelling of
+		// the SAME boundary character: "\\" is CommonMark's escape for a
+		// literal backslash, so it is two raw backslash bytes where the
+		// literal spelling has one, and it still does not link. The
+		// reference links both — micromark's autolink-literal tokenizer
+		// reads raw source and does not stop at an escaped backslash
+		// either — so this half is a narrower, unchanged divergence: '\\'
+		// itself is excluded from escapedLinkifyBoundaries (the backslash
+		// trigger only ever sees ONE leading backslash at a time), and
+		// widening it to recognize its own escape pair is a separate,
+		// out-of-scope change.
+		name:        "backslash before a letter links the literal, not the doubled escape",
+		escaped:     "ok http://a.b and x\\\\http://c.d\n",
+		literal:     "ok http://a.b and x\\http://c.d\n",
+		want:        []string{"http://a.b|http://a.b", "http://c.d|http://c.d"},
+		wantEscaped: []string{"http://a.b|http://a.b"},
 	}, {
 		// The escape is a lone trailing backslash with no URL behind
 		// it; the parser must decline and leave the escape alone.
@@ -236,13 +252,90 @@ func TestEscapedLinkify_MatchesTheLiteralSpelling(t *testing.T) {
 	}}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, src := range []string{tc.literal, tc.escaped} {
-				got := linkVerdicts(src)
-				if strings.Join(got, ";") != strings.Join(tc.want, ";") {
-					t.Errorf("%q linked %v, want %v", src, got, tc.want)
+			wantEscaped := tc.want
+			if tc.wantEscaped != nil {
+				wantEscaped = tc.wantEscaped
+			}
+			for _, pair := range [2]struct {
+				src  string
+				want []string
+			}{{tc.literal, tc.want}, {tc.escaped, wantEscaped}} {
+				got := linkVerdicts(pair.src)
+				if strings.Join(got, ";") != strings.Join(pair.want, ";") {
+					t.Errorf("%q linked %v, want %v", pair.src, got, pair.want)
 				}
 			}
 		})
+	}
+}
+
+// TestEscapedLinkify_InertBackslashBeforeALetter is the fix this file is
+// named for: a backslash before a LETTER is not a CommonMark escape at
+// all — only ASCII punctuation is escapable — so the backslash renders as
+// itself and the address right after it still has to link, exactly as the
+// reference links both halves of "\https://x.y" and "see \www.x b".
+//
+// Measured against the frozen remark-parse + remark-gfm + remark-stringify
+// install: both rows render to the SAME bytes there, angle brackets and
+// all — "\\<https://x.y>\n" and "see \\[www.x](http://www.x) b\n" — because
+// escapeBackslash always doubles a literal backslash in remark mode, and a
+// bare SCHEMED autolink right after a doubled backslash would not re-link
+// (two backslash bytes before a URL is the escaped-boundary byte shape, and
+// '\\' is not in escapedLinkifyBoundaries). bareAutolinkBackslashHazard is
+// the render-side half of the fix: it falls back to the <url> form exactly
+// here, which is also what the reference's own bytes look like. The www
+// literal needs no such fallback in remark mode — it already renders
+// bracketed, [label](url) syntax that a preceding backslash cannot touch.
+func TestEscapedLinkify_InertBackslashBeforeALetter(t *testing.T) {
+	tests := []struct {
+		name, src, wantRender string
+		wantVerdict           []string
+	}{{
+		name:        "a schemed literal right after the backslash",
+		src:         "\\https://x.y\n",
+		wantVerdict: []string{"https://x.y|https://x.y"},
+		wantRender:  "\\\\<https://x.y>\n",
+	}, {
+		name:        "a www literal after some leading prose",
+		src:         "see \\www.x b\n",
+		wantVerdict: []string{"www.x|http://www.x"},
+		wantRender:  "see \\\\[www.x](http://www.x) b\n",
+	}}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := linkVerdicts(tc.src); strings.Join(got, ";") != strings.Join(tc.wantVerdict, ";") {
+				t.Errorf("%q linked %v, want %v", tc.src, got, tc.wantVerdict)
+			}
+			once := markdown.Render(markdown.Parse([]byte(tc.src)))
+			if once != tc.wantRender {
+				t.Errorf("render of %q = %q, want %q", tc.src, once, tc.wantRender)
+			}
+			if got := linkVerdicts(once); strings.Join(got, ";") != strings.Join(tc.wantVerdict, ";") {
+				t.Errorf("rendered %q linked %v, want %v", once, got, tc.wantVerdict)
+			}
+			if twice := markdown.Render(markdown.Parse([]byte(once))); twice != once {
+				t.Errorf("render of %q is not a fixpoint:\nonce:  %q\ntwice: %q", tc.src, once, twice)
+			}
+		})
+	}
+}
+
+// TestEscapedLinkify_EscapedPunctuationBoundaryKeepsItsBareRender is the
+// negative contrast for the fix above: a backslash before a RECOGNIZED
+// escapable punctuation character (one of escapedLinkifyBoundaries) is a
+// real CommonMark escape, parseEscapedBoundary already handled it before
+// this fix, and it must still render bare — no angle-bracket fallback —
+// because the byte immediately before the bare link there is the escaped
+// punctuation character itself, never a literal backslash.
+func TestEscapedLinkify_EscapedPunctuationBoundaryKeepsItsBareRender(t *testing.T) {
+	const src = "\\*https://x.y\n"
+	want := []string{"https://x.y|https://x.y"}
+	if got := linkVerdicts(src); strings.Join(got, ";") != strings.Join(want, ";") {
+		t.Errorf("%q linked %v, want %v", src, got, want)
+	}
+	once := markdown.Render(markdown.Parse([]byte(src)))
+	if once != src {
+		t.Errorf("render of %q = %q, want the bare fixpoint %q", src, once, src)
 	}
 }
 
