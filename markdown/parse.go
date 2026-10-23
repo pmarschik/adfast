@@ -38,36 +38,36 @@ import (
 // fully decoded, so the formatter can re-emit them byte-for-byte without
 // polluting the semantic value.
 //
-// It is the CommonMark escapable set (isEscapableASCIIPunct) MINUS '_',
-// '*', '`' and '#'. The reference formatter preserves an authored escape
-// for every other punctuation byte — measured over all 32 of them, it keeps
-// 31 and drops only '_', whose escape it recomputes from its word-boundary
-// rule (an intraword "a_b\_c d" comes back "a_b_c d"). '*' and '`' are left
-// out for a different reason: the render escapes both unconditionally
-// (escapesInlineMarker), so decoding them and letting that rule write the
+// It is the CommonMark escapable set (isEscapableASCIIPunct) MINUS '_', '*'
+// and '#'. The reference formatter preserves an authored escape for every
+// other punctuation byte — measured over all 32 of them, it keeps 31 and
+// drops only '_', whose escape it recomputes from its word-boundary rule (an
+// intraword "a_b\_c d" comes back "a_b_c d"). '*' is left out for a
+// different reason: the render escapes it unconditionally
+// (escapesInlineMarker), so decoding it and letting that rule write the
 // backslash back reproduces the reference byte-for-byte with no provenance
 // to carry.
 //
-// ADDING '`' HERE IS A MEASURED NO-OP, and the reason is worth stating
-// because the byte looks like the lever for the one row where this leg and
-// prettier 3.8.1 disagree. Provenance can only carry a backslash the author
-// WROTE. On "a\`b" the escape already survives byte for byte without it —
-// escapesInlineMarker re-derives the same backslash — and the divergent row
-// is the opposite spelling, a BARE backtick: "a`b" formats to "a\`b" here and
-// prettier 3.8.1 leaves it alone. That source has no backslash run to record,
-// so no widening of this set can reach it; the escape decision is
-// escapesInlineMarker's alone. Measured 2026-09-09 by adding '`' and
-// re-rendering 13,986 documents over {a ` \ * _ space} in nine block and
-// inline contexts on both legs: zero byte differences, whole suite green.
-// (Dropping '\' from the set as a control moved 1,648 of them, so the corpus
-// could see a change.) '*' does not have that divergence at all: prettier
-// 3.8.1 escapes a bare "a*b" to "a\*b" just as this leg does.
-//
-// Making the bare-backtick row match would mean gating escapesInlineMarker on
-// provenance, which is a different and much larger change: the unconditional
-// escape is what keeps an ADF-origin text value containing a backtick from
-// re-parsing as a code span, and prettier only gets away without it by
-// echoing source it never has to re-derive.
+// '`' USED TO BE LEFT OUT WITH '*' for the same reason — the render escaped
+// both unconditionally — but that reasoning only covered the row where an
+// authored escape survives: "a\`b" already comes back byte for byte because
+// escapesInlineMarker re-derives the same backslash whether or not '`' is in
+// this set. It missed the opposite spelling, a BARE backtick with no
+// backslash to carry: "a`b" formatted to "a\`b" here while prettier 3.8.1
+// leaves it alone. Adding '`' to this set cannot fix that row by itself —
+// PreservedEscapes only ever widens what a DIFFERENCE from Value preserves,
+// and a bare backtick decodes to the same bytes it started as, so rawVal ==
+// value and the usual "Raw only when it differs" gate never fires. The
+// convertGoldmarkText and textSlice parse steps (goldmark_to_ast.go) special-
+// case that: they force Raw non-empty whenever Value contains a backtick,
+// equal to Value or not, so a text node arriving from a real parse always
+// carries a signed "I saw this spelling" marker for a backtick, and
+// ast.Text.Rendered's Raw-empty fallback is reached only by ADF-origin or
+// hand-built nodes, which still get the backtick escaped defensively there
+// (see that function's doc comment). escapesInlineMarker's backtick case
+// now reads that signal instead of escaping unconditionally: it escapes in
+// remark mode always, and in prettier mode only when it is reached without a
+// Raw to fall back to, i.e. never for a node a real parse produced bare.
 //
 // '#' IS LEFT OUT UNDER PROTEST, and the reason is a rule that runs after
 // the escaper rather than a property of the character. An ATX heading's
@@ -97,7 +97,7 @@ import (
 // Text that carries no Raw — built from ADF or by hand — is lifted into the
 // same verbatim form by ast.Text.Rendered, so the render sees one
 // convention whatever the tree's origin.
-const PreservedEscapes = "!\"$%&'()+,-./:;<=>?@[\\]^{|}~"
+const PreservedEscapes = "!\"$%&'()+,-./:;<=>?@[\\]^`{|}~"
 
 type parseConfig struct {
 	recoverNotice     func()

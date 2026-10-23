@@ -220,8 +220,22 @@ func (r *mdRenderer) escapesInlineMarker(s string, i int, nextLead byte, st *inl
 		// literal, handled via the format sentinel); remark always
 		// escapes it.
 		return !r.cfg.prettierText
-	case '*', '`':
+	case '*':
 		return true
+	case '`':
+		// remark always escapes a backtick: its s is the decoded Value, with
+		// no provenance to tell a bare backtick from one the author escaped,
+		// so re-deriving the escape on every one is the only safe rule.
+		//
+		// Prettier mode reaches this case only without a source escape to
+		// fall back on (sourceEscaped, checked by needsEscape's caller,
+		// already returns false for both an authored "\`" and an ADF-origin
+		// backtick that ast.Text.Rendered pre-escaped — see that function's
+		// doc comment). What is left is a backtick a real parse forced Raw
+		// to record as genuinely bare (see convertGoldmarkText and
+		// textSlice), so writing no escape here reproduces prettier 3.8.1,
+		// which echoes that same source byte unchanged.
+		return !r.cfg.prettierText
 	case '<':
 		return r.escapeAngle(s, i, nextLead)
 	case '[':

@@ -1036,7 +1036,19 @@ func atomLeaf(item fmtAtom) ast.Node {
 	if item.isCode {
 		node = &ast.InlineCode{Value: item.text}
 	} else {
-		node = &ast.Text{Value: item.text}
+		// Raw mirrors Value here deliberately, not only where the two differ:
+		// item.text is already the escape-preserving form a real parse would
+		// leave on Raw (see flattenLeafInline, which feeds it v.Rendered()),
+		// and the other producers of a text atom (the directive-name prefix,
+		// the dialect text, the replacement text) hand over a plain string
+		// with nothing to escape-preserve, so Raw==Value there is the
+		// identity and changes nothing. Setting it unconditionally makes the
+		// rebuilt leaf self-describing: a later Rendered() call (markdown.Render
+		// calls it in prettier mode — see writeTextInline) returns Raw as-is
+		// instead of re-running escapeLiteralBacktick/escapeLiteralBackslashes
+		// on a Value that may already carry their output, which would double
+		// the escape.
+		node = &ast.Text{Value: item.text, Raw: item.text}
 	}
 	return wrapAtomMarks(node, item.m)
 }

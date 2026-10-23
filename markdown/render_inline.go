@@ -454,7 +454,22 @@ func (r *mdRenderer) writeTextInline(b *strings.Builder, nodes []ast.Node, i int
 	if nl == 0 && i == len(nodes)-1 {
 		nl = st.afterLead
 	}
-	escaped := r.escapeText(node.Value, st, nl, lead, trail)
+	text := node.Value
+	if r.cfg.prettierText {
+		// Rendered returns the escape-preserving source form: Raw when a
+		// real parse (or convert.NormalizeFormat's leaf rebuild, which
+		// mirrors Raw onto Value — see atomLeaf) set it, and otherwise a
+		// fresh defensive escape of Value, for an ADF-origin or hand-built
+		// node that never went through either. Reading it here instead of
+		// Value makes the defensive escape self-contained in this package:
+		// a caller of markdown.Render(tree, WithPrettierText()) gets it
+		// whether or not the tree was normalized first. Remark mode keeps
+		// reading Value — it has no provenance form to consult (see
+		// escapeText's doc comment) and Rendered's fallback would corrupt
+		// a literal backslash remark expects to see once, not pre-doubled.
+		text = node.Rendered()
+	}
+	escaped := r.escapeText(text, st, nl, lead, trail)
 	if i+1 < len(nodes) && strings.HasSuffix(escaped, `\~`) {
 		if _, ok := nodes[i+1].(*ast.Delete); ok {
 			escaped = escaped[:len(escaped)-2] + "&#x7E;"
