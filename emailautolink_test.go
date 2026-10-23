@@ -33,6 +33,18 @@ func TestEmailAutolinkCarriesItsScheme(t *testing.T) {
 			want: "Write to support@ixopay.com about it.\n",
 		},
 		{
+			// The "mailto:" word is incidental prose, not a recognized
+			// URL scheme (see linkifyscheme_test.go's
+			// TestBareSchemeSetIsGFM) — the address right after it links
+			// through the same bare-email recognizer as the row above,
+			// with the leading "mailto:" staying put as the text before
+			// the link.
+			name: "mailto prefix in prose",
+			md:   "Write to mailto:support@ixopay.com about it.\n",
+			href: "mailto:support@ixopay.com",
+			want: "Write to mailto:support@ixopay.com about it.\n",
+		},
+		{
 			// The angle form is a CommonMark email autolink, and it is not
 			// subject to the GFM literal validity gate.
 			name: "angle email autolink",
