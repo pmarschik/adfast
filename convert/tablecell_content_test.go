@@ -267,9 +267,6 @@ func TestTableCellDropsWhatItCannotCarry(t *testing.T) {
 		// A rule has no content at all. Written out it would be the literal
 		// text "***", which re-parses as text and carries nothing.
 		"a rule": "a rule holds no content",
-		// unsupportedBlock drops on decode, in a cell and at the top level
-		// alike — measured; it is not a cell defect.
-		"an unsupportedomit": "unsupportedBlock drops everywhere, not only in a cell",
 	} {
 		t.Run(name, func(t *testing.T) {
 			md := cellMarkdown(t, cellShapes[name])
@@ -307,6 +304,16 @@ func TestTableCellRecoversAnAttributeOnlyLeaf(t *testing.T) {
 		"a sync block": {
 			inCell:     `:syncBlock{localId="l" resourceId="r"}`,
 			atTopLevel: `::syncBlock{localId="l" resourceId="r"}`,
+		},
+		// unsupportedBlock (any ADF kind adfast's typed model does not
+		// know) now recovers the same way, as the rawNode directive: the
+		// lossy ADF→markdown hop this directive closes (see
+		// dialect.RawBlock) is exactly the "vanishes to a blank cell"
+		// defect this test's sibling kinds were originally filed for, so
+		// an unknown kind belongs here too, not in the drop-test above.
+		"an unsupportedomit": {
+			inCell:     `:rawNode{data='{"attrs":{"originalValue":{"type":"weird"}}}' type="unsupportedBlock"}`,
+			atTopLevel: `::rawNode{data='{"attrs":{"originalValue":{"type":"weird"}}}' type="unsupportedBlock"}`,
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -90,6 +90,10 @@ var fuzzSeeds = []string{
 	":::extension{key=\"k\" type=\"t\"}\nbody\n:::",
 	"::::extension{key=\"k\" type=\"t\"}\n:::frame\none\n:::\n\n:::frame\ntwo\n:::\n::::",
 	"::syncBlock{localId=\"l\" resourceId=\"r\"}",
+	// rawNode: the lossless escape hatch for an unknown ADF node kind
+	":rawNode{type=\"futuristicInline\" data='{\"attrs\":{\"mode\":\"beta\"}}'}",
+	"::rawNode{type=\"futuristicBlock\"}",
+	":::rawNode{type=\"futuristicBlock\" data='{\"text\":\"t\"}'}\nbody\n:::",
 	// extended dialect: layouts, wrappers, captions, block task items
 	"::::section\n:::column{width=\"50\"}\nleft\n:::\n\n:::column{width=\"50\"}\nright\n:::\n::::",
 	":::center\ncentered\n:::",
