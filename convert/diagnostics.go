@@ -213,9 +213,23 @@ const (
 	// to a diagnostic by the infallible facade conversion.
 	CodeBeforeEncodeFailed = "before-encode-failed"
 	// CodeRawNode reports an unknown ADF node (adf.RawNode) reaching the
-	// markdown projection; its content was projected through its first
-	// child or the node was dropped. Emitted by FromADF.
+	// markdown projection. By default it is preserved losslessly as the
+	// rawNode directive (see dialect.RawBlock); without that registration
+	// it instead projects through its first content child or drops.
+	// Emitted by FromADF.
 	CodeRawNode = "raw-node"
+	// CodeRawNodeCorrupted reports a rawNode directive (see dialect.RawBlock)
+	// whose attributes cannot reconstruct the adf.RawNode it decoded from:
+	// a missing "type" attribute, or a "data" attribute that does not
+	// parse into the expected shape. This happens only when a human
+	// hand-edits the directive's markdown into something the forward
+	// conversion never writes; ToADF reports it here, loudly, rather than
+	// guessing a shape for the corrupted payload. The directive still
+	// encodes — degrading like any other malformed directive (dropping,
+	// or for the container form dissolving into its decoded children) —
+	// because this is the only diagnostics sink available to it;
+	// EncodeADF itself has none. Emitted by ToADF.
+	CodeRawNodeCorrupted = "raw-node-corrupted"
 	// CodeDecodeFailed reports a value that could not be decoded into an
 	// ADF document at all (nil, an unsupported Go type, or malformed
 	// JSON); the conversion produces empty output.
@@ -308,6 +322,7 @@ var codes = []string{
 	CodeListItemContent,
 	CodeBeforeEncodeFailed,
 	CodeRawNode,
+	CodeRawNodeCorrupted,
 	CodeDecodeFailed,
 	CodeFontSizeDropped,
 	CodeJQLDegraded,

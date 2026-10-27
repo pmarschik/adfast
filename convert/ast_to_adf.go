@@ -604,6 +604,16 @@ func (v *astBlockVisitor) VisitExtension(n ast.Node) []adf.Node {
 			})
 		}
 	}
+	if raw, isRaw := n.(dialect.RawNodeValidator); isRaw && v.c.diagnostics != nil {
+		// A corrupted rawNode directive (a hand-edit of the markdown, not
+		// anything the forward conversion writes) dissolves into its
+		// decoded children below, like any other malformed directive.
+		// Report it here — EncodeADF has no sink, same as the two cases
+		// above.
+		if msg, bad := dialect.RawNodeCorrupted(raw); bad {
+			v.c.diagnostics(Diagnostic{Code: CodeRawNodeCorrupted, Message: msg})
+		}
+	}
 	v.c.reportMediaSource(n)
 	if ext, ok := n.(extension.Node); ok {
 		// Extension kinds encode themselves.
@@ -1434,6 +1444,12 @@ func (v *inlineFlattener) VisitExtension(n ast.Node) []adf.Node {
 		// fontSize is retired: EncodeADF unwraps it to plain text (no mark
 		// produced). Report the drop here — EncodeADF has no sink.
 		v.c.diagnostics(Diagnostic{Code: CodeFontSizeDropped, Message: fontSizeDroppedMessage})
+	}
+	if raw, isRaw := n.(dialect.RawNodeValidator); isRaw && v.c.diagnostics != nil {
+		// See the identical check in astBlockVisitor.VisitExtension.
+		if msg, bad := dialect.RawNodeCorrupted(raw); bad {
+			v.c.diagnostics(Diagnostic{Code: CodeRawNodeCorrupted, Message: msg})
+		}
 	}
 	// The inline :media chip is a media directive in inline position and
 	// spends its `path` exactly as the block forms do, so it reports

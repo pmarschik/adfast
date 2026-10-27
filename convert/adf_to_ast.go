@@ -186,20 +186,24 @@ func linkMarkHref(marks []adf.Mark) (string, bool) {
 	return *link.Href, true
 }
 
-// reportRawNode emits the raw-node diagnostic: the markdown projection
-// met an unknown (RawNode) kind and either recursed into its content or
-// dropped it.
-func (rc renderCtx) reportRawNode(raw *adf.RawNode) {
+// reportRawNode emits the raw-node diagnostic: the markdown projection met
+// an unknown (RawNode) kind. The dialect's own rawNode directive (see
+// dialect.RawBlock) claims it by default, preserving the node's type,
+// attrs, and content losslessly; preserved reports whether that (or some
+// other registered decode hook) happened, so the message stays true for a
+// caller that assembled its own decode path without the default dialect,
+// where the node still recurses into its first content child or drops.
+func (rc renderCtx) reportRawNode(raw *adf.RawNode, preserved bool) {
 	if rc.diagnostics == nil {
 		return
 	}
-	action := "dropped"
-	if len(raw.Content) > 0 {
-		action = "projected through its first child"
+	action := "projected as a rawNode directive"
+	if !preserved {
+		action = "dropped, or projected through its first content child"
 	}
 	rc.diagnostics(Diagnostic{
 		Code:    CodeRawNode,
-		Message: "unknown ADF node " + strconv.Quote(raw.Type) + " has no markdown form; " + action,
+		Message: "unknown ADF node " + strconv.Quote(raw.Type) + " has no typed markdown form; " + action,
 	})
 }
 
@@ -535,14 +539,17 @@ func (v *adfBlockVisitor) blockFallback(node adf.Node) ast.Node {
 	return nil
 }
 
-// VisitRaw implements adf.Visitor: a decode hook may still claim the
-// unknown kind; otherwise the raw-node diagnostic fires before the
-// recurse-into-first-child/drop fallback.
+// VisitRaw implements adf.Visitor: a registered decode hook claims the
+// unknown kind — by default dialect.RawBlock/RawLeaf, which preserve it
+// losslessly as the rawNode directive — and the raw-node diagnostic fires
+// either way, worded to match; an unclaimed node falls back to recursing
+// into its first content child, or drops.
 func (v *adfBlockVisitor) VisitRaw(n *adf.RawNode) ast.Node {
-	if decoded, ok := decodeBlockHook(n, v.rc); ok {
+	decoded, ok := decodeBlockHook(n, v.rc)
+	v.rc.reportRawNode(n, ok)
+	if ok {
 		return decoded
 	}
-	v.rc.reportRawNode(n)
 	// Unknown block: try to recurse into the first content child.
 	if kids := adf.NodeContent(n); len(kids) > 0 {
 		return adf.Visit(kids[0], v)
@@ -1452,14 +1459,16 @@ func (v *adfInlineVisitor) inlineFallback(node adf.Node) []flatInline {
 	return items
 }
 
-// VisitRaw implements adf.Visitor: a decode hook may still claim the
-// unknown kind; otherwise the raw-node diagnostic fires and the node
-// drops.
+// VisitRaw implements adf.Visitor: a registered decode hook claims the
+// unknown kind — by default dialect.RawText, which preserves it losslessly
+// as the rawNode directive — and the raw-node diagnostic fires either way,
+// worded to match; an unclaimed node drops.
 func (v *adfInlineVisitor) VisitRaw(n *adf.RawNode) []flatInline {
-	if items, ok := v.decodeInline(n); ok {
+	items, ok := v.decodeInline(n)
+	v.rc.reportRawNode(n, ok)
+	if ok {
 		return items
 	}
-	v.rc.reportRawNode(n)
 	return nil
 }
 
