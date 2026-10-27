@@ -21,7 +21,7 @@ import (
 //
 // The set is assembled from one group per node shape. The groups are
 // concatenated in the order below and each group keeps its own internal
-// order, so the dispatch order is the reading order of the four
+// order, so the dispatch order is the reading order of the five
 // functions taken together.
 //
 // Every text-directive constructor in the assembled set is wrapped by
@@ -32,6 +32,7 @@ func Registrations() []extension.Registration {
 	regs = append(regs, inlineRegistrations()...)
 	regs = append(regs, markRegistrations()...)
 	regs = append(regs, extendedRegistrations()...)
+	regs = append(regs, rawNodeRegistrations()...)
 	return guardBareText(regs)
 }
 
