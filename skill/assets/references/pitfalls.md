@@ -148,7 +148,15 @@ vocabulary:
   asset upload) downgraded to a diagnostic by the infallible
   `Pipeline.MarkdownToADF` (`Pipeline.MarkdownToADFAll` returns it).
 - `raw-node` — an unknown ADF node reaching the markdown projection;
-  projected through its first child or dropped.
+  preserved losslessly as a `rawNode` directive (`::rawNode{type=…
+  data=…}`), so the round trip keeps the node's type, attrs, text, and
+  content even without a typed Go model for it.
+- `raw-node-corrupted` — a `rawNode` directive whose `type`/`data`
+  attributes do not parse back into an ADF node: a hand-edit of the
+  markdown, never something the forward conversion writes. The directive
+  still encodes — dropping, or dissolving into its children, like any
+  other malformed directive — but this reports the corruption instead of
+  guessing a shape for it. Emitted on encode.
 - `decode-failed` — a value that could not be decoded into an ADF
   document at all; the conversion produces empty output.
 - `unknown-node` / `unknown-mark` / `unknown-attr` — ADF content the
