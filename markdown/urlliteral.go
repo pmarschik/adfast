@@ -1067,30 +1067,37 @@ func findURLLiterals(s string) [][]int {
 // anything in this file) or for a mailto: address (out of this file's scope,
 // and the motivating gap is a www./schemed host, not an email domain).
 //
-// THIS IS A DELIBERATE DIVERGENCE FROM THE FROZEN REFERENCE, in the same
-// spirit as "ftp" IS NOT IN IT above, though in the opposite direction — that
-// one REMOVED a link the reference does not make, this one CHANGES an href
-// the reference also links, to a different string. The reference does not
-// punycode at all: measured against remark-parse 11.0.0 + remark-gfm 4.0.1 +
-// mdast-util-gfm-autolink-literal 2.0.1, both recognizers link the literal
-// Unicode host unencoded in BOTH the label and the href —
+// THIS MATCHES THE REFERENCE'S ADF-ROUND-TRIP LEG, not its plain-markdown
+// leg — the two disagree with each other here, and an earlier version of
+// this comment conflated them, calling this a deliberate divergence when it
+// is not. Measured directly against remark-parse 11.0.0 + remark-gfm 4.0.1 +
+// mdast-util-gfm-autolink-literal 2.0.1 ALONE — markdown parsed and
+// re-stringified, no ADF involved — the href stays the literal Unicode host
+// unencoded:
 //
-//	"see www.exämple.com b"   ref [www.exämple.com](http://www.exämple.com)
+//	"see www.exämple.com b"   markdown-only ref   [www.exämple.com](http://www.exämple.com)
 //
-// — and that reference reading is not in question; it was measured and
-// confirmed before this function was written. adfast instead follows the
-// browser convention for an IDN address: the LABEL stays the literal text the
-// author wrote, byte for byte, and the HREF — the string a client actually
-// dereferences — carries the IDNA/punycode form instead, e.g.
-// "http://www.xn--exmple-cua.com" for the row above (the exact spelling comes
-// from golang.org/x/net/idna itself; this file does not hand-spell one). A
-// reader still sees the address as written; a consumer that is not
-// IDNA-aware, or that renders the href as a plain link, still resolves it.
-// Nothing here is a parity GAP in the sense the rest of this file tracks
-// one — a diff against the Markdown source shows no change, because the
-// label equals the source either way, and only a reader of the href's own
-// bytes (not the rendered document) can tell this answer from the
-// reference's.
+// But the markdown -> ADF -> markdown round trip this project actually
+// tracks goes through Atlassian's own ADF link-mark construction, and that
+// step punycodes the host when it builds the href — the same thing any code
+// that builds a link through the WHATWG URL constructor does automatically,
+// confirmed directly: new URL("http://www.exämple.com").href is
+// "http://www.xn--exmple-cua.com/", IDNA-normalized as a side effect of
+// building the string, a step the markdown-only leg above never runs:
+//
+//	"see www.exämple.com here"   ADF-round-trip ref   [www.exämple.com](http://www.xn--exmple-cua.com)
+//
+// adfast follows the ADF-leg reading, since this file's whole job is the
+// markdown<->ADF boundary: the LABEL stays the literal text the author
+// wrote, byte for byte, and the HREF carries the IDNA/punycode form (the
+// exact spelling comes from golang.org/x/net/idna itself; this file does not
+// hand-spell one) — matching what a real ADF document built from this
+// markdown would actually carry as its link mark's href. A reader still sees
+// the address as written; a consumer that is not IDNA-aware, or that renders
+// the href as a plain link, still resolves it. A diff against the Markdown
+// source alone shows no change, because the label equals the source either
+// way — only a reader of the href's own bytes, or the ADF JSON itself, can
+// tell this matches the ADF-leg reference rather than the markdown-only one.
 //
 // idna.ToASCII IS THE PUNYCODE PROFILE, "raw punycode processing with a
 // minimum of validation" in the package's own words, chosen over
