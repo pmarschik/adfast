@@ -909,6 +909,43 @@ func TestNoAlphanumericTLDSplitsTheTwoRecognizers(t *testing.T) {
 	}
 }
 
+// A DANGLING LABEL REACHING A TRAILING UNDERSCORE, at the document layer —
+// this package's own bead for the shape (storysmith-md-3p7g row 5, filed
+// 2026-09-08 against an older baseline: micromark's domain hole left a
+// clean-looking "https://ex.a" linked out of "a [ https://ex.a_ b" where the
+// reference reads the whole thing as prose).
+//
+// RE-MEASURED HERE AGAINST THE CURRENT HOST RULES: this package already
+// carries the row correctly, through the SAME gate split the hyphen-led-TLD
+// rows rely on (urlLiteralHostAccepted vs. urlLiteralHostAcceptedInText, see
+// their docs in urlliteral.go) — a trailing underscore the RAW gate's own
+// trim removes before judging the host, and the DECODED gate, which never
+// trims, still sees. "a trailing underscore after a TLD is trimmed" in
+// urlLiteralHostCases pins the two gates' verdicts directly on this exact
+// host ("https://ex.com_"/"https://ex.a_" are the same shape); this test
+// pins the same split at the document layer, the way
+// TestNoAlphanumericTLDSplitsTheTwoRecognizers does for the hyphen rows —
+// the missing piece, since nothing before this exercised the dangling-label
+// spelling end to end for an underscore host.
+//
+// Measured against the reference (remark-parse 11.0.0 + remark-gfm 4.0.1):
+//
+//	"see https://ex.a_ b"   ref https://ex.a   (raw recognizer, trim then link)
+//	"a [ https://ex.a_ b"   ref (no link)      (decoded recognizer, no trim)
+func TestDanglingLabelUnderscoreTrimsOnlyTheRawGate(t *testing.T) {
+	t.Parallel()
+	const raw = "see https://ex.a_ b\n"
+	wantRaw := []string{"https://ex.a|https://ex.a"}
+	if got := linkVerdictsOf(Parse([]byte(raw))); !equalStrings(got, wantRaw) {
+		t.Errorf("links of %q = %v, want %v", raw, got, wantRaw)
+	}
+
+	const dangling = "a [ https://ex.a_ b\n"
+	if got := linkVerdictsOf(Parse([]byte(dangling))); len(got) != 0 {
+		t.Errorf("links of %q = %v, want none", dangling, got)
+	}
+}
+
 // THE ROWS THE HYPHEN FIX COSTS, pinned so they are a decision and not a
 // surprise. Every one of them is a host whose segments are punctuation only
 // next to a TRAILING DOT, and every one is a corner of the PATH gap
