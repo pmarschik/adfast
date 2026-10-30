@@ -88,8 +88,8 @@ func firstLine(s string) string {
 }
 
 func lastLine(s string) string {
-	if i := strings.LastIndex(s, "\n"); i >= 0 {
-		return s[i+1:]
+	if _, after, found := strings.CutLast(s, "\n"); found {
+		return after
 	}
 	return s
 }

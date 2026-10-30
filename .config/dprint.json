@@ -36,7 +36,11 @@
   // demonstrate: it pulls a closing `:::` fence into the blockquote above it
   // and writes `> :::`, which is a different document. The file is the
   // reference for the directive dialect, so its source stays as written.
+  // dprint 0.64.3's exclude matching stopped honoring a bare repo-relative
+  // path here (measured: 0.56.1 skips this file, 0.64.3 silently reformats
+  // it). The `**/` prefix anchors the pattern the way the bare path used to
+  // and is confirmed working on 0.64.3.
   "excludes": [
-    "skill/assets/references/example.md"
+    "**/skill/assets/references/example.md"
   ]
 }

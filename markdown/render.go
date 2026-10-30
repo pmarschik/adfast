@@ -163,8 +163,8 @@ func breakSafeBullet(bullet string, node *ast.List) string {
 // currentLine returns the builder's content since the last newline.
 func currentLine(b *strings.Builder) string {
 	out := b.String()
-	if i := strings.LastIndexByte(out, '\n'); i >= 0 {
-		return out[i+1:]
+	if _, after, found := strings.CutLast(out, "\n"); found {
+		return after
 	}
 	return out
 }

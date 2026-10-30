@@ -857,8 +857,8 @@ func urlLiteralTextDomain(literal string) string {
 // second '.' arrives.
 func urlLiteralLastTwoSegments(host string) (last, prev string) {
 	last, prev = host, ""
-	if i := strings.LastIndexByte(host, '.'); i >= 0 {
-		last, prev = host[i+1:], host[:i]
+	if before, after, found := strings.CutLast(host, "."); found {
+		last, prev = after, before
 	}
 	if i := strings.LastIndexByte(prev, '.'); i >= 0 {
 		prev = prev[i+1:]
