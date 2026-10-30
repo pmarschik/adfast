@@ -98,8 +98,8 @@ func foldDirectivesIntoURLs(nodes []ast.Node) []ast.Node {
 		for end < len(nodes) && foldableNode(nodes[end]) {
 			end++
 		}
-		merged, spans := mergeFoldRun(nodes, start, end)
-		_, emailRanges := dissolveSpannedDirectives(nodes, merged, spans)
+		merged, spans, escaped := mergeFoldRun(nodes, start, end)
+		_, emailRanges := dissolveSpannedDirectives(nodes, merged, spans, escaped)
 		run := remergeTexts(nodes[start:end])
 		if len(emailRanges) > 0 {
 			run = spliceRescuedEmailLiterals(run, emailRanges)
@@ -120,7 +120,13 @@ type dirSpan struct {
 
 // mergeFoldRun concatenates nodes[start:end] — the plain text plus each bare
 // directive's ":name" source — and reports where each directive landed.
-func mergeFoldRun(nodes []ast.Node, start, end int) (merged string, spans []dirSpan) {
+// escaped marks, byte-for-byte alongside merged, which bytes came from a
+// Text node's Value by way of a preserved-escape sequence in its Raw (see
+// ast.Text.Raw): merged is built from decoded Value, so a position where the
+// author wrote a backslash looks identical to one where they didn't unless
+// this is tracked separately. dissolveSpannedDirectives's email family needs
+// that distinction — see its doc comment.
+func mergeFoldRun(nodes []ast.Node, start, end int) (merged string, spans []dirSpan, escaped []bool) {
 	var sb strings.Builder
 	for i := start; i < end; i++ {
 		switch n := nodes[i].(type) {
@@ -128,11 +134,51 @@ func mergeFoldRun(nodes []ast.Node, start, end int) (merged string, spans []dirS
 			raw := ":" + n.Name
 			spans = append(spans, dirSpan{name: n.Name, idx: i, from: sb.Len(), to: sb.Len() + len(raw)})
 			sb.WriteString(raw)
+			escaped = append(escaped, make([]bool, len(raw))...)
 		case *ast.Text:
 			sb.WriteString(n.Value)
+			escaped = append(escaped, valueEscapeFlags(n.Raw, n.Value)...)
 		}
 	}
-	return sb.String(), spans
+	return sb.String(), spans, escaped
+}
+
+// valueEscapeFlags reports, for each byte of value, whether it was reached
+// through a preserved-escape sequence in raw rather than written plainly
+// (e.g. value's '@' by way of raw's "\@"; see rawEscapeAt). Only bytes in
+// PreservedEscapes can be flagged this way: an escape of any other byte (for
+// example "\_") decodes to the same Value with no Raw trace at all, so this
+// function cannot see it and reports false for it like any unescaped byte —
+// see dissolveSpannedDirectives's doc comment for what that gap costs. An
+// empty raw (no escapes in this node) still returns one false per byte of
+// value, so the slice's length always matches value's, letting callers index
+// it directly without a nil check.
+func valueEscapeFlags(raw, value string) []bool {
+	flags := make([]bool, len(value))
+	if raw == "" {
+		return flags
+	}
+	ri := 0
+	for vi := range len(value) {
+		if rawEscapeAt(raw, ri, value[vi]) {
+			flags[vi] = true
+			ri += 2
+		} else {
+			ri++
+		}
+	}
+	return flags
+}
+
+// rangeHasEscape reports whether any byte in merged[start:stop] was produced
+// from a preserved-escape sequence, per escaped (see mergeFoldRun).
+func rangeHasEscape(escaped []bool, start, stop int) bool {
+	for i := start; i < stop && i < len(escaped); i++ {
+		if escaped[i] {
+			return true
+		}
+	}
+	return false
 }
 
 // dissolveSpannedDirectives turns every directive a URL or email literal
@@ -157,7 +203,42 @@ func mergeFoldRun(nodes []ast.Node, start, end int) (merged string, spans []dirS
 // strict containment would never fire. An exact span match (the directive's
 // own raw text, with nothing of a literal on either side) is excluded for
 // both: no literal is just a bare ":name" on its own.
-func dissolveSpannedDirectives(nodes []ast.Node, merged string, spans []dirSpan) (urlChanged bool, emailRanges [][2]int) {
+//
+// The email family also consults escaped (see mergeFoldRun) before turning a
+// rescue into a link. A directive's own name-scan can stop early at a
+// backslash that goldmark-directive's grammar treats as "not a name
+// character" — scanDirectiveName (github.com/pmarschik/goldmark-directive)
+// also rejects a name ending in '-' or '_', so "0_@0.A" alone never forms a
+// directive at all (no rescue is possible there), but the same text with the
+// underscore backslash-escaped ("0\_@0.A") truncates the name-scan at the
+// backslash, leaving a short valid name "0" that DOES form a directive and
+// would otherwise get rescued into a link. Rescuing it anyway is round-trip
+// unstable: a Bare link renders its address literally, dropping the escape,
+// so the next parse sees unescaped "0_@0.A" again, which never forms a
+// directive, is never rescued, and renders through FormatMarkdown's ordinary
+// safety-escaping path to "0\_\@0.A" (both '_' and, incidentally, '@' get
+// escaped) — oscillating forever (fuzz seed
+// testdata/fuzz/FuzzRoundTripIdempotent/0d136c0eb252b985).
+//
+// The guard only sees this because that safety pass escapes more than the
+// underscore here: "0_@0.A" renders as "0\_\@0.A" (the '@' is escaped too,
+// incidentally, by the same pass), and '@' — unlike '_' — is in
+// PreservedEscapes, so valueEscapeFlags/rawEscapeAt leave a Raw trace for it
+// that rangeHasEscape can see. The escape that actually truncates the
+// name-scan (the one before '_') decodes away with no trace of its own (see
+// valueEscapeFlags): this guard cannot detect it directly, only the
+// co-occurring preserved escape nearby. Where no preserved escape falls
+// inside the matched range — e.g. ":a\_@b.c" (lowercase; FormatMarkdown does
+// not also escape this '@') — the guard does not fire and an oscillation
+// still happens: ":a\_@b.c" renders to ":a_@b.c" (first != source), which
+// renders to "\:a\_\@b.c" (second != first — the FuzzRoundTripIdempotent
+// shape, not just a non-fixpoint), which then *is* stable. That gap is
+// tracked separately, not fixed here.
+//
+// Skipping the rescue when the matched range contains an escape still
+// dissolves the directive to plain text either way (stable); it just stops
+// inventing a link from a decode artifact.
+func dissolveSpannedDirectives(nodes []ast.Node, merged string, spans []dirSpan, escaped []bool) (urlChanged bool, emailRanges [][2]int) {
 	for _, loc := range findURLLiterals(merged) {
 		stop := loc[0] + len(trimURLLiteralEnd(merged[loc[0]:loc[1]]))
 		for _, sp := range spans {
@@ -176,7 +257,7 @@ func dissolveSpannedDirectives(nodes []ast.Node, merged string, spans []dirSpan)
 				rescued = true
 			}
 		}
-		if rescued {
+		if rescued && !rangeHasEscape(escaped, start, stop) {
 			emailRanges = append(emailRanges, [2]int{start, stop})
 		}
 	}

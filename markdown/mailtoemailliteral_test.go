@@ -67,6 +67,41 @@ func TestEscapedEmailStaysUnlinkedBesideARescuedMailto(t *testing.T) {
 	}
 }
 
+// TestEscapedUnderscoreEmailStaysUnlinkedAndStable pins the fix for a
+// directive/email-rescue interaction the dissolve's own loose overlap test
+// (see dissolveSpannedDirectives's doc comment) otherwise lets through: a
+// directive whose name-scan stops early at a backslash — rather than at a
+// trailing '-'/'_' goldmark-directive would reject outright — must not be
+// rescued into an email link just because the merged run, built from decoded
+// text, happens to look like one.
+//
+// Before the fix this oscillated forever: unescaped ":0_@0.A" renders
+// through the ordinary (directive-unrelated) safety-escaping path to
+// ":0\_\@0.A" (FormatMarkdown escapes both the '_' and, incidentally, the
+// '@'), which re-parses into a one-character directive "0" that gets wrongly
+// rescued into a mailto link, which — because a Bare link renders its
+// address literally — renders back to unescaped ":0_@0.A", repeating (fuzz
+// seed testdata/fuzz/FuzzRoundTripIdempotent/0d136c0eb252b985). The fix
+// detects this only via the co-occurring '@' escape, not the '_' escape that
+// actually truncates the name-scan — see dissolveSpannedDirectives's doc
+// comment for the input shapes (no co-occurring preserved escape) this does
+// not cover.
+func TestEscapedUnderscoreEmailStaysUnlinkedAndStable(t *testing.T) {
+	t.Parallel()
+	src := ":0_@0.A\n"
+	if got := linkURLsOf(Parse([]byte(src))); len(got) != 0 {
+		t.Fatalf("link URLs of %q = %v, want none", src, got)
+	}
+	first := renderMD(t, src)
+	second := renderMD(t, first)
+	if first != second {
+		t.Errorf("render not idempotent: render(%q) = %q, render(that) = %q", src, first, second)
+	}
+	if got := linkURLsOf(Parse([]byte(first))); len(got) != 0 {
+		t.Errorf("rendered form %q gained a link: %v", first, got)
+	}
+}
+
 func TestMailtoPrefixDoesNotOverTrigger(t *testing.T) {
 	t.Parallel()
 	for _, src := range []string{
