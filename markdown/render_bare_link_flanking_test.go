@@ -196,3 +196,67 @@ func kindsOf(root ast.Node) []string {
 	slices.Sort(out)
 	return out
 }
+
+// A hand-built Bare link — the shape convert builds from ADF, which has no
+// source form — is written bare on the remark leg only where the bare bytes
+// re-parse as the same link between the neighbors they touch; otherwise it
+// keeps the angle form. The format leg writes the form Bare asks for. See
+// bareAutolinkRoundTrips.
+func TestRenderBareLinkChecksItsNeighbors(t *testing.T) {
+	t.Parallel()
+	link := func(url, text string) *ast.Link {
+		return &ast.Link{URL: url, Bare: true, Children: []ast.Node{&ast.Text{Value: text}}}
+	}
+	para := func(kids ...ast.Node) ast.Node {
+		return &ast.Root{Children: []ast.Node{&ast.Paragraph{Children: kids}}}
+	}
+	em := func(kids ...ast.Node) ast.Node { return &ast.Emphasis{Children: kids} }
+	del := func(kids ...ast.Node) ast.Node { return &ast.Delete{Children: kids} }
+	text := func(s string) ast.Node { return &ast.Text{Value: s} }
+	for _, c := range []struct {
+		name    string
+		tree    ast.Node
+		remWant string
+		fmtWant string
+	}{
+		// The window crosses the construct's markers into the parent run,
+		// both ways (inlineContext.wordBefore and wordAfter).
+		{"emphasis then a hyphen run", para(em(link("mailto:a@b.co", "a@b.co")), text("-x")), "_<a@b.co>_-x\n", "_a@b.co_-x\n"},
+		{"a hyphen run then emphasis", para(text("x-"), em(link("mailto:a@b.co", "a@b.co"))), "x-_<a@b.co>_\n", "x-_a@b.co_\n"},
+		// The window after the closer holds the "x" as it is really
+		// written, hex-encoded for the closer's sake (writeWrapped's
+		// closeProblem): judged against a plain "x" instead, both forms
+		// lose the emphasis, the trees differ, and the link would be
+		// bracketed for nothing.
+		{"emphasis then a letter", para(em(link("http://a.b", "http://a.b")), text("x")), "_http://a.b_&#x78;\n", "*http://a.b*x\n"},
+		// A directive label is a word of its own: the parser reads it
+		// between its brackets, so the "-x" behind the ']' cannot reach
+		// the address, and the label's run starts with empty edges.
+		{"directive label then a hyphen run", para(&ast.TextDirective{Name: "x", Children: []ast.Node{link("mailto:a@b.co", "a@b.co")}}, text("-x")), ":x[a@b.co]-x\n", ":x[a@b.co]-x\n"},
+		{"empty host in a directive label", para(&ast.TextDirective{Name: "x", Children: []ast.Node{link("http://", "http://")}}), ":x[<http://>]\n", ":x[http://]\n"},
+		// A flanking peek from outside the strikethrough assumes the angle
+		// form, so the "x" is encoded and the opener can open whichever
+		// form the link then takes.
+		{"a letter then strikethrough", para(text("x"), del(link("http://a.b", "http://a.b"))), "&#x78;~~http://a.b~~\n", "x~~http://a.b~~\n"},
+		{"letter after", para(link("http://a.b", "http://a.b"), &ast.Text{Value: "x"}), "<http://a.b>x\n", "http://a.bx\n"},
+		{"letter before", para(&ast.Text{Value: "x"}, link("http://a.b", "http://a.b")), "x<http://a.b>\n", "xhttp://a.b\n"},
+		{"letter before an address", para(&ast.Text{Value: "a"}, link("mailto:b@c.d", "b@c.d")), "a<b@c.d>\n", "ab@c.d\n"},
+		{"empty host", para(link("http://", "http://")), "<http://>\n", "http://\n"},
+		{"space either side", para(&ast.Text{Value: "a "}, link("http://a.b", "http://a.b"), &ast.Text{Value: " b"}), "a http://a.b b\n", "a http://a.b b\n"},
+		{"inside emphasis", para(&ast.Emphasis{Children: []ast.Node{link("http://a.b", "http://a.b")}}), "_http://a.b_\n", "_http://a.b_\n"},
+		// Two bare links touching: the first is checked against the
+		// angle form the second's look-ahead assumes, and the second
+		// then sees the first's real bytes and keeps its brackets.
+		{"two links touching", para(link("http://a.b", "http://a.b"), link("http://c.d", "http://c.d")), "http://a.b<http://c.d>\n", "http://a.bhttp://c.d\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := Render(c.tree); got != c.remWant {
+				t.Errorf("remark leg: Render = %q, want %q", got, c.remWant)
+			}
+			if got := Render(c.tree, WithPrettierText()); got != c.fmtWant {
+				t.Errorf("format leg: Render = %q, want %q", got, c.fmtWant)
+			}
+		})
+	}
+}

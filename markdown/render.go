@@ -102,6 +102,11 @@ type mdRenderer struct {
 	// markers and list indentation. Paragraph wrapping budgets the final
 	// rendered line (like prettier), not the bare inline text.
 	prefixWidth int
+	// bareProbe is set on the throwaway copies that render ahead of a link
+	// (wordAhead) or peek at a construct from outside (renderChildScratch):
+	// a bare autolink there takes the angle form instead of running its own
+	// round-trip check (see writesBare).
+	bareProbe bool
 }
 
 // availWidth returns the wrap width left after enclosing prefixes.

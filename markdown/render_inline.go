@@ -21,6 +21,24 @@ import (
 // unset at the start of emphasis/strong/delete/link constructs) and which
 // escape families are active in the current construct.
 type inlineContext struct {
+	// wordBefore and wordAfter carry the bare-autolink window (see
+	// bareAutolinkRoundTrips) past the edges of this run: the output that
+	// precedes the run inside its whitespace-delimited word, through the
+	// opening marker, and — computed on demand, since most runs never need
+	// it — the output that follows the run inside that word, starting with
+	// the closing marker. A run that starts a block, a table cell or a
+	// directive label leaves both empty: its boundary already ends the word,
+	// the same as finding a real wall, so wordBeforeCapped stays false (the
+	// zero value) there.
+	//
+	// wordBeforeCapped is false when wordBefore is a real wall or a true
+	// construct edge, and true when it was built past bareAutolinkWindowCap
+	// bytes with no wall found and so must not be trusted (see
+	// bareAutolinkPrefix). wordAfter reports the same by its own bool
+	// result.
+	wordAfter        func() (string, bool)
+	wordBefore       string
+	wordBeforeCapped bool
 	// prevRune is the last rune actually emitted (syntax included), used for
 	// CommonMark flanking checks; '\n' at block start counts as whitespace.
 	prevRune rune
@@ -118,7 +136,7 @@ func (r *mdRenderer) renderCellString(nodes []ast.Node) string {
 
 func (r *mdRenderer) writeInlines(b *strings.Builder, nodes []ast.Node, st *inlineContext) {
 	nodes = joinAdjacentCodeSpans(nodes)
-	v := &inlineWriteVisitor{r: r, b: b, st: st, nodes: nodes}
+	v := &inlineWriteVisitor{r: r, b: b, st: st, nodes: nodes, start: b.Len()}
 	for i := range nodes {
 		v.i = i
 		st.directiveHazard = r.needsPunctTrail(nodes, i, st)
@@ -183,6 +201,9 @@ type inlineWriteVisitor struct {
 	st    *inlineContext
 	nodes []ast.Node
 	i     int
+	// start is b's length when this run began, so a link or a nested
+	// construct can see the run's bytes in front of it (see linkSite).
+	start int
 }
 
 // The optional visitor interfaces are asserted, not inferred: without
@@ -221,20 +242,20 @@ func (v *inlineWriteVisitor) VisitBreak(n *ast.Break) struct{} {
 
 // VisitStrong implements ast.Visitor.
 func (v *inlineWriteVisitor) VisitStrong(*ast.Strong) struct{} {
-	v.r.writeWrapped(v.b, v.nodes, v.i, "**", v.st)
+	v.r.writeWrapped(v.b, v.nodes, v.i, v.start, "**", v.st)
 	return struct{}{}
 }
 
 // VisitEmphasis implements ast.Visitor.
 func (v *inlineWriteVisitor) VisitEmphasis(*ast.Emphasis) struct{} {
 	marker := v.r.emphasisMarkerAfter(v.nodes, v.i, v.st.prevRune, v.st)
-	v.r.writeWrapped(v.b, v.nodes, v.i, string(marker), v.st)
+	v.r.writeWrapped(v.b, v.nodes, v.i, v.start, string(marker), v.st)
 	return struct{}{}
 }
 
 // VisitDelete implements ast.Visitor.
 func (v *inlineWriteVisitor) VisitDelete(*ast.Delete) struct{} {
-	v.r.writeWrapped(v.b, v.nodes, v.i, "~~", v.st)
+	v.r.writeWrapped(v.b, v.nodes, v.i, v.start, "~~", v.st)
 	return struct{}{}
 }
 
@@ -257,7 +278,7 @@ func (v *inlineWriteVisitor) VisitDelete(*ast.Delete) struct{} {
 // escape surface is not this fix. See TestBareLinkLeadIsTheAddressNotBracket.
 func (v *inlineWriteVisitor) VisitLink(n *ast.Link) struct{} {
 	at := v.b.Len()
-	v.r.writeLink(v.b, n, v.st)
+	v.r.writeLink(v.b, n, v.st, linkSite{nodes: v.nodes, i: v.i, start: v.start})
 	v.st.prev, v.st.hasPrev = ')', true
 	v.st.prevRune, v.st.encodeLead = lastRuneOf(v.b.String()[at:]), false
 	return struct{}{}
@@ -629,17 +650,25 @@ func lastRuneByteOf(s string) byte {
 // close intraword; '*' fails next to mixed punctuation), remark-stringify
 // hex-encodes the adjacent alphanumeric runes so the emphasis survives
 // re-parsing — mirrored here via encodeLead/encodeTrail.
-func (r *mdRenderer) writeWrapped(b *strings.Builder, nodes []ast.Node, i int, marker string, st *inlineContext) {
+func (r *mdRenderer) writeWrapped(b *strings.Builder, nodes []ast.Node, i, start int, marker string, st *inlineContext) {
 	node := nodes[i]
 	openProblem, closeProblem := false, false
+	word := markerWord(marker)
+	if !r.bareProbe {
+		// The closure reads closeProblem when it runs: still false during
+		// the scratch render below, which therefore sees the next
+		// sibling's first rune unencoded, and final for the real pass.
+		word = r.wrappedWord(b, nodes, i, start, marker, &closeProblem, st)
+	}
 	if emphasisMarkerByte(node) != 0 {
 		// The byte the caller settled on, which for an emphasis is not
 		// always the preferred '_' (see emphasisMarkerAfter). Asking about
 		// '_' while writing '*' would encode neighbors the written marker
 		// has no trouble with.
 		m := marker[len(marker)-1]
-		openProblem = !canOpenMarker(m, st.prevRune, r.renderedChildLead(node, m, st))
-		closeProblem = !canCloseMarker(m, r.renderedChildTrail(node, m, st), r.siblingLeadRune(nodes, i+1))
+		scratch := r.renderChildScratchIn(node, m, st, word)
+		openProblem = !canOpenMarker(m, st.prevRune, firstRuneOf(scratch))
+		closeProblem = !canCloseMarker(m, lastRuneOf(scratch), r.siblingLeadRune(nodes, i+1))
 	}
 	// The byte that follows the last child is the construct's OWN closing
 	// marker, not whatever stands behind the construct. Measured against the
@@ -662,14 +691,17 @@ func (r *mdRenderer) writeWrapped(b *strings.Builder, nodes []ast.Node, i int, m
 	// because '.' and '_' fall in the same character class there.
 	after := marker[len(marker)-1]
 	child := inlineContext{
-		escape:         st.escape,
-		colons:         st.colons,
-		pipes:          st.pipes,
-		prevRune:       rune(marker[len(marker)-1]),
-		encodeLead:     openProblem,
-		encodeTrail:    closeProblem,
-		afterLead:      after,
-		directiveLabel: st.directiveLabel,
+		escape:           st.escape,
+		colons:           st.colons,
+		pipes:            st.pipes,
+		prevRune:         rune(marker[len(marker)-1]),
+		encodeLead:       openProblem,
+		encodeTrail:      closeProblem,
+		afterLead:        after,
+		directiveLabel:   st.directiveLabel,
+		wordBefore:       word.before,
+		wordBeforeCapped: word.beforeCapped,
+		wordAfter:        word.after,
 	}
 	var inner strings.Builder
 	r.writeInlines(&inner, ast.Children(node), &child)

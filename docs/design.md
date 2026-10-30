@@ -809,9 +809,37 @@ would only be a second one. A named regression test pins each of these:
   `convertGoldmarkAutoLink`) round-trips. A link mark whose text is the
   full `mailto:addr` literal must therefore keep the angle form, the same
   failure class the scheme restriction exists to catch, even though its
-  text equals its href exactly as an http(s) link's does. See
-  `convert.isBareAutolinkScheme`, `barelinkscheme_test.go`,
-  `barelinkform_test.go` and `TestMailtoLinkMarkTextDecidesTheBareForm`.
+  text equals its href exactly as an http(s) link's does. The scheme
+  restriction is necessary but not sufficient, because a bare literal has
+  no delimiters: the reparse picks its boundaries from the bytes around
+  it, so `x<http://a.b>` would come back as text, `<http://a.b>x` as a
+  link to `http://a.bx`, and `a<b@c.d>` as a link to `mailto:ab@c.d`.
+  The renderer therefore writes bare only after re-parsing the bare
+  candidate inside a window of the output around it, next to the same
+  window with the link in angle brackets, and finding the two trees equal
+  apart from `ast.Link.Bare`; otherwise it keeps the angle form, which no
+  neighbor can merge into. The window is the whitespace-delimited word as
+  written, followed across emphasis, strong and strikethrough markers into
+  the enclosing text, so `*<a@b.co>*-x` keeps its brackets too. A text
+  directive's label, a table cell and the block's edges end the window, and
+  so does a neighboring autolink's own `<` — no linkify grammar reads across
+  it, and the remark leg always escapes a literal one — so a whitespace-free
+  word holding many autolinks (bold links joined only by punctuation, a
+  common Jira/Confluence shape) costs each one a bounded probe rather than a
+  walk to the word's own end; measured before this bound, that walk made the
+  check quadratic in the autolink count. A `<` wall alone is not enough: a
+  long run of autolinks that each legitimately round-trip bare writes no `<`
+  at all, so the look-behind and look-ahead also give up past a fixed byte
+  cap (`bareAutolinkWindowCap`) and treat a give-up as "not safe," which
+  plants a `<` of its own and bounds the next link's scan in turn.
+  The guarantee reaches only as far as the window, and the flanking peeks
+  that choose emphasis markers before a link is written guess its form
+  rather than run the check; the doc comment on `bareAutolinkRoundTrips`
+  lists the gaps that leaves. The format leg skips this check and keeps
+  the spelling the author wrote. See
+  `convert.isBareAutolinkScheme`, `markdown/render_bare_autolink.go`,
+  `barelinkscheme_test.go`, `barelinkform_test.go` and
+  `TestMailtoLinkMarkTextDecidesTheBareForm`.
 
 The prettier md → md formatter is the composition
 `ToMarkdown(FromMarkdown(md, WithPrettierFormat()), WithPrettierFormat())`

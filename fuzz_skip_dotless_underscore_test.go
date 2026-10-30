@@ -1,62 +1,41 @@
 package adfast
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
-// A DOTLESS, SCHEME-PREFIXED HOST IS THE SAME FUSED-UNDERSCORE HAZARD AS A
-// DOTTED ONE, AND THE SKIP CLASS HAD A GAP FOR IT.
+// A DOTLESS, SCHEME-PREFIXED HOST FUSED TO AN UNDERSCORE USED TO BE AN
+// ACCEPTED-UNSTABLE SKIP SHAPE; THE REMARK LEG NOW RENDERS IT STABLY.
 //
 // goldmark really does linkify a dotless scheme-prefixed host in production
-// ("http://0" — see markdown/barelinkform_test.go's "a dotless host" row),
-// and its linkify pattern extends through a directly-fused '_' exactly as it
-// does for a dotted host: the same attention-vs-literal hazard
-// urlFusedWithUnderscore exists to recognize. But urlFusedWithUnderscore
-// scanned only with urlLiteralRe — the harness's dotted-host approximation of
-// the parser's literal recognizer — so a dotless candidate like "http://0"
-// was never offered to the detector at all. The fuzzer read the unstable
-// round trip below as a brand-new crasher instead of the already-accepted
-// fused-underscore class:
+// ("http://0" — see barelinkform_test.go's "a dotless host" row), and its
+// linkify pattern extends through a directly-fused '_'. Before the bare
+// autolink round-trip check (see markdown/render_bare_autolink.go), the ADF
+// leg wrote the link bare against the emphasis marker that followed it, and
+// the reparse fused the two:
 //
 //	md     = "http://0#*0*"
 //	first  = "http://0#_0_\n"
 //	second = "http://0#_0\_\n"   (not stable — the '_' fuses onto the literal)
 //
-// urlFusedSchemeHostRe is the fix: a second, narrower regexp scoped to
-// urlFusedWithUnderscore alone, built from the same host and path character
-// classes as urlLiteralRe with the dot requirement dropped. It does not widen
-// urlLiteralRe itself, so every OTHER skip class that scans with urlLiteralRe
-// (the escaped-scheme-colon class, the www-dot-punctuation class, …) is
-// unaffected — TestDotlessHostFusedUnderscoreLeavesNeighborsAlone below is
-// the control that pins that.
-func TestDotlessHostFusedUnderscoreIsSkipped(t *testing.T) {
+// That shape was covered by urlFusedWithUnderscore's dotless pass
+// (urlFusedSchemeHostRe), a skip class for a hazard the renderer could not
+// avoid. It can now: the renderer re-parses the bare candidate together with
+// the '_' that follows it, sees the literal swallow the marker, and keeps the
+// angle brackets, which no neighbor can fuse onto. The round trip is stable,
+// so this pins the stable render rather than the skip.
+// TestDotlessHostFusedUnderscoreLeavesNeighborsAlone below still pins the
+// narrowness half of the skip class.
+func TestDotlessHostFusedUnderscoreRoundTrips(t *testing.T) {
 	t.Parallel()
 	const md = "http://0#*0*"
-	const wantFirst = "http://0#_0_\n"
+	const wantFirst = "<http://0#>_0_\n"
 	first := adfToMD(mdToADF(md))
 	if first != wantFirst {
-		t.Fatalf("first render of %q = %q, want %q", md, first, wantFirst)
+		t.Fatalf("first render of %q = %q, want %q (the bare form fuses the "+
+			"emphasis marker onto the literal on reparse, so the link must keep "+
+			"its angle brackets)", md, first, wantFirst)
 	}
-	second := adfToMD(mdToADF(first))
-	// The instability is the premise; without it the skip below would be
-	// covering nothing and this test would be vacuous.
-	if second == first {
-		t.Fatalf("round trip of %q is now stable at %q: this test exists to pin "+
-			"an UNSTABLE shape as skipped, so a stable one makes it vacuous", md, first)
-	}
-	reason, skip := fuzzRoundTripSkip(md)
-	if !skip {
-		t.Fatalf("%q renders %q then %q and is NOT skipped: the fused-underscore "+
-			"class must cover a dotless scheme-prefixed host exactly as it covers a "+
-			"dotted one, or this shape is a fuzz crasher the renderer cannot fix "+
-			"(goldmark's linkify fuses the marker onto the literal, exactly as it "+
-			"does for a dotted host)", md, first, second)
-	}
-	if want := "underscore"; !strings.Contains(reason, want) {
-		t.Errorf("%q is skipped as %q, want a reason containing %q: another class "+
-			"reaching it first would make this test stop testing the gate it names",
-			md, reason, want)
+	if second := adfToMD(mdToADF(first)); second != first {
+		t.Fatalf("round trip of %q is not stable: %q then %q", md, first, second)
 	}
 }
 

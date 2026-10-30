@@ -1838,6 +1838,13 @@ func convertInlineCard(node *adf.InlineCard, rc renderCtx) []flatInline {
 // node.Bare is ever consulted (see markdown/render_flanking.go). A mailto
 // href this function marks bare-safe still only renders bare if that gate
 // also passes.
+//
+// Nor does it look at the link's neighbors, which it cannot see: Bare is a
+// preference, not a promise. The renderer writes bare only after
+// re-parsing the bare bytes inside a window of the surrounding output and
+// finding the same tree the angle form gives there, and keeps the angle form
+// otherwise. The window and its known gaps are documented on
+// bareAutolinkRoundTrips in markdown/render_bare_autolink.go.
 func isBareAutolinkScheme(href, text string) bool {
 	lower := strings.ToLower(href)
 	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {

@@ -539,14 +539,33 @@ func (r *mdRenderer) renderedChildLead(node ast.Node, marker byte, st *inlineCon
 	return firstRuneOf(r.renderChildScratch(node, marker, st))
 }
 
-// renderedChildTrail is renderedChildLead's counterpart for the last rune.
-func (r *mdRenderer) renderedChildTrail(node ast.Node, marker byte, st *inlineContext) rune {
-	return lastRuneOf(r.renderChildScratch(node, marker, st))
-}
-
 // renderChildScratch renders a construct's children into a throwaway builder
 // under the state they would have inside it.
+//
+// A peek from outside the construct does not know the text around it, which
+// the remark leg's bare-autolink check reads (bareAutolinkRoundTrips), so it
+// cannot tell whether a Bare link among the children goes out bare or in
+// angle brackets. It assumes brackets (bareProbe). Guessing the address's
+// letter instead lost marks: for "x" then strikethrough around a link, the
+// peek saw "http://a.b", left the "x" alone, the real pass then bracketed
+// the link against that "x" and wrote "x~~<http://a.b>~~", whose opener
+// cannot open. Assuming '<' or '>' — punctuation, the stricter neighbor for
+// flanking — errs the safe way: where the link does go out bare, the cost is
+// a neighbor hex-encoded that need not have been ("&#x78;~~http://a.b~~"),
+// or '_' chosen where '*' would have been clean ("_http://a.b_&#x78;" for
+// "*http://a.b*x"). Both still round-trip.
+//
+// writeWrapped's own flanking checks use renderChildScratchIn with the real
+// window: they run with the construct's position known.
 func (r *mdRenderer) renderChildScratch(node ast.Node, marker byte, st *inlineContext) string {
+	probe := *r
+	probe.bareProbe = true
+	return probe.renderChildScratchIn(node, marker, st, markerWord(string(marker)))
+}
+
+// renderChildScratchIn is renderChildScratch with the bare-autolink window
+// edges given (see inlineContext.wordBefore).
+func (r *mdRenderer) renderChildScratchIn(node ast.Node, marker byte, st *inlineContext, word wordEdges) string {
 	var tmp strings.Builder
 	// afterLead is the marker for the same reason prevRune is: the scratch has
 	// to write the bytes the real pass will write, and writeWrapped threads the
@@ -554,12 +573,15 @@ func (r *mdRenderer) renderChildScratch(node ast.Node, marker byte, st *inlineCo
 	// escape that depends on what follows — "www." came out unescaped here and
 	// "www\." in the real render, and closerLinkifies read the wrong one.
 	child := inlineContext{
-		escape:         st.escape,
-		colons:         st.colons,
-		pipes:          st.pipes,
-		prevRune:       rune(marker),
-		afterLead:      marker,
-		directiveLabel: st.directiveLabel,
+		escape:           st.escape,
+		colons:           st.colons,
+		pipes:            st.pipes,
+		prevRune:         rune(marker),
+		afterLead:        marker,
+		directiveLabel:   st.directiveLabel,
+		wordBefore:       word.before,
+		wordBeforeCapped: word.beforeCapped,
+		wordAfter:        word.after,
 	}
 	r.writeInlines(&tmp, ast.Children(node), &child)
 	return tmp.String()
@@ -729,12 +751,32 @@ func (r *mdRenderer) bareAutolinkBackslashHazard(st *inlineContext) bool {
 	return !r.cfg.prettierText && st.prev == '\\'
 }
 
-func (r *mdRenderer) writeLink(b *strings.Builder, node *ast.Link, st *inlineContext) {
+// writesBare reports whether a Bare autolink with this text is written bare
+// here rather than in angle brackets. The format leg keeps the source form;
+// the remark leg (which the ADF leg renders through, with Bare set by convert
+// rather than read off a source) first proves the bare form re-parses as the
+// same link between its real neighbors — see bareAutolinkRoundTrips. Inside
+// that proof's own look-ahead render (bareProbe) the remark leg assumes the
+// angle form instead of recursing.
+func (r *mdRenderer) writesBare(b *strings.Builder, text string, st *inlineContext, site linkSite) bool {
+	if r.bareAutolinkBackslashHazard(st) {
+		return false
+	}
+	if r.cfg.prettierText {
+		return true
+	}
+	if r.bareProbe {
+		return false
+	}
+	return r.bareAutolinkRoundTrips(b, text, st, site)
+}
+
+func (r *mdRenderer) writeLink(b *strings.Builder, node *ast.Link, st *inlineContext, site linkSite) {
 	// Auto-link: emit <url> angle-bracket form when the label is plain text
 	// matching the URL (including mailto: links where the label is the bare
 	// email address).
 	if text, ok := autolinkText(node); ok {
-		if node.Bare && !r.bareAutolinkBackslashHazard(st) {
+		if node.Bare && r.writesBare(b, text, st, site) {
 			// Linkified bare URL: prettier keeps the source form.
 			b.WriteString(text)
 			return
