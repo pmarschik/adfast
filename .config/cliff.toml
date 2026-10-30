@@ -59,3 +59,11 @@ commit_parsers = [
 # `wasm/v0.6.1` once wasm/ existed, because that name sorts after
 # `v0.6.0`, and the release tasks pinned every go.mod to it.
 tag_pattern = "^v[0-9]"
+
+[bump]
+# SemVer's major-version-zero convention: pre-1.0, a breaking change may
+# just bump minor. git-cliff's own default ignores that and bumps major
+# on any "!" commit regardless of pre-1.0 status, which jumped this repo
+# straight from v0.7.0 to v1.0.0 off two unrelated breaking commits.
+# Set this back to true (or delete the line) once v1.0.0 ships for real.
+breaking_always_bump_major = false
