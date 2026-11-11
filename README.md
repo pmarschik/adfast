@@ -410,7 +410,15 @@ the `FrontmatterProvider`, and `frontmatter.ParseNode` bridges straight
 from an `ast.Frontmatter` node. For a hand-authored block where
 formatting matters, `frontmatter.PatchPreserving` edits the changed keys
 on the YAML CST only. It keeps the original key order, the comments, and
-the scalar styles of everything that it does not touch.
+the scalar styles of everything that it does not touch. `Parse` decodes
+an unquoted `1.0` in a list to the float 1, so its spelling is lost; a
+consumer that reads list items as names (versions, labels) calls
+`frontmatter.ParseSequenceSourceText` instead. It returns the source text
+of plain number, boolean, and timestamp items of a sequence (`[1.0, 2,
+"3.0"]` gives `"1.0"`, `"2"`, `"3.0"`), keeps null items and explicitly
+tagged items (`!!int 1`) as `Parse` decodes them, and leaves a scalar
+directly under a key typed. Read from it; do not write it back with
+`Render` or `Patch`, which would quote the strings.
 
 ### Reusable pipelines
 
@@ -1308,7 +1316,7 @@ package notes live in [docs/design.md](docs/design.md).
 | [`jira/`](jira/)               | **Separate module**: Jira conventions (`MarkdownOptions`, `RenderOptions`, `EncodeRichText`, `CodeLanguages`)                                  |
 | [`confluence/`](confluence/)   | **Separate module**: Confluence conventions (`MarkdownOptions`, `RenderOptions`, page `SmartLinks`, `CodeLanguages`, macro sugar via `Macros`) |
 | [`skill/`](skill/)             | **Separate module**: the dialect as an embeddable agent skill (`Files`, `Install`)                                                             |
-| [`frontmatter/`](frontmatter/) | **Separate module**: optional YAML frontmatter access (`Parse`, `Render`, `Patch`, `PatchPreserving`, path helpers)                            |
+| [`frontmatter/`](frontmatter/) | **Separate module**: optional YAML frontmatter access (`Parse`, `ParseSequenceSourceText`, `Render`, `Patch`, `PatchPreserving`, path helpers) |
 | [`wasm/`](wasm/)               | **Separate module**: a js/wasm build exposing conversion and directive span scanning to JavaScript — a build artifact, not an importable API   |
 
 The root module is platform-neutral ADF ⇄ Markdown. A platform-specific

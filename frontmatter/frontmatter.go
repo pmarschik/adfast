@@ -18,6 +18,13 @@
 // top-level key order as a caller parameter (a list of dot-paths); the
 // module only provides the mechanism. Pass nil for alphabetical order.
 //
+// Parse decodes through the YAML resolver, so an unquoted `1.0` in a
+// list becomes the float 1 and its spelling is lost. A consumer that
+// reads list items as names (versions, labels) opts in to
+// ParseSequenceSourceText, which returns the source text of plain
+// number, boolean and timestamp sequence items; Parse itself is
+// unchanged.
+//
 // Two patch strategies are offered:
 //
 //   - Patch merges updates and re-renders under the caller's order list.

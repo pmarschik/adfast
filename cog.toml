@@ -14,6 +14,7 @@
 # - format     the WithPrettierFormat style-preserving formatter mode
 # - jira       jira/ addon module
 # - confluence confluence/ addon module
+# - frontmatter frontmatter/ YAML frontmatter addon module
 # - skill      skill/ agent-skill module
 # - wasm       wasm/ js/wasm build exposing adfast to JavaScript
 # - docs       README, docs
@@ -34,6 +35,7 @@ scopes = [
   "format",
   "jira",
   "confluence",
+  "frontmatter",
   "skill",
   "wasm",
   "docs",

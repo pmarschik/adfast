@@ -1043,7 +1043,10 @@ carries the short table, and this is the full version:
   `ast.Frontmatter.Value`, delimiters included. This module is the seam
   for a consumer who wants a `map[string]any` view of that block. It
   offers `Parse`, `Render`, `Patch`, and `Replace`, the `Get`, `Set`,
-  and `Remove` dot-path helpers, `KeyOrder`, and a CST-based
+  and `Remove` dot-path helpers, `KeyOrder`,
+  `ParseSequenceSourceText` (a `Parse` that returns plain number,
+  boolean, and timestamp sequence items as their source text, for lists
+  read as names), and a CST-based
   `PatchPreserving` that retains the key order, the comments, and the
   scalar styles. It only turns the raw block into a map and back.
   Boundary detection stays with the provider. A separate module also
