@@ -3,7 +3,7 @@ module github.com/pmarschik/adfast/frontmatter
 go 1.27.0
 
 require (
-	github.com/pmarschik/adfast v0.8.0
+	github.com/pmarschik/adfast v0.9.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
