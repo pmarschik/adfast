@@ -1,5 +1,5 @@
-github.com/pmarschik/adfast v0.8.0 h1:GvSsYHXCKbztshVKXe5Tl+YWeE2MRurxndSWO2mpsbM=
-github.com/pmarschik/adfast v0.8.0/go.mod h1:vs/CQ9O7I8vjksTRMahBG46V/8kBqKFotF7LhzWtMgY=
+github.com/pmarschik/adfast v0.9.0 h1:HIvsKjTw9zIguFqndANopM07xXm5PUxeoki+pCMAOwo=
+github.com/pmarschik/adfast v0.9.0/go.mod h1:vs/CQ9O7I8vjksTRMahBG46V/8kBqKFotF7LhzWtMgY=
 github.com/pmarschik/goldmark-directive v0.3.2 h1:Ix4gXKMcaVYIcgjCefjkdTx32FNDaDm+vj09ACDGsgY=
 github.com/pmarschik/goldmark-directive v0.3.2/go.mod h1:LO0rwcECJKKw8WgmK+z6WEwhxQrCbGEGvamcQLAZOvw=
 github.com/yuin/goldmark v1.8.7 h1:XT/tNqCIbabh0ln675w4x3dv04kQBKi8NwYqi9IJaxI=
