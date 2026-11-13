@@ -1,9 +1,9 @@
-github.com/pmarschik/adfast v0.9.0 h1:HIvsKjTw9zIguFqndANopM07xXm5PUxeoki+pCMAOwo=
-github.com/pmarschik/adfast v0.9.0/go.mod h1:vs/CQ9O7I8vjksTRMahBG46V/8kBqKFotF7LhzWtMgY=
-github.com/pmarschik/adfast/confluence v0.9.0 h1:DWlJ8XWrqH9Q9OxS6g1ul8X8Tthcl8xYu4aOz2WcHvo=
-github.com/pmarschik/adfast/confluence v0.9.0/go.mod h1:RvmtPBapDo+iC71qfFukl1jgK/JXT4LseA7ifxfYBSg=
-github.com/pmarschik/adfast/jira v0.9.0 h1:mB2m2lUjAYuQiR91u7xKc2BXAk5WVepPKrA0ckNOaiU=
-github.com/pmarschik/adfast/jira v0.9.0/go.mod h1:2c49wuFDegpwatjpAGvvz5SIQAObp1YKQcfLXitgX4Y=
+github.com/pmarschik/adfast v0.10.0 h1:sYqzFSKdJThZxDUwORhh7gUddbK+D7a21ZXoYHf7GMg=
+github.com/pmarschik/adfast v0.10.0/go.mod h1:vs/CQ9O7I8vjksTRMahBG46V/8kBqKFotF7LhzWtMgY=
+github.com/pmarschik/adfast/confluence v0.10.0 h1:2yGdbbQvDUBvcCzJqMwZ9xFmEpEQT0rhD1pyGb45I3g=
+github.com/pmarschik/adfast/confluence v0.10.0/go.mod h1:Lenbf91QY2eNdhl07BS4B76xpzwiOjzq8P0yBRjc9GQ=
+github.com/pmarschik/adfast/jira v0.10.0 h1:afw9CHVNf7etnOizFxOHz8nCMnDaneka6C9rGVL9CXQ=
+github.com/pmarschik/adfast/jira v0.10.0/go.mod h1:U5Tb8OxW5rYpAKb9bIhJPcVFNwZn5QLAdjFvAJZMBRQ=
 github.com/pmarschik/goldmark-directive v0.3.2 h1:Ix4gXKMcaVYIcgjCefjkdTx32FNDaDm+vj09ACDGsgY=
 github.com/pmarschik/goldmark-directive v0.3.2/go.mod h1:LO0rwcECJKKw8WgmK+z6WEwhxQrCbGEGvamcQLAZOvw=
 github.com/yuin/goldmark v1.8.7 h1:XT/tNqCIbabh0ln675w4x3dv04kQBKi8NwYqi9IJaxI=
