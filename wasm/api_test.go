@@ -431,8 +431,8 @@ func namesOf[V any](m map[string]V) map[string]bool {
 func TestOptions_EncodeAndRender(t *testing.T) {
 	tests := []struct {
 		name    string
-		opts    Options
 		wantErr string
+		opts    Options
 	}{
 		{name: "absent product", opts: Options{}},
 		{name: "confluence", opts: Options{Product: ProductConfluence, BaseURL: "https://hive.example.org/wiki"}},
@@ -501,6 +501,67 @@ func TestToADF_ProductBundleApplies(t *testing.T) {
 	}
 	if !strings.Contains(withJira, "inlineCard") {
 		t.Errorf("the jira bundle did not expand a bare issue key:\n%s", withJira)
+	}
+}
+
+// TestPreserveLocalImages_ReachesEveryProduct proves the flag is wired
+// in both directions and on top of every bundle, not only the neutral
+// one: each local media form keeps its path as an external url, the
+// diagnostics stay silent about a path that traveled, and ToMarkdown
+// reads the inline picture back as the image. Each product also runs
+// with the flag off, so a pass cannot be the flag doing nothing.
+func TestPreserveLocalImages_ReachesEveryProduct(t *testing.T) {
+	const md = "![own](assets/own.png)\n\n" +
+		"::media[blk]{path=\"assets/blk.png\"}\n\n" +
+		"See ![in](assets/in.png) and :media[chip]{path=\"assets/chip.png\"} here.\n"
+	paths := []string{"assets/own.png", "assets/blk.png", "assets/in.png", "assets/chip.png"}
+	for _, product := range []Options{
+		{},
+		{Product: ProductJira, BaseURL: "https://hive.example.org"},
+		{Product: ProductConfluence, BaseURL: "https://hive.example.org/wiki"},
+	} {
+		on := product
+		on.PreserveLocalImages = true
+
+		got, err := ToADF(md, on)
+		if err != nil {
+			t.Fatalf("%q: ToADF: %v", product.Product, err)
+		}
+		for _, p := range paths {
+			if !strings.Contains(got, `"url":"`+p+`"`) {
+				t.Errorf("%q on: %s did not travel as an external url:\n%s", product.Product, p, got)
+			}
+		}
+		diags, err := Diagnostics(md, on)
+		if err != nil {
+			t.Fatalf("%q: Diagnostics: %v", product.Product, err)
+		}
+		if len(diags) != 0 {
+			t.Errorf("%q on: diagnostics = %+v, want none: every path traveled", product.Product, diags)
+		}
+		back, err := ToMarkdown(got, on)
+		if err != nil {
+			t.Fatalf("%q: ToMarkdown: %v", product.Product, err)
+		}
+		if !strings.Contains(back, "![in](assets/in.png)") {
+			t.Errorf("%q on: the inline picture did not come back as the image:\n%s", product.Product, back)
+		}
+
+		off, err := ToADF(md, product)
+		if err != nil {
+			t.Fatalf("%q: ToADF off: %v", product.Product, err)
+		}
+		if strings.Contains(off, `"url":"assets/`) {
+			t.Errorf("%q off: a local path traveled without the flag:\n%s", product.Product, off)
+		}
+		offDiags, err := Diagnostics(md, product)
+		if err != nil {
+			t.Fatalf("%q: Diagnostics off: %v", product.Product, err)
+		}
+		if len(offDiags) != len(paths) {
+			t.Errorf("%q off: %d diagnostics, want one per local picture (%d): %+v",
+				product.Product, len(offDiags), len(paths), offDiags)
+		}
 	}
 }
 
@@ -595,6 +656,10 @@ func TestBridgeOptions(t *testing.T) {
 		{
 			name: "full", in: `{"product":"jira","baseUrl":"https://h.example.org","expandMode":"all"}`,
 			want: Options{Product: "jira", BaseURL: "https://h.example.org", ExpandMode: "all"},
+		},
+		{
+			name: "preserveLocalImages", in: `{"preserveLocalImages":true}`,
+			want: Options{PreserveLocalImages: true},
 		},
 		{name: "malformed", in: "{", wantErr: true},
 	}

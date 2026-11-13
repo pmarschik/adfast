@@ -63,12 +63,25 @@ a nested JS object costs one boundary crossing per key. A `JSON.parse`
 of one string is a single crossing plus a native parse.
 
 `adf` can be a JSON string or a live JS object. `opts` can be omitted.
-When it is present, it is `{product, baseUrl, expandMode}`, where
-`product` is `"jira"`, `"confluence"`, or absent for the
-platform-neutral behavior. This module does **not** decide which product
-a document belongs to. That is the work of the consumer. An unrecognized
-`product` or `expandMode` gives an error result, never a silent
-fallback.
+When it is present, it is
+`{product, baseUrl, expandMode, preserveLocalImages}`, where `product` is
+`"jira"`, `"confluence"`, or absent for the platform-neutral behavior.
+This module does **not** decide which product a document belongs to.
+That is the work of the consumer. An unrecognized `product` or
+`expandMode` gives an error result, never a silent fallback.
+
+`preserveLocalImages: true` applies `adfast.WithPreserveLocalImages` in
+both directions, on top of any product. A document-relative picture
+keeps its path as an external url: `![alt](path)` on its own line and
+`::media{path=…}` become `media{type: "external", url: path}`, and an
+inline `![alt](path)` or `:media{path=…}` becomes
+`mediaInline{type: "external", url: path}`. Nothing reports an
+`unresolved-asset` for those paths, and `toMarkdown` reads them back as
+`![alt](path)`. It is for a host that renders the ADF beside the
+markdown file and resolves the path itself, such as an editor preview.
+Leave it off for a payload bound for Jira or Confluence: no reader of
+the product can fetch a relative url, and the inline `url` is not in
+Atlassian's published schema.
 
 `toMarkdown` and `diagnostics` have no consumer in the first plugin
 release. They are in the initial surface deliberately, so that ADF

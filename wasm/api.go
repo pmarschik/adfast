@@ -390,6 +390,16 @@ type Options struct {
 	// or "explicit"); it defaults to "auto" and is ignored for other
 	// products.
 	ExpandMode string `json:"expandMode"`
+	// PreserveLocalImages applies adfast.WithPreserveLocalImages in both
+	// directions, on top of the product bundle: a document-relative
+	// picture no asset store can place keeps its path as an external url
+	// — the image on its own line, the inline image, and the
+	// ::media{path=…} / :media{path=…} directives — and FromADF reads such
+	// a url back as the image. It is for a host that renders the ADF next
+	// to the markdown file and resolves the path itself (an editor
+	// preview); a payload bound for Jira or Confluence must leave it off,
+	// because no reader of the product can fetch a relative url.
+	PreserveLocalImages bool `json:"preserveLocalImages"`
 }
 
 // encodeOptions returns the facade options for the md → ADF direction
@@ -397,6 +407,38 @@ type Options struct {
 // expand mode — a typo that silently fell back to the neutral bundle
 // would be exactly the drift this module exists to remove.
 func (o Options) encodeOptions() ([]adfast.Option, error) {
+	opts, err := o.productEncodeOptions()
+	if err != nil {
+		return nil, err
+	}
+	return o.withSharedOptions(opts), nil
+}
+
+// renderOptions returns the facade options for the ADF → md direction
+// (FromADF + ToMarkdown). The product bundles split by direction — the
+// decode side is RenderOptions, which labels smart-link cards and (for
+// Confluence) decodes the core macros back to their sugared directives —
+// so the same `opts` object selects a different bundle here.
+func (o Options) renderOptions() ([]adfast.Option, error) {
+	opts, err := o.productRenderOptions()
+	if err != nil {
+		return nil, err
+	}
+	return o.withSharedOptions(opts), nil
+}
+
+// withSharedOptions appends the options that apply in both directions
+// whatever the product: today only PreserveLocalImages, which the encode
+// reads to keep a local path and the decode reads to project it back.
+func (o Options) withSharedOptions(opts []adfast.Option) []adfast.Option {
+	if o.PreserveLocalImages {
+		opts = append(opts, adfast.WithPreserveLocalImages())
+	}
+	return opts
+}
+
+// productEncodeOptions is the product bundle for the md → ADF direction.
+func (o Options) productEncodeOptions() ([]adfast.Option, error) {
 	switch o.Product {
 	case "":
 		return nil, nil
@@ -416,12 +458,8 @@ func (o Options) encodeOptions() ([]adfast.Option, error) {
 	}
 }
 
-// renderOptions returns the facade options for the ADF → md direction
-// (FromADF + ToMarkdown). The product bundles split by direction — the
-// decode side is RenderOptions, which labels smart-link cards and (for
-// Confluence) decodes the core macros back to their sugared directives —
-// so the same `opts` object selects a different bundle here.
-func (o Options) renderOptions() ([]adfast.Option, error) {
+// productRenderOptions is the product bundle for the ADF → md direction.
+func (o Options) productRenderOptions() ([]adfast.Option, error) {
 	switch o.Product {
 	case "":
 		return nil, nil
