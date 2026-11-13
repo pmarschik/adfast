@@ -2,7 +2,7 @@ module github.com/pmarschik/adfast/skill
 
 go 1.27.0
 
-require github.com/pmarschik/adfast v0.9.0
+require github.com/pmarschik/adfast v0.10.0
 
 require (
 	github.com/pmarschik/goldmark-directive v0.3.2 // indirect

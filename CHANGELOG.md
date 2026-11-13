@@ -1,3 +1,14 @@
+## [v0.10.0] - 2026-11-13
+
+### 🚀 Features
+
+- _(convert)_ Keep local media paths under WithPreserveLocalImages
+- _(wasm)_ Expose preserveLocalImages to toADF and toMarkdown
+
+### ⚙️ Miscellaneous Tasks
+
+- Update go.sum after v0.9.0
+
 ## [v0.9.0] - 2026-11-12
 
 ### 🚀 Features
@@ -409,6 +420,7 @@
 ### 🚀 Features
 
 - Initial implementation — markdown ⇄ Atlassian Document Format at the AST level
+  [v0.10.0]: https://github.com/pmarschik/adfast/releases/tag/v0.10.0
   [v0.9.0]: https://github.com/pmarschik/adfast/releases/tag/v0.9.0
   [v0.8.0]: https://github.com/pmarschik/adfast/releases/tag/v0.8.0
   [v0.7.0]: https://github.com/pmarschik/adfast/releases/tag/v0.7.0

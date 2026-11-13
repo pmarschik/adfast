@@ -3,9 +3,9 @@ module github.com/pmarschik/adfast/wasm
 go 1.27.0
 
 require (
-	github.com/pmarschik/adfast v0.9.0
-	github.com/pmarschik/adfast/confluence v0.9.0
-	github.com/pmarschik/adfast/jira v0.9.0
+	github.com/pmarschik/adfast v0.10.0
+	github.com/pmarschik/adfast/confluence v0.10.0
+	github.com/pmarschik/adfast/jira v0.10.0
 )
 
 require (
