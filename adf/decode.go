@@ -252,7 +252,7 @@ var nodeDecoders = map[string]nodeDecoder{
 	}},
 	"mediaInline": {shape: shapeLeaf, build: func(r *attrReader, _ []Node, _ string) Node {
 		return &MediaInline{
-			Type: r.str("type"), ID: r.str("id"),
+			Type: r.str("type"), ID: r.str("id"), URL: r.str("url"),
 			Alt: r.str("alt"), Collection: r.strPtr("collection"),
 		}
 	}},

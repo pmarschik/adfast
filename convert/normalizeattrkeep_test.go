@@ -115,6 +115,19 @@ func TestOnlyTheFormatLegKeepsAnAttributeTheKindCannotRead(t *testing.T) {
 			wantFormat: "mediaInline{type=file}",
 			wantEncode: "mediaInline{}",
 		},
+		{
+			// The control for the leftover rule: an external chip's url
+			// is READ — the encode writes it on the mediaInline and the
+			// decode reads it back — so the encode leg keeps it too, and
+			// a Normalize that dropped it would disagree with the ADF
+			// round trip it stands in for.
+			name: "an external chip's url is payload on both legs",
+			inline: func() ast.Node {
+				return &dialect.MediaInline{Attrs: map[string]string{"type": "external", "url": "rel/k.png"}}
+			},
+			wantFormat: "mediaInline{type=external url=rel/k.png}",
+			wantEncode: "mediaInline{type=external url=rel/k.png}",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

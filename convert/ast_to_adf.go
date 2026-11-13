@@ -640,6 +640,13 @@ func (c *astConverter) reportMediaSource(n ast.Node) {
 	if c.diagnostics == nil {
 		return
 	}
+	if c.preserveLocalImages {
+		if _, kept := dialect.PreservedMediaPath(n, c.assetID); kept {
+			// The path travels as the external url (see
+			// PreservedMediaPath): nothing to report.
+			return
+		}
+	}
 	if ref, unresolved := dialect.UnresolvedMediaPath(n, c.assetID); unresolved {
 		c.diagnostics(Diagnostic{
 			Code:    CodeUnresolvedAsset,
@@ -1239,7 +1246,21 @@ func (v *inlineFlattener) VisitImage(n *ast.Image) []adf.Node {
 	if mediaurl.AbsoluteHTTP(n.URL) {
 		return v.degradeInlineImage(n, alt)
 	}
+	if n.URL != "" && v.c.preserveLocalImages {
+		return []adf.Node{localInlineImage(n.URL, alt, mediaLinkMark(v.ctx))}
+	}
 	return v.degradeUnplaceableImage(n, alt)
+}
+
+// localInlineImage keeps an inline local picture the asset store cannot
+// place, under WithPreserveLocalImages: an external mediaInline whose url
+// is the markdown-relative path, the inline mirror of the external media
+// the option already makes of a local image on its own line (see
+// adf.MediaInline.URL). A caller rendering the ADF next to the markdown
+// file resolves the path there; nothing is lost, so nothing is reported.
+// The image title has no slot on a mediaInline and does not travel.
+func localInlineImage(url, alt string, marks []adf.Mark) *adf.MediaInline {
+	return &adf.MediaInline{Type: "external", URL: url, Alt: alt, Marks: marks}
 }
 
 // degradeUnplaceableImage keeps an image no asset store can place. ADF
@@ -1829,6 +1850,11 @@ func (e *blockEncodeContext) AssetDims(ref string) (width, height int, ok bool) 
 	return e.c.assetDims(ref)
 }
 
+// PreserveLocalImages implements extension.LocalImagePreserver.
+func (e *blockEncodeContext) PreserveLocalImages() bool {
+	return e.c.preserveLocalImages
+}
+
 // inlineEncodeContext is the EncodeContext handed to extension nodes in
 // inline position; it carries the marks inherited from enclosing
 // constructs.
@@ -1865,6 +1891,11 @@ func (e *inlineEncodeContext) AssetID(ref string) (string, bool) {
 // AssetDims implements extension.EncodeContext.
 func (e *inlineEncodeContext) AssetDims(ref string) (width, height int, ok bool) {
 	return e.c.assetDims(ref)
+}
+
+// PreserveLocalImages implements extension.LocalImagePreserver.
+func (e *inlineEncodeContext) PreserveLocalImages() bool {
+	return e.c.preserveLocalImages
 }
 
 // flattenStyled layers an extension.InlineStyle onto the inherited mark

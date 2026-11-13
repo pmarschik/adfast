@@ -192,14 +192,19 @@ func WithIncrementListMarkers() Option {
 // Off is not a deletion. The PICTURE has no node to live in, so it
 // goes, but the label stays — as a link to the path, or as plain text
 // when there is nothing to click — with an unresolved-asset diagnostic
-// naming it (see CodeUnresolvedAsset). And the option only reaches the
-// media forms that can hold an external url, i.e. an image on its own
-// line: an inline image is byte-identical either way and still reports
-// unresolved-asset, because mediaInline has no external variant (see
-// inlineFlattener.degradeUnplaceableImage).
+// naming it (see CodeUnresolvedAsset).
 //
-// One option, three legs, one answer: ToADF's singleImageChild,
-// FromADF's decode of that media, and NormalizeFormat's own md→md
+// On, it reaches every media form that names a path the store cannot
+// place: the image on its own line and the ::media / :::media directive
+// become external media with the path as url, and the inline image and
+// the :media chip become an external mediaInline carrying it (see
+// adf.MediaInline.URL, localInlineImage and dialect.PreservedMediaPath).
+// Nothing is reported for a path that traveled. A store id, an explicit
+// id or url, and a non-file type all outrank the option.
+//
+// One option, three legs, one answer for the block forms: ToADF's
+// singleImageChild, FromADF's decode of that media, and
+// NormalizeFormat's own md→md
 // projection all put the URL question to mediaurl.ProjectsToImage. It
 // used to reach only the ADF legs — NormalizeFormat hardcoded an
 // absolute-http test — so the same document formatted and round-tripped

@@ -699,7 +699,7 @@ func dialectAtomAttrsRead(n ast.Node) (attrs map[string]string, read []string, o
 		return v.Attrs, []string{"color", "style"}, true
 	case *dialect.MediaInline:
 		return v.Attrs, []string{
-			"type", "id", "collection", "path",
+			"type", "id", "collection", "path", "url",
 			"href", "hrefTitle", "annotationId", "annotationType",
 		}, true
 	case *dialect.Emoji:
@@ -1169,6 +1169,11 @@ func normalizeMediaInline(v *dialect.MediaInline) ast.Node {
 	// download catalog, so a path on a chip is always the author's.
 	if p := v.Attrs["path"]; p != "" {
 		attrs["path"] = p
+	}
+	// The url addresses an external chip (see adf.MediaInline.URL), and the
+	// encode writes it, so the formatter may not drop it either.
+	if u := v.Attrs["url"]; u != "" {
+		attrs["url"] = u
 	}
 	// The link mark's destination is the caller's to keep, like the
 	// collection: an inline attachment that links somewhere may not lose

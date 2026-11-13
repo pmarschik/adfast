@@ -278,8 +278,12 @@ The last three rows are the lossy ones, and none is silent:
 - **unplaceable image.** ADF addresses an attachment by media id, so an
   image the store cannot map has no node for the PICTURE — in a
   paragraph as much as mid-sentence, because there is no block media to
-  promote to either (`WithPreserveLocalImages` is the opt-in that keeps
-  the path as external media instead). The degradation is the one the
+  promote to either. `WithPreserveLocalImages` is the opt-in that keeps
+  the path instead: as external `media` on its own line and as an
+  external `mediaInline` with a `url` mid-sentence. That `url` is not in
+  Atlassian's published `mediaInline` schema, so the option is for a
+  renderer that resolves the path itself, never for a payload that goes
+  to Atlassian. Without it, the degradation is the one the
   mid-sentence external form already performs: the **label** stays, as a
   link, and the **enclosing** destination wins the href when the image
   sits in one. An `unresolved-asset` diagnostic names both halves — the
@@ -295,7 +299,8 @@ The last three rows are the lossy ones, and none is silent:
   `path` is a lookup key, not an ADF field, so with nothing behind it the
   node is written with an EMPTY id and the path is gone. A path spelled
   beside an explicit `id` is not reported: the id still addresses the
-  attachment.
+  attachment. Under `WithPreserveLocalImages` all three keep the path as
+  an external url instead, and report nothing.
 
   All three spellings resolve the path the same way, through one asset
   store lookup. The inline chip used to resolve nothing at all — it

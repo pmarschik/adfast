@@ -247,15 +247,8 @@ func NewMedia(attrs map[string]string, children []ast.Node) *Media {
 // upload it. One predicate for both means the scan can only miss a path
 // the encode also declines to spend.
 func MediaLookupPath(n ast.Node) (string, bool) {
-	var attrs map[string]string
-	switch media := n.(type) {
-	case *Media:
-		attrs = media.Attrs
-	case *MediaCaption:
-		attrs = media.Attrs
-	case *MediaInline:
-		attrs = media.Attrs
-	default:
+	attrs := mediaAttrs(n)
+	if attrs == nil {
 		return "", false
 	}
 	// External media is addressed by its url, and an explicit id needs no
@@ -357,6 +350,57 @@ func UnresolvedMediaPath(n ast.Node, resolve func(ref string) (mediaID string, o
 		return "", false
 	}
 	return path, mediasrc.ID("", path, resolve) == ""
+}
+
+// PreservedMediaPath answers the path of a media directive that
+// WithPreserveLocalImages carries through the ADF leg as an external url
+// instead of losing it: an UnresolvedMediaPath on a file-typed directive
+// that spells no url of its own.
+//
+// Without the option that path is lost (see UnresolvedMediaPath). With
+// it, the encode writes the picture the way the option already writes a
+// local ![alt](path): an external media node — or, for the inline chip,
+// an external mediaInline — whose url IS the markdown-relative path, for
+// a caller that renders ADF next to the markdown file and resolves the
+// path there. Nothing is lost, so convert raises no unresolved-asset
+// report for it. This one predicate answers both questions, the encode's
+// and the report's, so they cannot disagree.
+//
+// A directive whose type is not file (external, link) or that already
+// names a url is left to its own attributes.
+func PreservedMediaPath(n ast.Node, resolve func(ref string) (mediaID string, ok bool)) (string, bool) {
+	path, unresolved := UnresolvedMediaPath(n, resolve)
+	if !unresolved {
+		return "", false
+	}
+	attrs := mediaAttrs(n)
+	if !preservableLocalMedia(attrs) {
+		return "", false
+	}
+	return path, true
+}
+
+// preservableLocalMedia reports whether a media directive's own
+// attributes leave room for its path to become the external url: a file
+// (or untyped) directive with no url. PreservedMediaPath and the two
+// encodes (mediaFromAttrs, MediaInline.EncodeADF) share it.
+func preservableLocalMedia(attrs map[string]string) bool {
+	t := attrs["type"]
+	return (t == "" || t == "file") && attrs["url"] == ""
+}
+
+// mediaAttrs answers the attribute map of any of the three media
+// directive spellings, nil for any other node.
+func mediaAttrs(n ast.Node) map[string]string {
+	switch media := n.(type) {
+	case *Media:
+		return media.Attrs
+	case *MediaCaption:
+		return media.Attrs
+	case *MediaInline:
+		return media.Attrs
+	}
+	return nil
 }
 
 // SourcelessMedia answers the alt label of a media directive that names

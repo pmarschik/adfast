@@ -11,6 +11,9 @@ reference like `![sketch](assets/sketch.png)` has no media id, so the
 the path, with an `unresolved-asset` diagnostic. The block the image sat
 in is therefore never emptied, and an upload undoes the loss: once the
 store maps the path, the next encode places the picture.
+`WithPreserveLocalImages` keeps the path instead — as external media, or
+as an external `mediaInline` mid-sentence — for a preview that resolves
+it locally; it is never for a payload Jira or Confluence will render.
 A **block** image with an absolute `https://` URL survives as external
 media. An **inline** one (inside a paragraph, a table cell, or a list
 item) does not: ADF's `mediaInline` addresses an uploaded attachment by

@@ -176,6 +176,7 @@ func (n *Media) writeAttrs(a attrs) map[string]any {
 func (n *MediaInline) writeAttrs(a attrs) map[string]any {
 	a.str("type", n.Type)
 	a.str("id", n.ID)
+	a.str("url", n.URL)
 	a.str("alt", n.Alt)
 	a.strPtr("collection", n.Collection)
 	return n.Extra

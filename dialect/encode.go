@@ -116,7 +116,21 @@ func mediaFromAttrs(ctx extension.EncodeContext, attrs map[string]string, alt st
 	path := attrs["path"]
 	media.ID = mediasrc.ID(media.ID, path, ctx.AssetID)
 	media.Width, media.Height = mediasrc.Dims(media.Width, media.Height, path, ctx.AssetDims)
+	preserveLocalMediaPath(ctx, attrs, path, media)
 	return media
+}
+
+// preserveLocalMediaPath points a media node the store could not place at
+// its path, as an external url, under WithPreserveLocalImages: the same
+// shape the option gives a local ![alt](path) (see PreservedMediaPath).
+// Without the option the media ships with an empty id and convert reports
+// the loss.
+func preserveLocalMediaPath(ctx extension.EncodeContext, attrs map[string]string, path string, media *adf.Media) {
+	if media.ID == "" && path != "" && preservableLocalMedia(attrs) && extension.PreserveLocalImages(ctx) {
+		media.Type = "external"
+		media.URL = path
+		media.Collection = nil
+	}
 }
 
 // linkMarkFromAttrs builds the ADF link mark carried as the href
@@ -429,9 +443,20 @@ func (n *MediaInline) EncodeADF(ctx extension.EncodeContext) []adf.Node {
 	//
 	// mediaInline has no width/height in ADF, so there are no intrinsic
 	// dimensions to recover here: the id is the whole recovery.
-	mi.ID = mediasrc.ID(mi.ID, n.Attrs["path"], ctx.AssetID)
+	path := n.Attrs["path"]
+	mi.ID = mediasrc.ID(mi.ID, path, ctx.AssetID)
 	if v, ok := n.Attrs["collection"]; ok {
 		mi.Collection = new(v)
+	}
+	// The url is the inline mirror of an external Media's (see
+	// adf.MediaInline.URL): written when the chip spells one, and — under
+	// WithPreserveLocalImages — taken from a path the store cannot place,
+	// exactly as the block form does in mediaFromAttrs.
+	mi.URL = n.Attrs["url"]
+	if mi.ID == "" && path != "" && preservableLocalMedia(n.Attrs) && extension.PreserveLocalImages(ctx) {
+		mi.Type = "external"
+		mi.URL = path
+		mi.Collection = nil
 	}
 	if label := strings.TrimSpace(ast.PlainText(n.Children)); label != "" {
 		mi.Alt = label

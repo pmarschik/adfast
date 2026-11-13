@@ -10,6 +10,7 @@ import (
 	"github.com/pmarschik/adfast/ast"
 	"github.com/pmarschik/adfast/dialect"
 	"github.com/pmarschik/adfast/extension"
+	"github.com/pmarschik/adfast/internal/mediaurl"
 )
 
 // tableColwidths joins the first table row's cell colwidth attrs in column
@@ -146,6 +147,9 @@ func (rc renderCtx) fileCardLink(n *adf.MediaInline) (FileCardLink, bool) {
 // other mark alongside it sends the card back to the directive, which
 // carries both as attributes.
 func (rc renderCtx) mediaInlineAsImage(n *adf.MediaInline) ast.Node {
+	if n.Type == "external" {
+		return rc.externalMediaInlineAsImage(n)
+	}
 	if n.Type != "file" || n.ID == "" {
 		return nil
 	}
@@ -163,9 +167,15 @@ func (rc renderCtx) mediaInlineAsImage(n *adf.MediaInline) ast.Node {
 	if !ok || asset.Path == "" {
 		return nil
 	}
-	img := &ast.Image{URL: asset.Path}
-	if n.Alt != "" {
-		img.Children = []ast.Node{&ast.Text{Value: n.Alt}}
+	return inlineImage(asset.Path, n.Alt, href)
+}
+
+// inlineImage builds the image a mediaInline projects to, wrapped in the
+// link its link mark names when there is one.
+func inlineImage(url, alt, href string) ast.Node {
+	img := &ast.Image{URL: url}
+	if alt != "" {
+		img.Children = []ast.Node{&ast.Text{Value: alt}}
 	}
 	if href == "" {
 		return img
@@ -173,6 +183,30 @@ func (rc renderCtx) mediaInlineAsImage(n *adf.MediaInline) ast.Node {
 	// Explicit: the resource form is what a markdown parse of this
 	// output produces, so the projection and the parse agree on the node.
 	return &ast.Link{URL: href, Explicit: true, Children: []ast.Node{img}}
+}
+
+// externalMediaInlineAsImage answers the inline image an external
+// mediaInline is under WithPreserveLocalImages: a local picture kept by
+// its markdown-relative path (see localInlineImage, the encode half).
+// Only that shape takes the image form, because only that shape encodes
+// back to the same node: without the option a relative ![alt](path)
+// degrades to a link, and an absolute url degrades to a link with or
+// without it, so either keeps the :media{type=external url=…} directive.
+// Anything the image cannot carry (a collection, an occurrence key, a
+// mark other than one link) keeps the directive too, as for the file
+// chip above.
+func (rc renderCtx) externalMediaInlineAsImage(n *adf.MediaInline) ast.Node {
+	if !rc.preserveLocalImages || n.URL == "" || mediaurl.AbsoluteHTTP(n.URL) || n.ID != "" {
+		return nil
+	}
+	if n.Collection != nil || adf.HasExtra(n, "occurrenceKey") {
+		return nil
+	}
+	href, hasLink := linkMarkHref(n.Marks)
+	if len(n.Marks) > 1 || (len(n.Marks) == 1 && !hasLink) {
+		return nil
+	}
+	return inlineImage(n.URL, n.Alt, href)
 }
 
 // linkMarkHref answers the first link mark's destination, mirroring

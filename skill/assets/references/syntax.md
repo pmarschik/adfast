@@ -376,7 +376,12 @@ key order, comments, and quoting untouched.
   the store cannot map yet, and it degrades the same way — the picture
   leaves the document, the label stays as a link — with an
   `unresolved-asset` diagnostic. Upload the asset and the next encode
-  places the picture.
+  places the picture. `WithPreserveLocalImages` (the wasm
+  `preserveLocalImages` flag) keeps such a path instead, as a
+  `mediaInline{type: external, url: <path>}` — the same opt-in reaches
+  `:media{path=…}` and `::media{path=…}` — for a host that renders the ADF
+  beside the markdown file. That url is not in Atlassian's schema, so
+  never push it.
 - **Linked images** — `[![alt](url)](href)`, a logo that links home or a
   badge that links to a build, is representable: the link mark goes on
   the media node itself, so the picture keeps what it links to. The

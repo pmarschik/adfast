@@ -201,3 +201,32 @@ func TestDecodeEncode_PresenceSensitiveAttrs(t *testing.T) {
 		t.Errorf("empty-but-present title must decode as pointer: %v", expand.Title)
 	}
 }
+
+// TestDecodeEncode_MediaInlineURL: the url an external mediaInline
+// carries is a typed field, not an unknown attribute riding in Extra.
+// Extra would round-trip the bytes too, so the test asks for the field
+// and for the silence: an unknown-attr report on it would tell a
+// consumer the attribute is foreign when the encode writes it itself.
+func TestDecodeEncode_MediaInlineURL(t *testing.T) {
+	raw := `{"type":"doc","version":1,"content":[
+		{"type":"paragraph","content":[
+			{"type":"mediaInline","attrs":{"type":"external","url":"assets/x.png","alt":"x"}}
+		]}
+	]}`
+	input, doc, diags := decodeCollecting(t, raw)
+	para, ok := doc.Content[0].(*adf.Paragraph)
+	if !ok || len(para.Content) != 1 {
+		t.Fatalf("want one paragraph holding the chip, got %#v", doc.Content[0])
+	}
+	mi, ok := para.Content[0].(*adf.MediaInline)
+	if !ok {
+		t.Fatalf("want *adf.MediaInline, got %T", para.Content[0])
+	}
+	if mi.URL != "assets/x.png" {
+		t.Errorf("URL = %q, want assets/x.png", mi.URL)
+	}
+	if len(diags) != 0 {
+		t.Errorf("diagnostics = %v, want none", diags)
+	}
+	assertLossless(t, input, doc)
+}

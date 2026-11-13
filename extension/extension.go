@@ -185,6 +185,26 @@ type EncodeContext interface {
 	AssetDims(ref string) (width, height int, ok bool)
 }
 
+// LocalImagePreserver is the optional half of EncodeContext that answers
+// whether WithPreserveLocalImages is set. The convert package's contexts
+// implement it; it is a separate interface, not an EncodeContext method,
+// so an EncodeContext written outside this module keeps compiling. Read
+// it through PreserveLocalImages rather than asserting it yourself.
+type LocalImagePreserver interface {
+	// PreserveLocalImages reports whether a local picture the asset
+	// store cannot place should travel as external media carrying its
+	// path (see adfast.WithPreserveLocalImages).
+	PreserveLocalImages() bool
+}
+
+// PreserveLocalImages reports whether ctx asks for local pictures to be
+// kept as external media carrying their path. A context that does not
+// implement LocalImagePreserver answers false, the option's default.
+func PreserveLocalImages(ctx EncodeContext) bool {
+	p, ok := ctx.(LocalImagePreserver)
+	return ok && p.PreserveLocalImages()
+}
+
 // MediaAsset describes a downloaded attachment available on disk for
 // image-form rendering (see DecodeContext.Asset).
 type MediaAsset struct {

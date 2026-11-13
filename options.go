@@ -262,9 +262,10 @@ func WithIncrementListMarkers() Option {
 	return func(o *options) { o.incrementLists = true }
 }
 
-// WithPreserveLocalImages keeps an unresolved document-relative image
-// reference (![alt](assets/x.png)) as external media carrying the path,
-// instead of giving up the picture (the remark-reference default).
+// WithPreserveLocalImages keeps an unresolved document-relative picture
+// (![alt](assets/x.png), or a media directive's path=…) as external
+// media carrying the path, instead of giving up the picture (the
+// remark-reference default).
 //
 // Off is not a deletion: the PICTURE has no node to live in, but the
 // label is content and it stays — as a link to the path, or as plain
@@ -274,26 +275,40 @@ func WithIncrementListMarkers() Option {
 // becomes mediaSingle > media{type: external, url: assets/x.png} and no
 // diagnostic fires.
 //
-// It reaches only the media forms that can hold an external url, which
-// means the image ON ITS OWN LINE. An inline image in running prose is
-// byte-identical with the option and without it, and still reports
-// unresolved-asset, because mediaInline has no external variant — no
-// setting can make ADF carry an unuploaded picture mid-sentence. Moving
-// the image onto its own line is the only way to keep it.
+// It reaches every media form that names a local path the asset store
+// cannot place, and each keeps the path as an external url:
 //
-// Within that scope every leg agrees: ToADF promotes the local image to
-// external media, FromADF reads that media back as a plain image, and
-// ToMarkdown in the prettier-format mode (WithPrettierFormat) projects
-// the equivalent ::media directive to a plain image without going
-// through ADF at all. Off, all three keep the ::media form instead, so a
-// relative external url survives re-encode losslessly.
+//   - the image on its own line → mediaSingle > media{type: external};
+//   - an inline image in running prose → mediaInline{type: external,
+//     url}, linked when the image sits inside a link;
+//   - ::media{path=…} and :::media{path=…} → media{type: external};
+//   - the inline :media{path=…} chip → mediaInline{type: external, url}.
 //
-// Use it for store-aware round-trips and diff normalization where a
-// not-yet-uploaded local image must survive so a later push upload can
-// resolve it; do NOT use it for the final Jira push encode, where an
-// unresolved path must not be sent as external media a reader cannot
-// fetch — there the degraded link plus the unresolved-asset diagnostic
-// is the wanted outcome.
+// The mediaInline url is not in Atlassian's published schema (see
+// adf.MediaInline.URL): it exists for a consumer that renders ADF itself
+// next to the markdown file, and Jira and Confluence do not render it.
+// A path the store DOES place, an explicit id, an explicit url and a
+// non-file media type all win over the option, so it never re-points a
+// picture that already has a source.
+//
+// FromADF reads each shape back: the external media and the external
+// mediaInline with a relative url become the plain image, so a round
+// trip is a fixed point (a ::media{path=…} directive comes back as the
+// image, or as ::media{type=external url=…} when it spells something the
+// image cannot hold, such as a width). ToMarkdown in the prettier-format
+// mode (WithPrettierFormat) projects the equivalent block ::media
+// directive to a plain image without going through ADF at all; it keeps
+// an inline chip as written, which encodes to the same node. Off, every
+// leg keeps the ::media form instead, so a relative external url
+// survives re-encode losslessly.
+//
+// Use it for store-aware round-trips, diff normalization and editor
+// previews, where a not-yet-uploaded local picture must survive so a
+// later push upload — or the previewing host — can resolve it; do NOT
+// use it for the final Jira push encode, where an unresolved path must
+// not be sent as external media a reader cannot fetch — there the
+// degraded link plus the unresolved-asset diagnostic is the wanted
+// outcome.
 func WithPreserveLocalImages() Option {
 	return func(o *options) { o.preserveLocalImages = true }
 }

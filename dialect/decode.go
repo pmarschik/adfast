@@ -1118,6 +1118,11 @@ func decodeMediaInline(n adf.Node, _ extension.DecodeContext) ([]ast.Node, bool)
 	if mi.Type != "" && mi.Type != "file" {
 		attrs["type"] = mi.Type
 	}
+	// The external chip's url (see adf.MediaInline.URL) rides along the
+	// way the block form's does.
+	if mi.URL != "" {
+		attrs["url"] = mi.URL
+	}
 	// A linked inline attachment keeps its destination, and the title
 	// spelled after it, as attributes: this directive form is what a
 	// mediaInline the asset store cannot place falls back to, and a

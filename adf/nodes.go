@@ -306,11 +306,21 @@ type Status struct {
 }
 
 // MediaInline is an ADF mediaInline leaf (an inline attachment chip).
+//
+// URL is not in the published mediaInline schema, which addresses an
+// inline attachment by id only. It is the inline mirror of an external
+// Media's URL: type "external" plus a url, written for an explicit
+// `:media{type=external url=…}` and, under WithPreserveLocalImages, for
+// an inline local picture the asset store cannot place, so the path
+// survives the ADF leg instead of collapsing into an addressless chip.
+// Jira and Confluence do not render it; a push encode without that
+// option produces it only when the author spelled the url.
 type MediaInline struct {
 	Collection *string
 	Extra      map[string]any
 	Type       string
 	ID         string
+	URL        string
 	Alt        string
 	Marks      []Mark
 }
